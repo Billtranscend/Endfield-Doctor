@@ -1361,6 +1361,9 @@ def theo_drops(reg: Region) -> list[tuple[Item, int]]:
     return out
 
 
+SOURCE_FLUIDS = ("清水",)  # 源头流体：理论消耗下降又定位不到消费者时只报待确认（和 expert.CONS_DROP_FLUIDS 一致）
+
+
 def attach_theo_drops(
     reg: Region, devices: list[Device], verdicts: list[Verdict], skip: dict[str, str] | None = None
 ) -> tuple[list[str], set[str]]:
@@ -1964,6 +1967,19 @@ def report(
     if unlocated and area and area == main_area:
         for text in unlocated:
             label = text.split(" 的理论消耗")[0]
+            if label in SOURCE_FLUIDS:
+                # 源头流体（清水）定位不到消费者：多半是基地比作者少摆了几台用水设备，不当问题报（2026-11-12 三个群友 450–600）
+                verdicts.append(
+                    Verdict(
+                        "待确认",
+                        Device(UNLABELED, "?", "?", 0, 0, "", None, None),
+                        f"{text}；巡检没找到缺{label}空闲的设备，多半是你的基地比作者少摆了几台用{label}的设备",
+                        f"基地正常的话，在「蓝图」页点「更新基准」抓一份自己的简报；{label}输入端显示「阻塞」= {label}是满的、不缺",
+                        title=f"{label} 理论消耗比作者基地少（巡检没找到缺{label}的设备）",
+                        key=f"drop:{label}",
+                    )
+                )
+                continue
             verdicts.append(
                 Verdict(
                     "问题",

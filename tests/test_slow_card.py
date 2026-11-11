@@ -57,6 +57,42 @@ def test_fast_card_no_wait():
     assert ok and t == 0
 
 
+def test_overlapping_icon_menu():
+    """群友 H 景玉谷：基地图标旁边摆了息壤供电桩，点下去弹出「选择目标」菜单（据点 / 息壤供电桩），不是卡片。
+    卡片读空时点菜单里的「据点」那一行，再读卡片。"""
+    clock = _Clock()
+    orig = N.time
+    N.time = clock
+    state = {"menu": False, "card": False, "clicks": []}
+    try:
+        n = N.Navigator.__new__(N.Navigator)
+        n.shot = lambda: None
+        n.find_cores = lambda image, threshold=None, tpls=None: [(0.92, 794, 188, "core_icon.png")]
+        n.key = lambda k, *a: state.update(menu=False) if k == "esc" else None
+
+        def click(x, y):
+            state["clicks"].append((x, y))
+            if (x, y) == (794, 188):
+                state["menu"] = True
+            elif state["menu"] and (x, y) == (945, 455):
+                state["menu"], state["card"] = False, True
+
+        n.click = click
+
+        def ocr(roi):
+            if not state["card"]:
+                return ""
+            return "天王坪援建点" if roi == N.CARD_TITLE_ROI else "详情 传送"
+
+        n.ocr_text = ocr
+        n.ocr_boxes = lambda roi: ([([925, 445, 40, 20], "据点"), ([925, 487, 90, 20], "息壤供电桩")]
+                                   if state["menu"] else [])
+        assert n.click_core({}) is True
+        assert state["clicks"] == [(794, 188), (945, 455)], state["clicks"]
+    finally:
+        N.time = orig
+
+
 def test_fit_720p():
     for w in (1281, 1279, 1290):
         out = game.fit_720p(np.zeros((720, w, 3), np.uint8))
@@ -71,5 +107,6 @@ if __name__ == "__main__":
     test_slow_card_waits()
     test_no_card_gives_up()
     test_fast_card_no_wait()
+    test_overlapping_icon_menu()
     test_fit_720p()
-    print("4/4 通过")
+    print("5/5 通过")

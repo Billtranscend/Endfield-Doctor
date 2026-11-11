@@ -63,6 +63,8 @@ CARD_BUTTON_ROI = [960, 640, 320, 42]  # 右下角按钮文字
 TELEPORT_BUTTON = (1180, 660)  # 基地卡片的「传送」（左边是「详情」1040,660）
 TP_BUTTON = (1140, 660)  # 只有一个「传送」的卡片（如武陵城协议核心）
 DRAG_MS = 700  # 拖地图的默认时长
+EMPTY_CARD = "卡片「」，按钮「」"  # card_is_core 标题和按钮都没读到
+MENU_PICKS = ("据点", "协议核心", "援建点", "建设站")  # 「选择目标」菜单里基地那一行的叫法
 MENU_W, MENU_H = 320, 140  # 「选择目标」小菜单：在点击位置右侧找
 # 基地在地图上的名字因分区而异：景玉谷「天王坪援建点」、应龙关「盈天台建设站」、首墩「心脏修缮站」（2026-11-07）、主基地「协议核心」
 CORE_TITLE_RE = re.compile(r"援建点|建设站|修缮站|协议核心|核心")
@@ -334,7 +336,7 @@ class Navigator:
             time.sleep(0.5)
         ok = bool(CORE_TITLE_RE.search(title)) and "传送" in buttons and "前往" not in buttons
         ok = ok and (single or "详情" in buttons)
-        return ok, f"卡片「{title}」，按钮「{buttons}」"
+        return ok, EMPTY_CARD if not title.strip() and not buttons.strip() else f"卡片「{title}」，按钮「{buttons}」"
 
     def pick_menu(self, x: int, y: int, text: str) -> bool:
         """点图标后弹出「选择目标」小菜单（几个设备重叠）：OCR 找 text 那一行并点它。
@@ -391,6 +393,13 @@ class Navigator:
             ok, desc = self.card_is_core(single)
             if not ok and opts.get("menu_pick") and self.pick_menu(x, y, opts["menu_pick"]):
                 ok, desc = self.card_is_core(single)  # 重叠设备弹出了选择菜单，点了目标那一行
+            elif not ok and desc == EMPTY_CARD:
+                # 卡片标题、按钮都读空：多半是基地图标旁边摆了别的设备（息壤供电桩），点下去弹的是「选择目标」小菜单
+                # （2026-11-12 群友 H 景玉谷：菜单里是「据点 / 息壤供电桩」，两次都读空卡片判失败）。点菜单里的基地那一行
+                for pick in MENU_PICKS:
+                    if self.pick_menu(x, y, pick):
+                        ok, desc = self.card_is_core(single)
+                        break
             print(f"    {desc}")
             if ok:
                 return True
