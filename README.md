@@ -147,13 +147,10 @@ python -m venv .venv
 | [MaaXYZ/MaaFramework](https://github.com/MaaXYZ/MaaFramework) | 截图、键鼠输入、文字识别 | LGPL-3.0 |
 | [MaaXYZ/MaaCommonAssets](https://github.com/MaaXYZ/MaaCommonAssets) | 文字识别模型（PaddleOCR） | MIT / Apache-2.0 |
 | [r0x0r/pywebview](https://github.com/r0x0r/pywebview) | 程序界面 | BSD-3-Clause |
-| [opencv/opencv-python](https://github.com/opencv/opencv-python) | 图像匹配 | Apache-2.0 |
-| [numpy/numpy](https://github.com/numpy/numpy) | 数值计算 | BSD-3-Clause |
-| [pyinstaller/pyinstaller](https://github.com/pyinstaller/pyinstaller) | 打包 exe | GPL-2.0+（含打包例外） |
 | [hsyhhssyy/IndustrialPlanner](https://github.com/hsyhhssyy/IndustrialPlanner) | 建筑端口方向、物流优先级等规则的参考 | MIT |
 | [AKEData](https://www.akedata.wiki/) | 物品、配方、建筑数据 | 见站点说明 |
 
-界面风格参考了 MaaEnd、OEA 等社区工具。第三方组件与素材的说明见 [NOTICE.md](NOTICE.md)。
+界面风格参考了 MaaEnd、OEA 等社区工具。其余依赖（OpenCV、NumPy、PyInstaller 等）和游戏素材的说明见 [NOTICE.md](NOTICE.md)。
 
 ## 免责声明
 
