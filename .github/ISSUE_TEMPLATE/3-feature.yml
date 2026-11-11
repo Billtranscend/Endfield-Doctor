@@ -1,0 +1,26 @@
+name: 功能建议
+description: 想要程序多做点什么，或者某个地方用起来不顺手
+title: "[建议] "
+labels: ["建议"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 现在哪里不方便
+      description: 你在做什么的时候、遇到了什么麻烦
+      placeholder: 每次反馈都要去数据目录里一个个找文件……
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 希望怎么改
+      placeholder: 加一个「一键打包反馈」按钮……
+
+  - type: input
+    id: blueprint
+    attributes:
+      label: 用的是哪套蓝图
+      description: 和某套蓝图有关就写上
+      placeholder: "1.6皇帝产线"

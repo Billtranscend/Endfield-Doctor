@@ -1,0 +1,43 @@
+{
+ "region": "武陵",
+ "area": "武陵城",
+ "time": "20261104-164000",
+ "devices": [
+  {
+   "name": "天有洪炉",
+   "status": "空闲中",
+   "badge": "空闲中",
+   "world_x": 1693,
+   "world_y": -714,
+   "recipe": "碳块×2 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "recipe_id": "xiranite_oven_xiranite_powder_1",
+   "guessed": false,
+   "env": "无环境"
+  },
+  {
+   "name": "天有洪炉",
+   "status": "空闲中",
+   "badge": "空闲中",
+   "world_x": 1574,
+   "world_y": -615,
+   "recipe": "碳块×2 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "recipe_id": "xiranite_oven_xiranite_powder_1",
+   "guessed": false,
+   "env": "无环境"
+  },
+  {
+   "name": "天有洪炉",
+   "status": "空闲中",
+   "badge": "空闲中",
+   "world_x": 1535,
+   "world_y": -714,
+   "recipe": "碳块×2 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "recipe_id": "xiranite_oven_xiranite_powder_1",
+   "guessed": false,
+   "env": "无环境"
+  }
+ ]
+}

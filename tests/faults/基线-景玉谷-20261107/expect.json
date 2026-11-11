@@ -1,0 +1,13 @@
+{
+    "problems": [],
+    "exact_problems": 0,
+    "must_not_problem": [
+        "种植机",
+        "采种机",
+        "天有洪炉"
+    ],
+    "_note": "2026-11-07 景玉谷无故障（昨晚暗管已接回）。2026-11-07 改：清水根因只是地区级待确认，不计问题",
+    "patrol": "patrol_fast.json",
+    "merge_deep": false,
+    "blueprint": "_回归-1.6皇帝产线-旧基准1104"
+}

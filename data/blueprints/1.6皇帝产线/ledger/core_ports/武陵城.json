@@ -1,0 +1,92 @@
+{
+ "area": "武陵城",
+ "time": "20261110-145130",
+ "core": "协议核心",
+ "shots": "debug\\shots\\20261110-145130_武陵城_核心取货口",
+ "rows": [
+  {
+   "title": "协议核心取货口1",
+   "port": 1,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "H运行中",
+   "item": "",
+   "u": [
+    508,
+    231
+   ],
+   "shot": "core_port1.png"
+  },
+  {
+   "title": "协议核心取货口2",
+   "port": 2,
+   "button": "替换物品1",
+   "configured": true,
+   "stock": 71597,
+   "status": "H运行中",
+   "item": "中容武陵电池",
+   "u": [
+    509,
+    334
+   ],
+   "shot": "core_port2.png"
+  },
+  {
+   "title": "协议核心取货口3",
+   "port": 3,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "H运行中",
+   "item": "",
+   "u": [
+    508,
+    437
+   ],
+   "shot": "core_port3.png"
+  },
+  {
+   "title": "协议核心取货口4",
+   "port": 4,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "H运行中",
+   "item": "",
+   "u": [
+    774,
+    231
+   ],
+   "shot": "core_port4.png"
+  },
+  {
+   "title": "协议核心取货口5",
+   "port": 5,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "H运行中",
+   "item": "",
+   "u": [
+    773,
+    334
+   ],
+   "shot": "core_port5.png"
+  },
+  {
+   "title": "协议核心取货口6",
+   "port": 6,
+   "button": "替换物品1",
+   "configured": true,
+   "stock": 90000,
+   "status": "H运行中",
+   "item": "砂叶粉末",
+   "u": [
+    773,
+    437
+   ],
+   "shot": "core_port6.png"
+  }
+ ]
+}

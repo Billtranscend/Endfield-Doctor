@@ -1,0 +1,2044 @@
+{
+ "二型电驱矿机": {
+  "d": 3,
+  "id": "miner_3",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "二型耐酸水泵": {
+  "d": 3,
+  "id": "pump_2",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "产物排出口": {
+  "d": 3,
+  "id": "liquid_recycle_gate_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 10
+ },
+ "仓库取货口": {
+  "d": 1,
+  "id": "unloader_1",
+  "ports": [],
+  "w": 3
+ },
+ "仓库存货口": {
+  "d": 1,
+  "id": "loader_1",
+  "ports": [],
+  "w": 3
+ },
+ "便携源石矿机": {
+  "d": 3,
+  "id": "miner_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "储气罐": {
+  "d": 3,
+  "id": "gas_storager_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "储液罐": {
+  "d": 3,
+  "id": "liquid_storager_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "协议储存箱": {
+  "d": 3,
+  "id": "storager_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "协议核心": {
+  "d": 9,
+  "id": "sp_hub_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 6,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 7,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 1,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 2,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 3,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 4,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 5,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 6,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 7,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "E",
+    "x": 8,
+    "y": 7
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "E",
+    "x": 8,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "E",
+    "x": 8,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 7
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 9
+ },
+ "反应池": {
+  "d": 5,
+  "id": "mix_pool_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 1
+   }
+  ],
+  "w": 5
+ },
+ "固气转化机": {
+  "d": 5,
+  "id": "transmuter_2",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 1
+   }
+  ],
+  "w": 5
+ },
+ "塑形机": {
+  "d": 3,
+  "id": "shaper_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "多口暗管入口": {
+  "d": 5,
+  "id": "udpipe_loader_2",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "多口暗管出口": {
+  "d": 5,
+  "id": "udpipe_unloader_2",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "天有洪炉": {
+  "d": 5,
+  "id": "xiranite_oven_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 4
+   }
+  ],
+  "w": 5
+ },
+ "封装机": {
+  "d": 4,
+  "id": "tools_assebling_mc_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 5,
+    "y": 3
+   }
+  ],
+  "w": 6
+ },
+ "废水处理机": {
+  "d": 3,
+  "id": "liquid_cleaner_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "扩容反应池": {
+  "d": 5,
+  "id": "mix_pool_2",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 4
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 5,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 5,
+    "y": 1
+   }
+  ],
+  "w": 6
+ },
+ "拆解机": {
+  "d": 4,
+  "id": "dismantler_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 5,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 5,
+    "y": 1
+   }
+  ],
+  "w": 6
+ },
+ "提纯机": {
+  "d": 5,
+  "id": "liquid_purifier_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 1
+   }
+  ],
+  "w": 5
+ },
+ "暗管入口": {
+  "d": 3,
+  "id": "udpipe_loader_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "暗管出口": {
+  "d": 3,
+  "id": "udpipe_unloader_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "次级核心": {
+  "d": 9,
+  "id": "sp_sub_hub_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 6,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 7,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 1,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 2,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 3,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 4,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 5,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 6,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "S",
+    "x": 7,
+    "y": 8
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "E",
+    "x": 8,
+    "y": 7
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "E",
+    "x": 8,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "E",
+    "x": 8,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 7
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 9
+ },
+ "气体反应炉": {
+  "d": 5,
+  "id": "gas_reactor_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 1
+   }
+  ],
+  "w": 5
+ },
+ "气体收集泵": {
+  "d": 3,
+  "id": "gas_pump_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "气体散布机": {
+  "d": 3,
+  "id": "vaporizer_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "水泵": {
+  "d": 3,
+  "id": "pump_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "水驱矿机": {
+  "d": 3,
+  "id": "miner_4",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "污水接入口": {
+  "d": 3,
+  "id": "liquid_clean_gate_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 10
+ },
+ "洒水机": {
+  "d": 3,
+  "id": "squirter_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "液气转化机": {
+  "d": 5,
+  "id": "transmuter_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 4,
+    "y": 1
+   }
+  ],
+  "w": 5
+ },
+ "灌装机": {
+  "d": 4,
+  "id": "filling_powder_mc_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 5,
+    "y": 3
+   }
+  ],
+  "w": 6
+ },
+ "热能池": {
+  "d": 2,
+  "id": "power_station_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   }
+  ],
+  "w": 2
+ },
+ "电驱矿机": {
+  "d": 3,
+  "id": "miner_2",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "研磨机": {
+  "d": 4,
+  "id": "thickener_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 5,
+    "y": 3
+   }
+  ],
+  "w": 6
+ },
+ "种植机": {
+  "d": 5,
+  "id": "planter_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 4
+   }
+  ],
+  "w": 5
+ },
+ "粉碎机": {
+  "d": 3,
+  "id": "grinder_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "精炼炉": {
+  "d": 3,
+  "id": "furnance_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   },
+   {
+    "pipe": true,
+    "role": "out",
+    "side": "E",
+    "x": 2,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "给水器": {
+  "d": 3,
+  "id": "dumper_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
+ "装备原件机": {
+  "d": 4,
+  "id": "winder_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 5,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 3
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 5,
+    "y": 3
+   }
+  ],
+  "w": 6
+ },
+ "配件机": {
+  "d": 3,
+  "id": "component_mc_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 2
+   }
+  ],
+  "w": 3
+ },
+ "采种机": {
+  "d": 5,
+  "id": "seedcollector_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 4
+   }
+  ],
+  "w": 5
+ }
+}

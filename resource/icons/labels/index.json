@@ -1,0 +1,179 @@
+{
+ "icon": 26,
+ "shift": 3,
+ "same": {
+  "仓库存取线基段": "仓库口",
+  "仓库取货口": "仓库口"
+ },
+ "built": "2026-11-07",
+ "classes": {
+  "配件机": {
+   "samples": 36,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.56,
+   "other_sim_max": 0.5
+  },
+  "固气转化机": {
+   "samples": 122,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.5,
+   "other_sim_max": 0.48
+  },
+  "仓库口": {
+   "samples": 34,
+   "acc": 0.971,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.27,
+   "other_sim_max": 0.56
+  },
+  "气体反应炉": {
+   "samples": 6,
+   "acc": 0.667,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.18,
+   "other_sim_max": 0.68
+  },
+  "种植机": {
+   "samples": 17,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.7,
+   "other_sim_max": 0.45
+  },
+  "灌装机": {
+   "samples": 27,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.83,
+   "other_sim_max": 0.65
+  },
+  "提纯机": {
+   "samples": 9,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.77,
+   "other_sim_max": 0.43
+  },
+  "暗管入口": {
+   "samples": 25,
+   "acc": 0.92,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.42,
+   "other_sim_max": 0.85
+  },
+  "扩容反应池": {
+   "samples": 11,
+   "acc": 0.455,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.24,
+   "other_sim_max": 0.68
+  },
+  "多口暗管出口": {
+   "samples": 6,
+   "acc": 1.0,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.9,
+   "other_sim_max": 0.82
+  },
+  "暗管出口": {
+   "samples": 25,
+   "acc": 0.92,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.66,
+   "other_sim_max": 0.92
+  },
+  "研磨机": {
+   "samples": 18,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.85,
+   "other_sim_max": 0.57
+  },
+  "天有洪炉": {
+   "samples": 22,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.47,
+   "other_sim_max": 0.51
+  },
+  "封装机": {
+   "samples": 29,
+   "acc": 0.966,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.82,
+   "other_sim_max": 0.6
+  },
+  "粉碎机": {
+   "samples": 30,
+   "acc": 1.0,
+   "weak": false,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.74,
+   "other_sim_max": 0.5
+  },
+  "塑形机": {
+   "samples": 5,
+   "acc": 0.6,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.36,
+   "other_sim_max": 0.43
+  },
+  "采种机": {
+   "samples": 5,
+   "acc": 1.0,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.71,
+   "other_sim_max": 0.45
+  },
+  "精炼炉": {
+   "samples": 4,
+   "acc": 1.0,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.88,
+   "other_sim_max": 0.57
+  },
+  "协议储存箱": {
+   "samples": 4,
+   "acc": 1.0,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.83,
+   "other_sim_max": 0.64
+  },
+  "装备原件机": {
+   "samples": 3,
+   "acc": 1.0,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.87,
+   "other_sim_max": 0.47
+  },
+  "反应池": {
+   "samples": 6,
+   "acc": 1.0,
+   "weak": true,
+   "ocr_first_char_acc": 1.0,
+   "own_sim_min": 0.85,
+   "other_sim_max": 0.43
+  }
+ }
+}

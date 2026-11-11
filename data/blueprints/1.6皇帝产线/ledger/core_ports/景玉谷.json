@@ -1,0 +1,92 @@
+{
+ "area": "景玉谷",
+ "time": "20261110-144506",
+ "core": "次级核心",
+ "shots": "debug\\shots\\20261110-144506_景玉谷_核心取货口",
+ "rows": [
+  {
+   "title": "协议核心取货口1",
+   "port": 1,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "AAA运行中",
+   "item": "",
+   "u": [
+    508,
+    223
+   ],
+   "shot": "core_port1.png"
+  },
+  {
+   "title": "协议核心取货口2",
+   "port": 2,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "H运行中",
+   "item": "",
+   "u": [
+    508,
+    325
+   ],
+   "shot": "core_port2.png"
+  },
+  {
+   "title": "协议核心取货口3",
+   "port": 3,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "H运行中",
+   "item": "",
+   "u": [
+    508,
+    427
+   ],
+   "shot": "core_port3.png"
+  },
+  {
+   "title": "协议核心取货口4",
+   "port": 4,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "AAA运行中",
+   "item": "",
+   "u": [
+    772,
+    223
+   ],
+   "shot": "core_port4.png"
+  },
+  {
+   "title": "协议核心取货口5",
+   "port": 5,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "AAA运行中",
+   "item": "",
+   "u": [
+    772,
+    325
+   ],
+   "shot": "core_port5.png"
+  },
+  {
+   "title": "协议核心取货口6",
+   "port": 6,
+   "button": "添加物品",
+   "configured": false,
+   "stock": null,
+   "status": "AAA运行中",
+   "item": "",
+   "u": [
+    772,
+    427
+   ],
+   "shot": "core_port6.png"
+  }
+ ]
+}

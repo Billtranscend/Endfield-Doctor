@@ -1,0 +1,326 @@
+{
+ "area": "景玉谷",
+ "from": "历史巡检面板（patrol_*.json），按同名最近配对、偏移校正后横纵各 ±30 px",
+ "devices": [
+  {
+   "name": "粉碎机",
+   "x": 526,
+   "y": 363,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "4/4"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1118,
+   "y": 365,
+   "recipe": "芽针×1 → 碳块×2（2秒）",
+   "output": "item_carbon_mtl",
+   "votes": "1/1"
+  },
+  {
+   "name": "粉碎机",
+   "x": 467,
+   "y": 383,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "4/4"
+  },
+  {
+   "name": "研磨机",
+   "x": 378,
+   "y": 393,
+   "recipe": "源石粉末×2 + 砂叶粉末×1 → 致密源石粉末×1（2秒）",
+   "output": "item_originium_enr_powder",
+   "votes": "2/2"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 855,
+   "y": 423,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "2/2"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 992,
+   "y": 424,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "封装机",
+   "x": 753,
+   "y": 452,
+   "recipe": "致密源石粉末×15 + 息壤×5 → 低容武陵电池×1（10秒）",
+   "output": "item_proc_battery_4",
+   "votes": "4/5"
+  },
+  {
+   "name": "粉碎机",
+   "x": 509,
+   "y": 462,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "5/5"
+  },
+  {
+   "name": "种植机",
+   "x": 1215,
+   "y": 464,
+   "recipe": "清水×1 + 芽针种子×1 → 芽针×2（2秒）",
+   "output": "item_plant_grass_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "粉碎机",
+   "x": 506,
+   "y": 521,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "研磨机",
+   "x": 418,
+   "y": 530,
+   "recipe": "源石粉末×2 + 砂叶粉末×1 → 致密源石粉末×1（2秒）",
+   "output": "item_originium_enr_powder",
+   "votes": "5/5"
+  },
+  {
+   "name": "粉碎机",
+   "x": 508,
+   "y": 580,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "2/2"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 854,
+   "y": 581,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "2/2"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 992,
+   "y": 581,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "采种机",
+   "x": 1215,
+   "y": 582,
+   "recipe": "芽针×1 → 芽针种子×1（2秒）",
+   "output": "item_plant_grass_seed_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "粉碎机",
+   "x": 506,
+   "y": 639,
+   "recipe": "砂叶×1 → 砂叶粉末×3（2秒）",
+   "output": "item_plant_moss_powder_3",
+   "votes": "3/3"
+  },
+  {
+   "name": "研磨机",
+   "x": 417,
+   "y": 648,
+   "recipe": "源石粉末×2 + 砂叶粉末×1 → 致密源石粉末×1（2秒）",
+   "output": "item_originium_enr_powder",
+   "votes": "5/5"
+  },
+  {
+   "name": "粉碎机",
+   "x": 507,
+   "y": 698,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 854,
+   "y": 738,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 991,
+   "y": 738,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "6/6"
+  },
+  {
+   "name": "种植机",
+   "x": 1214,
+   "y": 759,
+   "recipe": "清水×1 + 芽针种子×1 → 芽针×2（2秒）",
+   "output": "item_plant_grass_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "封装机",
+   "x": 732,
+   "y": 767,
+   "recipe": "致密源石粉末×15 + 息壤×5 → 低容武陵电池×1（10秒）",
+   "output": "item_proc_battery_4",
+   "votes": "6/6"
+  },
+  {
+   "name": "研磨机",
+   "x": 477,
+   "y": 806,
+   "recipe": "源石粉末×2 + 砂叶粉末×1 → 致密源石粉末×1（2秒）",
+   "output": "item_originium_enr_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "采种机",
+   "x": 1215,
+   "y": 877,
+   "recipe": "芽针×1 → 芽针种子×1（2秒）",
+   "output": "item_plant_grass_seed_2",
+   "votes": "3/3"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 991,
+   "y": 895,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "3/3"
+  },
+  {
+   "name": "封装机",
+   "x": 378,
+   "y": 904,
+   "recipe": "致密源石粉末×20 + 壤晶×5 → 中容武陵电池×1（10秒）",
+   "output": "item_proc_battery_5",
+   "votes": "5/5"
+  },
+  {
+   "name": "封装机",
+   "x": 732,
+   "y": 905,
+   "recipe": "致密源石粉末×15 + 息壤×5 → 低容武陵电池×1（10秒）",
+   "output": "item_proc_battery_4",
+   "votes": "6/7"
+  },
+  {
+   "name": "粉碎机",
+   "x": 386,
+   "y": 1051,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "粉碎机",
+   "x": 644,
+   "y": 1091,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "塑形机",
+   "x": 1272,
+   "y": 1093,
+   "recipe": "赤铜块×2 + 惰气×1 → 赤铜耐压罐×1（2秒）",
+   "output": "item_copper_jar",
+   "votes": "4/4"
+  },
+  {
+   "name": "粉碎机",
+   "x": 740,
+   "y": 1131,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "粉碎机",
+   "x": 800,
+   "y": 1131,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "5/5"
+  },
+  {
+   "name": "粉碎机",
+   "x": 918,
+   "y": 1131,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "2/2"
+  },
+  {
+   "name": "粉碎机",
+   "x": 978,
+   "y": 1131,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "2/2"
+  },
+  {
+   "name": "粉碎机",
+   "x": 861,
+   "y": 1132,
+   "recipe": "砂叶×1 → 砂叶粉末×3（2秒）",
+   "output": "item_plant_moss_powder_3",
+   "votes": "2/2"
+  },
+  {
+   "name": "粉碎机",
+   "x": 1037,
+   "y": 1132,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "4/4"
+  },
+  {
+   "name": "粉碎机",
+   "x": 544,
+   "y": 1170,
+   "recipe": "源矿×1 → 源石粉末×1（2秒）",
+   "output": "item_originium_powder",
+   "votes": "5/5"
+  },
+  {
+   "name": "研磨机",
+   "x": 672,
+   "y": 1200,
+   "recipe": "源石粉末×2 + 砂叶粉末×1 → 致密源石粉末×1（2秒）",
+   "output": "item_originium_enr_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "封装机",
+   "x": 533,
+   "y": 1258,
+   "recipe": "致密源石粉末×20 + 壤晶×5 → 中容武陵电池×1（10秒）",
+   "output": "item_proc_battery_5",
+   "votes": "5/5"
+  },
+  {
+   "name": "水泵",
+   "x": 1316,
+   "y": 247,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "3/3"
+  }
+ ]
+}

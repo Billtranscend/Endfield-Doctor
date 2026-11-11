@@ -1,0 +1,40 @@
+{
+ "region": "武陵",
+ "area": "武陵城",
+ "time": "20261104-134920",
+ "devices": [
+  {
+   "name": "（闪烁）",
+   "status": "生产中",
+   "badge": "空闲中",
+   "world_x": 1099,
+   "world_y": 1831,
+   "recipe": "配方：?",
+   "output": null,
+   "recipe_id": null,
+   "guessed": false
+  },
+  {
+   "name": "塑形机",
+   "status": "阻塞",
+   "badge": "空闲中",
+   "world_x": 1140,
+   "world_y": 1474,
+   "recipe": "赤铜块×2 + 惰气×1 → 赤铜耐压罐×1（2秒）",
+   "output": "item_copper_jar",
+   "recipe_id": "shaper_gas_copper_jar_1",
+   "guessed": false
+  },
+  {
+   "name": "封装机",
+   "status": "空闲中",
+   "badge": "空闲中",
+   "world_x": 1021,
+   "world_y": 1336,
+   "recipe": "赤铜零件×10 + 赤铜瓶(锦草溶液)×5 → 优质锦草软饮×1（10秒）",
+   "output": "item_bottled_food_5",
+   "recipe_id": "tools_proc_food_5_1",
+   "guessed": false
+  }
+ ]
+}

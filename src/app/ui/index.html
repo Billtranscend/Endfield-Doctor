@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>终末地基建诊断</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">EF<span>//</span></div>
+      <div class="brand-text"><div class="brand-title">基建诊断</div><div class="brand-sub">FACTORY DOCTOR</div></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-page="home"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="lbl">总览</span><span class="idx">01</span></button>
+      <button class="nav-item" data-page="blueprint"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M9 9v11"/></svg><span class="lbl">蓝图</span><span class="idx">02</span></button>
+      <button class="nav-item" data-page="bpa"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l3 8M16 7.5l-3 8M8.5 6h7"/></svg><span class="lbl">蓝图分析</span><span class="idx">03</span></button>
+      <button class="nav-item" data-page="quick"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span class="lbl">快速诊断</span><span class="idx">04</span></button>
+      <button class="nav-item" data-page="patrol"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5M11 8v3l2 2"/></svg><span class="lbl">深入巡检</span><span class="idx">05</span></button>
+      <button class="nav-item" data-page="reports"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h6"/></svg><span class="lbl">报告</span><span class="idx">06</span></button>
+      <button class="nav-item" data-page="settings"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">设置</span><span class="idx">07</span></button>
+      <button class="nav-item" data-page="help"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01"/></svg><span class="lbl">帮助</span><span class="idx">08</span></button>
+    </nav>
+    <div class="side-foot">
+      <div class="status-row"><span class="dot" id="gameDot"></span><span id="gameText">检查游戏…</span></div>
+      <div class="status-row small"><span class="muted">蓝图</span><span id="sideBlueprint">—</span></div>
+      <div class="status-row small"><span class="muted">任务</span><span id="sideJob">空闲</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb" id="crumb">总览</div>
+      <div class="topbar-right">
+        <span class="chip" id="jobChip">空闲</span>
+        <span class="chip ghost" id="clock"></span>
+      </div>
+    </header>
+    <div class="stripe"></div>
+
+    <!-- 总览 -->
+    <section class="page active" id="page-home">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h"><span>游戏连接<button type="button" class="help" data-help="game" aria-label="说明">?</button></span><button class="btn ghost sm" onclick="refreshGame()">刷新</button></div>
+          <div class="kv"><span>窗口</span><b id="homeWindow">—</b></div>
+          <div class="kv"><span>当前界面</span><b id="homeScene">—</b></div>
+          <div class="hint" id="homeHint"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><span>当前蓝图<button type="button" class="help" data-help="archive" aria-label="说明">?</button></span><button class="btn ghost sm" onclick="go('blueprint')">更换</button></div>
+          <div class="big" id="homeBlueprint">—</div>
+          <div class="hint" id="homeBlueprintNote"></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card action" onclick="go('quick')">
+          <div class="action-num">04</div>
+          <div class="action-title">快速诊断</div>
+          <div class="action-desc">只读简报（约 2 分钟），对照蓝图找缺开矿、缺水口、缺气口，以及简报层面能判出的供需问题。游戏要停在大世界。</div>
+        </div>
+        <div class="card action" onclick="go('patrol')">
+          <div class="action-num">05</div>
+          <div class="action-title">深入巡检</div>
+          <div class="action-desc">自动传送到各分区，进俯瞰逐屏扫描设备状态、点开面板核对，再读简报合并出根因，附设备定位图。全基地约 30–40 分钟，期间请不要操作电脑。</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span>最近报告</span><button class="btn ghost sm" onclick="go('reports')">全部</button></div>
+        <div id="homeRecent" class="list"></div>
+      </div>
+    </section>
+
+    <!-- 蓝图 -->
+    <section class="page" id="page-blueprint">
+      <div class="card">
+        <div class="card-h"><span>蓝图档案<button type="button" class="help" data-help="archive" aria-label="说明">?</button><button type="button" class="help" data-help="bpaimport" aria-label="说明">?</button></span>
+          <span class="btn-row inline">
+            <button class="btn sm" onclick="importBlueprint('zip')">导入 zip</button>
+            <button class="btn sm" onclick="importBlueprint('folder')">导入文件夹</button>
+            <button class="btn sm primary" onclick="openWizard()">新建档案</button>
+          </span>
+        </div>
+        <div id="bpList" class="bp-list"></div>
+        <div class="hint">程序按选中的档案判断什么是正常、什么是问题。用别人发的成品蓝图：拿到作者导出的档案 zip，点「导入 zip」。自己搭的：点「新建档案」，程序读简报、找基地，两步勾选完成。</div>
+      </div>
+      <div class="card" id="bpWizard" style="display:none"></div>
+      <div class="card" id="bpDetail"></div>
+    </section>
+
+    <!-- 蓝图分析 -->
+    <section class="page" id="page-bpa">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h"><span>项目<button type="button" class="help" data-help="bpa" aria-label="说明">?</button></span><button class="btn ghost sm" onclick="bpaLoad()">刷新</button></div>
+          <div class="hint">给蓝图作者用：分析一套共享蓝图的设计（暗管连接、据点拼合、输入端），导出 zip 给别人导入。基地要先按蓝图摆好；程序只读，不改基地。</div>
+          <div class="kv"><span>已有项目</span><span class="btn-row inline"><select id="bpaProj" onchange="bpaSelect(this.value)"></select><button class="btn danger sm" id="bpaDelete" onclick="bpaDelete()" title="挪进备份目录 debug\bpa_备份（不真删，挪回去就恢复）">删除项目</button><button type="button" class="help" data-help="bpadelete" aria-label="说明">?</button></span></div>
+          <details id="bpaNewBox"><summary>新建 / 修改分组</summary>
+            <div class="kv"><span>项目名</span><input id="bpaName" placeholder="例：皇帝产线1.6"></div>
+            <div class="kv"><span>底账来源</span><select id="bpaArchive"></select></div>
+            <div class="hint">每行一个据点：「据点：共享蓝图名，共享蓝图名…」。据点名要和底账里的分区名一致（例：应龙关）。</div>
+            <textarea id="bpaGroups" rows="4" placeholder="应龙关：1.6应龙关1号，1.6应龙关2号，1.6应龙关3号&#10;景玉谷：1.6景玉谷1号，1.6景玉谷2号"></textarea>
+            <div class="btn-row"><button class="btn sm primary" onclick="bpaCreate()">保存项目</button></div>
+          </details>
+        </div>
+        <div class="card">
+          <div class="card-h"><span>步骤</span><span class="muted" id="bpaStep"></span></div>
+          <ol class="steps">
+            <li><span class="sn">1</span><div class="sb"><b>扫底账<button type="button" class="help" data-help="bpaledger" aria-label="说明">?</button></b><small>进游戏 · 每个据点扫一次，景玉谷约 8 分钟</small></div>
+              <span class="sa" title="人先走到这个据点里（大地图或俯瞰都行）。程序进俯瞰、顶到左上角、放大后蛇形扫一遍；标签挤在一起的地方按 Ctrl+R 转视角补拍再转回来。只按方向键、滚轮和 Ctrl+R，不点任何东西。"><select id="bpaLedgerBase"></select><button class="btn" id="bpaLedger" onclick="bpaLedger()">开始扫</button></span></li>
+            <li><span class="sn">2</span><div class="sb"><b>读蓝图<button type="button" class="help" data-help="bparead" aria-label="说明">?</button></b><small>进游戏 · 先按 F1 打开「共享蓝图」，每张约 2–6 分钟</small></div>
+              <span class="sa"><button class="btn primary" id="bpaRead" onclick="bpaRead()">读蓝图</button></span></li>
+            <li><span class="sn">3</span><div class="sb"><b>据点拼合<button type="button" class="help" data-help="bpafit" aria-label="说明">?</button></b><small>离线 · 把蓝图拼到基地上，出各种核对图</small></div>
+              <span class="sa"><button class="btn" id="bpaFit" onclick="bpaFit()">拼合</button></span></li>
+            <li><span class="sn">4</span><div class="sb"><b>导出 zip<button type="button" class="help" data-help="bpa" aria-label="说明">?</button></b><small>给用这套蓝图的人导入</small></div>
+              <span class="sa"><button class="btn" onclick="bpaExport()">导出</button></span></li>
+          </ol>
+          <div class="steps-foot">
+            <details class="hint-d"><summary>程序会点哪些地方</summary>读蓝图时只点卡片、「预览」、预览里的暗管和右上角关闭；不点放置蓝图、制造设备、导入、批量删除、分享。扫底账只按方向键、滚轮和 Ctrl+R。运行期间请不要动鼠标键盘。</details>
+            <button class="btn danger sm" id="bpaCancel" onclick="cancelJob()" disabled>取消当前任务</button>
+          </div>
+          <pre class="log" id="bpaLog" style="display:none"></pre>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span>自检</span></div><div id="bpaStatus"></div></div>
+      <div class="card">
+        <div class="card-h"><span>据点图</span>
+          <span class="btn-row inline"><select id="bpaBase" onchange="bpaShowImage()"></select>
+            <select id="bpaWhich" onchange="bpaShowImage()"><option value="placement">放置核对图</option><option value="check">底账核对图</option><option value="links">暗管连线图</option><option value="logistics">物流件标注图</option><option value="flow">物流方向图</option><option value="design">设计分析图</option><option value="gates">准入口图标分组</option></select></span></div>
+        <details class="hint-d"><summary>图例：每种图怎么看</summary><ul>
+          <li><b>放置核对图</b>：左上是每张蓝图的核对结果；红色粗圈 = 疑似少摆的设备最可能的位置，细圈 = 备选位置，橙圈 = 蓝图里没有或多出来的设备。远景标签被挡也会显示成缺，到游戏里看一眼再动手。</li>
+          <li><b>底账核对图</b>：红点是基地里扫到的设备，应落在蓝图对应设备上。</li>
+          <li><b>暗管连线图</b>：粗线 = 两头都点开确认，细线 = 只确认一头。</li>
+          <li><b>物流方向图</b>：橙线 = 传送带、蓝线 = 管道，线上的三角 = 流向（分流器/汇流器的进出口 + 带子管子上的小三角，两者核对过）；灰线 = 方向还定不了。
+            物流件旁的红短线 = 分流器进料口，绿短线 = 汇流器出口；紫框 = 上面压着管道、方向按小三角改过。线头绿方块 = 接到的设备（认出了名字），红方块 = 没认出。红圈 = 要人核对（分叉：两条线挨着没法往下追；单向：只从一头追到）。</li>
+          <li><b>设计分析图</b>：每台设备一个圈，绿 = 满速、橙 = 间歇、红 = 没料、紫 = 没接上、灰 = 溢流位（平时空闲，主路堵了才用）；旁边是开工率，带 * 的配方是推断的。外面套蓝色虚圈 = 它的来料要经过推断出来的连线；蓝小方块 = 推断连线的两头。</li>
+          <li><b>物流件标注图</b>：方框 = 分流器/汇流器/桥（「管」开头的是管道用的）；圆圈 = 准入口，G 后的数字是图标组（同组 = 同一种物品）；蓝圈 = 管道准入口，橙圈 = 物品准入口，灰圈 = 还不知道；外面再套橙色虚圈 = 这格底下可能还叠着物品准入口，到俯瞰里点开看。</li>
+        </ul></details>
+        <div id="bpaImage" class="bpa-img"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span>设计分析（按外部来料算每台设备的设计开工率）<button type="button" class="help" data-help="bpadesign" aria-label="说明">?</button></span>
+          <span class="btn-row inline"><select id="bpaDsBase" onchange="bpaDesign()"></select>
+            <select id="bpaDsFilter" onchange="bpaDesignTable()"><option value="all">全部设备</option><option value="bad">没满速的</option><option value="inferred">涉及推断的</option><option value="env">要稳定环境的配方</option><option value="unconfirmed">还没确认的</option><option value="wrong">说不对的</option></select></span></div>
+        <div class="hint">「拼合」时自动算。依据里标〔推断连线〕的那段不是沿带子追出来的（按配方/紧贴/按格子补），配方带「推断配方」的是推断的；这些地方以游戏里实际为准。</div>
+        <details class="hint-d"><summary>作者确认：怎么用</summary>对着游戏里的实际情况逐台看「开工率 / 状态」：对就点「对」，不对就选实际情况（满速 / 间歇 / 平时空闲（设计如此） / 没在用）并写一句为什么。
+          也可以先用上面的筛选挑出一批（比如「没满速的」），核对无误后点「这一页全部确认为对」。确认记录随 zip 导出；别人导入后，只有你确认过的「平时空闲 / 间歇」才会在巡检里当作设计如此、不报问题，没确认的只当参考。</details>
+        <div id="bpaDsSummary"></div>
+        <div class="btn-row"><span id="bpaDsProgress" class="muted"></span><button class="btn sm" onclick="bpaConfirmPage()">这一页全部确认为「对」</button></div>
+        <div id="bpaDsTable" class="bpa-dstable"></div>
+        <details class="hint-d"><summary>推断出来的连线（<span id="bpaDsInfN">0</span> 条）</summary><div id="bpaDsInf"></div></details>
+      </div>
+      <div class="card">
+        <div class="card-h"><span>准入口图标分组<button type="button" class="help" data-help="bpagates" aria-label="说明">?</button></span>
+          <span><button class="btn sm" onclick="bpaSaveGates()">保存并重算</button></span></div>
+        <div class="hint">同一组 = 同一种物品。液体、气体图标 → 管道准入口；固体 → 物品准入口。认识的程序已自动填，不认识的请选形态（名字可不填）。</div>
+        <details class="hint-d"><summary>「底下可能叠物品准入口」是什么</summary>「底下可能叠物品准入口」= 这格有传送带经过，游戏里只显示上面的管道准入口，要到俯瞰里点开那一格看弹出的列表（或按 F2 看传送带图层）。</details>
+        <div id="bpaGateTable"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span>输入端<button type="button" class="help" data-help="bpainputs" aria-label="说明">?</button></span>
+          <span class="btn-row inline"><select id="bpaInBase" onchange="bpaInputs()"></select><button class="btn sm primary" onclick="bpaSaveInputs()">保存</button></span></div>
+        <div class="hint">红圈 = 程序标的输入端，蓝圈 = 你补的。物品名和液体的量（一口一泵 60/分）已预填，请核对后补上气体的量；单个口流速不同（如 3 号 120/分）直接改那一行。</div>
+        <details class="hint-d"><summary>详细说明</summary>程序先标出「接入口紧贴基地外侧」的准入口当输入端，水和沉积酸都按一口一泵 60/分预填。贴边但程序判断不是输入的（两旁接着分流器/汇流器、没贴着外侧等）画成灰色虚圈，列在表格下面，判断错了点「加回」；红圈标错了点「删」；漏了的在图上点一下补标。图上按住左键拖动、滚轮缩放，右上「复位」回到整图；单个口的流速不同（如 3 号 120/分）直接改那一行的「每分钟」，巡检和管网都按你填的算。外面先汇流成一个口的勾「汇流口」并填总量。</details>
+        <div class="bpa-batch">批量填：编号 <input id="bpaBRange" placeholder="1-8" size="6"> 物品 <input id="bpaBItem" placeholder="清水" size="6"> 每口 <input id="bpaBRate" placeholder="60" size="4">/分
+          <select id="bpaBVia"><option>水泵</option><option>暗管</option><option>多口暗管</option><option>其他</option></select>
+          <button class="btn sm" onclick="bpaBatch()">应用</button></div>
+        <div class="bpa-inwrap"><div id="bpaInImage" class="bpa-img clickable"></div><div id="bpaInTable"></div></div>
+      </div>
+    </section>
+
+    <!-- 快速诊断 -->
+    <section class="page" id="page-quick">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h"><span>范围<button type="button" class="help" data-help="quick" aria-label="说明">?</button><button type="button" class="help" data-help="tree" aria-label="说明">?</button></span></div>
+          <div class="hint">读哪些地区的简报（蓝图涉及的地区默认全选）。</div>
+          <div id="quickRegions" class="checks"></div>
+          <div class="btn-row">
+            <button class="btn primary" id="quickStart" onclick="startQuick()">开始快速诊断</button>
+            <button class="btn danger" id="quickCancel" onclick="cancelJob()" disabled>取消</button>
+          </div>
+          <div class="hint">开始前把游戏停在大世界（不是菜单、对话或加载中）。程序会自己按 F10 打开简报、翻页读取、读完关闭。</div>
+        </div>
+        <div class="card">
+          <div class="card-h"><span>进度</span><span class="muted" id="quickStep"></span></div>
+          <pre class="log" id="quickLog"></pre>
+        </div>
+      </div>
+      <div id="quickResult"></div>
+    </section>
+
+    <!-- 深入巡检 -->
+    <section class="page" id="page-patrol">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h"><span>范围<button type="button" class="help" data-help="patrol" aria-label="说明">?</button><button type="button" class="help" data-help="targeted" aria-label="说明">?</button></span></div>
+          <div class="hint">按分区巡检（默认全部，按蓝图登记的顺序）。</div>
+          <div id="patrolAreas" class="checks"></div>
+          <label class="check"><input type="checkbox" id="patrolBrief" checked><span>扫完后自动读一次简报（合并诊断用；不勾则用最近一份）</span></label>
+          <div class="btn-row">
+            <button class="btn primary" id="patrolStart" onclick="startPatrol()">开始深入巡检</button>
+            <button class="btn danger" id="patrolCancel" onclick="cancelJob()" disabled>取消</button>
+            <button class="btn" id="gateLimitStart" onclick="startGateLimits()" title="按据点拼合图上的准入口位置，逐个点开面板读「限制速度」和当前速度，读完关掉。只读：不点开关、±6、滑条、替换物品、限速管理。">读准入口限速</button><button type="button" class="help" data-help="gates" aria-label="说明">?</button>
+            <button class="btn" id="coreStart" onclick="startCorePorts()" title="协议核心/次级核心东西两侧各 3 个取货口，俯瞰看不出设的是什么物品。逐个点开取货口面板，悬停读物品名，读完关掉。只读：不点添加物品/替换物品。">读核心取货口</button><button type="button" class="help" data-help="cores" aria-label="说明">?</button>
+          </div>
+          <div class="hint">巡检期间程序会控制游戏（传送、进出俯瞰、点开面板）。它只点开面板和读数，不按任何开关、不收取、不更换物品。请不要动鼠标键盘。</div>
+          <details class="hint-d"><summary>结构基线（基地改过布局后重设）<button type="button" class="help" data-help="baseline" aria-label="说明">?</button></summary>
+            <div class="hint">近景巡检第一次看到每台设备时，会把它周围的管子/带子存成基线，之后拿来比「少了哪段」。基地改过布局、拆装过管子后，旧基线会一直报「少了」：
+              趁基地正常时点「重设」，下次巡检按当时的画面重新存。旧基线挪进备份目录，不删。</div>
+            <div id="baselineList"></div>
+          </details>
+        </div>
+        <div class="card">
+          <div class="card-h"><span>进度</span><span class="muted" id="patrolStep"></span></div>
+          <div id="patrolAreaState" class="area-state"></div>
+          <pre class="log" id="patrolLog"></pre>
+        </div>
+      </div>
+      <div id="patrolResult"></div>
+    </section>
+
+    <!-- 报告 -->
+    <section class="page" id="page-reports">
+      <div class="split">
+        <div class="card split-list">
+          <div class="card-h"><span>历史报告<button type="button" class="help" data-help="reports" aria-label="说明">?</button><button type="button" class="help" data-help="levels" aria-label="说明">?</button></span><button class="btn ghost sm" onclick="loadReports()">刷新</button></div>
+          <div class="seg" id="reportFilter">
+            <button class="on" data-f="all" onclick="setReportFilter('all')">全部</button>
+            <button data-f="patrol" onclick="setReportFilter('patrol')">深入巡检</button>
+            <button data-f="quick" onclick="setReportFilter('quick')">快速诊断</button>
+          </div>
+          <div id="reportList" class="list compact"></div>
+        </div>
+        <div class="split-main" id="reportView"><div class="empty-state"><b>选一份报告</b><span>左边列表按时间排，最新的在上面。红字是问题数，黄字是待确认数。</span></div></div>
+      </div>
+    </section>
+
+    <!-- 帮助 -->
+    <section class="page" id="page-help">
+      <div class="split help-split">
+        <div class="card split-list help-toc"><div class="card-h"><span>目录</span></div><div id="helpToc"></div></div>
+        <div class="split-main" id="helpBody"></div>
+      </div>
+    </section>
+
+    <!-- 设置 -->
+    <section class="page" id="page-settings">
+      <div class="card">
+        <div class="card-h"><span>关于</span></div>
+        <div class="kv"><span>版本</span><b id="setVersion">—</b></div>
+        <div class="kv"><span>程序目录</span><b id="setRoot" class="mono">—</b></div>
+        <div class="kv"><span>数据目录</span><b id="setDebug" class="mono">—</b></div>
+        <div class="btn-row">
+          <button class="btn ghost" onclick="api('open_folder','debug')">打开数据目录</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span>使用要求</span></div>
+        <ul class="plain">
+          <li>游戏窗口 16:9（任意分辨率，程序按 1280×720 换算），窗口化或无边框均可，不要最小化。</li>
+          <li>程序需要以管理员身份运行才能向游戏发送键鼠。</li>
+          <li>快速诊断只读简报；深入巡检会传送、进出俯瞰、点开设备面板，不会按开关、不收取、不更换任何东西。</li>
+          <li>报告里的坐标只是内部标识，请看定位图和邻居描述找设备。</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<div class="modal" id="modal" hidden><div class="modal-box" role="dialog" aria-modal="true">
+  <div class="modal-h"><span id="modalTitle">确认</span><button class="modal-x" onclick="modalClose(null)" aria-label="关闭">×</button></div>
+  <div class="modal-b" id="modalBody"></div>
+  <div class="modal-f" id="modalFoot"></div>
+</div></div>
+<div class="lightbox" id="lightbox" hidden onclick="lightboxClose()"><img id="lightboxImg" alt=""><div class="lightbox-cap" id="lightboxCap"></div></div>
+<script src="help.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

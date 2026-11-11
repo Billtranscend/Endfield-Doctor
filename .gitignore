@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.cache/
+launch.json
+
+# 运行时数据：截图、日志、报告（含个人基地信息，12 GB+）
+debug/
+
+# 打包产物（发布走 GitHub Releases，不进仓库）
+dist/
+dist-next/
+build/work/
+build/stage/
+build/*.log
+
+# 性能分析
+prof.out
+build/*.spec

@@ -1,0 +1,366 @@
+{
+ "area": "应龙关",
+ "from": "历史巡检面板（patrol_*.json），按同名最近配对、偏移校正后横纵各 ±30 px",
+ "devices": [
+  {
+   "name": "配件机",
+   "x": 565,
+   "y": 364,
+   "recipe": "灼铜块×5 → 灼铜零件×1（10秒）",
+   "output": "item_copper_enr2_cmpt",
+   "votes": "8/8"
+  },
+  {
+   "name": "暗管入口",
+   "x": 993,
+   "y": 364,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "3/3"
+  },
+  {
+   "name": "气体反应炉",
+   "x": 829,
+   "y": 383,
+   "recipe": "气态赫铜×2 + 息壤气×1 → 气态灼铜×1（2秒）",
+   "output": "item_gas_copper_enr2",
+   "votes": "1/1"
+  },
+  {
+   "name": "提纯机",
+   "x": 1078,
+   "y": 384,
+   "recipe": "分离芯×2 + 气态赤铜×2 → 气态赫铜×2（2秒）",
+   "output": "item_gas_copper_enr",
+   "votes": "5/5"
+  },
+  {
+   "name": "固气转化机",
+   "x": 652,
+   "y": 403,
+   "recipe": "气态灼铜×1 → 灼铜块×1（2秒）",
+   "output": "item_copper_enr2",
+   "votes": "7/7"
+  },
+  {
+   "name": "气体反应炉",
+   "x": 910,
+   "y": 482,
+   "recipe": "气态赫铜×2 + 息壤气×1 → 气态灼铜×1（2秒）",
+   "output": "item_gas_copper_enr2",
+   "votes": "9/9"
+  },
+  {
+   "name": "配件机",
+   "x": 563,
+   "y": 483,
+   "recipe": "灼铜块×5 → 灼铜零件×1（10秒）",
+   "output": "item_copper_enr2_cmpt",
+   "votes": "8/8"
+  },
+  {
+   "name": "提纯机",
+   "x": 1080,
+   "y": 502,
+   "recipe": "分离芯×2 + 气态赤铜×2 → 气态赫铜×2（2秒）",
+   "output": "item_gas_copper_enr",
+   "votes": "7/7"
+  },
+  {
+   "name": "提纯机",
+   "x": 1235,
+   "y": 502,
+   "recipe": "分离芯×2 + 气态赤铜×2 → 气态赫铜×2（2秒）",
+   "output": "item_gas_copper_enr",
+   "votes": "6/6"
+  },
+  {
+   "name": "固气转化机",
+   "x": 652,
+   "y": 522,
+   "recipe": "气态灼铜×1 → 灼铜块×1（2秒）",
+   "output": "item_copper_enr2",
+   "votes": "7/7"
+  },
+  {
+   "name": "多口暗管出口",
+   "x": 426,
+   "y": 542,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "7/7"
+  },
+  {
+   "name": "配件机",
+   "x": 526,
+   "y": 542,
+   "recipe": "灼铜块×5 → 灼铜零件×1（10秒）",
+   "output": "item_copper_enr2_cmpt",
+   "votes": "8/8"
+  },
+  {
+   "name": "气体反应炉",
+   "x": 809,
+   "y": 542,
+   "recipe": "气态赫铜×2 + 息壤气×1 → 气态灼铜×1（2秒）",
+   "output": "item_gas_copper_enr2",
+   "votes": "8/8"
+  },
+  {
+   "name": "固气转化机",
+   "x": 1223,
+   "y": 621,
+   "recipe": "赤铜块×2 → 气态赤铜×1（2秒）",
+   "output": "item_gas_copper",
+   "votes": "6/6"
+  },
+  {
+   "name": "固气转化机",
+   "x": 591,
+   "y": 640,
+   "recipe": "气态灼铜×1 → 灼铜块×1（2秒）",
+   "output": "item_copper_enr2",
+   "votes": "7/7"
+  },
+  {
+   "name": "扩容反应池",
+   "x": 946,
+   "y": 730,
+   "recipe": "池产物：液化息壤(50)/重息壤(0)/液化重息壤(0)",
+   "output": "item_liquid_xiranite",
+   "votes": "2/11"
+  },
+  {
+   "name": "配件机",
+   "x": 585,
+   "y": 740,
+   "recipe": "赫铜块×5 → 赫铜零件×1（10秒）",
+   "output": "item_copper_enr_cmpt",
+   "votes": "4/5"
+  },
+  {
+   "name": "固气转化机",
+   "x": 692,
+   "y": 759,
+   "recipe": "气态赫铜×2 → 赫铜块×1（2秒）",
+   "output": "item_copper_enr",
+   "votes": "11/11"
+  },
+  {
+   "name": "固气转化机",
+   "x": 1224,
+   "y": 759,
+   "recipe": "赤铜块×2 → 气态赤铜×1（2秒）",
+   "output": "item_gas_copper",
+   "votes": "6/6"
+  },
+  {
+   "name": "暗管入口",
+   "x": 360,
+   "y": 780,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "8/8"
+  },
+  {
+   "name": "配件机",
+   "x": 506,
+   "y": 799,
+   "recipe": "赫铜块×5 → 赫铜零件×1（10秒）",
+   "output": "item_copper_enr_cmpt",
+   "votes": "18/19"
+  },
+  {
+   "name": "固气转化机",
+   "x": 593,
+   "y": 819,
+   "recipe": "气态赫铜×2 → 赫铜块×1（2秒）",
+   "output": "item_copper_enr",
+   "votes": "5/5"
+  },
+  {
+   "name": "精炼炉",
+   "x": 429,
+   "y": 858,
+   "recipe": "芽针×1 → 碳块×2（2秒）",
+   "output": "item_carbon_mtl",
+   "votes": "1/1"
+  },
+  {
+   "name": "固气转化机",
+   "x": 1225,
+   "y": 877,
+   "recipe": "赤铜块×2 → 气态赤铜×1（2秒）",
+   "output": "item_gas_copper",
+   "votes": "6/6"
+  },
+  {
+   "name": "固气转化机",
+   "x": 693,
+   "y": 878,
+   "recipe": "气态赫铜×2 → 赫铜块×1（2秒）",
+   "output": "item_copper_enr",
+   "votes": "5/12"
+  },
+  {
+   "name": "配件机",
+   "x": 604,
+   "y": 917,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "2/2"
+  },
+  {
+   "name": "固气转化机",
+   "x": 828,
+   "y": 917,
+   "recipe": "息壤×1 → 息壤气×1（2秒）",
+   "output": "item_gas_xiranite",
+   "votes": "5/5"
+  },
+  {
+   "name": "种植机",
+   "x": 387,
+   "y": 956,
+   "recipe": "清水×1 + 芽针种子×1 → 芽针×2（2秒）",
+   "output": "item_plant_grass_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "采种机",
+   "x": 506,
+   "y": 996,
+   "recipe": "芽针×1 → 芽针种子×1（2秒）",
+   "output": "item_plant_grass_seed_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "固气转化机",
+   "x": 966,
+   "y": 1015,
+   "recipe": "息壤×1 → 息壤气×1（2秒）",
+   "output": "item_gas_xiranite",
+   "votes": "7/7"
+  },
+  {
+   "name": "固气转化机",
+   "x": 1223,
+   "y": 1015,
+   "recipe": "赤铜块×2 → 气态赤铜×1（2秒）",
+   "output": "item_gas_copper",
+   "votes": "6/6"
+  },
+  {
+   "name": "灌装机",
+   "x": 691,
+   "y": 1025,
+   "recipe": "蓝铁瓶×1 + 液化重息壤×1 → 蓝铁瓶(液化重息壤)×1（2秒）",
+   "output": "item_fbottle_iron_xiranite_enr",
+   "votes": "19/19"
+  },
+  {
+   "name": "提纯机",
+   "x": 860,
+   "y": 1035,
+   "recipe": "分离芯×1 + 息壤气×2 → 重息壤气×1（2秒）",
+   "output": "item_gas_xiranite_enr",
+   "votes": "8/8"
+  },
+  {
+   "name": "采种机",
+   "x": 368,
+   "y": 1055,
+   "recipe": "芽针×1 → 芽针种子×1（2秒）",
+   "output": "item_plant_grass_seed_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "种植机",
+   "x": 506,
+   "y": 1094,
+   "recipe": "清水×1 + 芽针种子×1 → 芽针×2（2秒）",
+   "output": "item_plant_grass_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "固气转化机",
+   "x": 633,
+   "y": 1134,
+   "recipe": "重息壤气×5 → 重息壤×2（10秒）",
+   "output": "item_xiranite_enr_powder",
+   "votes": "3/4"
+  },
+  {
+   "name": "固气转化机",
+   "x": 1225,
+   "y": 1134,
+   "recipe": "赤铜块×2 → 气态赤铜×1（2秒）",
+   "output": "item_gas_copper",
+   "votes": "7/7"
+  },
+  {
+   "name": "提纯机",
+   "x": 801,
+   "y": 1153,
+   "recipe": "分离芯×1 + 息壤气×2 → 重息壤气×1（2秒）",
+   "output": "item_gas_xiranite_enr",
+   "votes": "3/3"
+  },
+  {
+   "name": "固气转化机",
+   "x": 653,
+   "y": 1252,
+   "recipe": "重息壤气×5 → 重息壤×2（10秒）",
+   "output": "item_xiranite_enr_powder",
+   "votes": "10/10"
+  },
+  {
+   "name": "固气转化机",
+   "x": 828,
+   "y": 1252,
+   "recipe": "息壤×1 → 息壤气×1（2秒）",
+   "output": "item_gas_xiranite",
+   "votes": "8/8"
+  },
+  {
+   "name": "固气转化机",
+   "x": 967,
+   "y": 1252,
+   "recipe": "息壤×1 → 息壤气×1（2秒）",
+   "output": "item_gas_xiranite",
+   "votes": "8/8"
+  },
+  {
+   "name": "暗管出口",
+   "x": 283,
+   "y": 680,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "暗管出口",
+   "x": 305,
+   "y": 779,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "10/10"
+  },
+  {
+   "name": "多口暗管出口",
+   "x": 94,
+   "y": 878,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "20/20"
+  },
+  {
+   "name": "暗管出口",
+   "x": 226,
+   "y": 897,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "20/20"
+  }
+ ]
+}

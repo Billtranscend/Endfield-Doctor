@@ -1,0 +1,99 @@
+name: 问题反馈（报错 / 判断错了）
+description: 程序报错、卡住、传送失败，或者诊断结论和游戏里实际情况对不上
+title: "[问题] "
+labels: ["问题"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢反馈！先看一眼程序里「帮助」页的常见问题，很多环境问题（画面比例、HDR、管理员权限）那里有现成的解决办法。
+        **最重要的是附件**：没有报告和日志，基本没法查。
+
+  - type: input
+    id: version
+    attributes:
+      label: 程序版本
+      description: 程序左上角或「设置」页能看到，例如 0.10.2
+      placeholder: "0.10.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature
+    attributes:
+      label: 出问题的功能
+      options:
+        - 快速诊断（读简报）
+        - 深度巡检 / 定向巡检
+        - 导入作者分析包 / 蓝图页
+        - 蓝图分析
+        - 读准入口限速 / 读核心取货口
+        - 程序打不开 / 界面问题
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 问题类型
+      options:
+        - 报错 / 失败（界面上有红字或「失败」）
+        - 判断错了（报了问题，游戏里其实正常）
+        - 漏报（游戏里有问题，程序说正常）
+        - 卡住不动 / 取消不了
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: display
+    attributes:
+      label: 屏幕和游戏画面设置
+      description: 屏幕分辨率、游戏显示模式（全屏 / 无边框 / 窗口）和游戏分辨率
+      placeholder: "屏幕 2560×1440，游戏全屏 2560×1440"
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: 哪个分区
+      description: 和某个分区有关就写上（景玉谷 / 应龙关 / 武陵城），没有就留空
+      placeholder: "应龙关"
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 程序说了什么（可以直接复制或截图界面右边的「进度」栏），以及游戏里实际是什么情况
+      placeholder: |
+        程序：快速诊断说「缺沉积酸」
+        游戏里：应龙关几个沉积酸输入口都是阻塞，液体是满的
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: 附件（请拖进来）
+      description: |
+        「设置」→「打开数据目录」，把出问题那次的这些文件打成一个 zip 拖到这里：
+        - `app_report_快速_*.json` 或 `app_report_深度_*.json`（出问题那次的报告）
+        - `app_log_*.log`（同一时间的进度日志，0.10.3 起才有）
+        - `brief_*.json`（同一时间的简报）
+        - `shots` 里同一时间的截图文件夹（巡检才有）
+        - 传送、进俯瞰这类操作失败时，再加上 `maa\debug` 文件夹
+        截图左下角有 UID，介意的话发之前涂掉。
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我用管理员身份运行了程序，游戏画面是 16:9，没有开 HDR
+          required: true
+        - label: 程序运行时我没有动键盘鼠标
+          required: false

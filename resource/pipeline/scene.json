@@ -1,0 +1,37 @@
+{
+    "P0_DetectScene": {
+        "doc": "入口：判断当前界面，认不出就走 Scene_Unknown",
+        "next": [
+            "Scene_Brief",
+            "Scene_Overhead",
+            "Scene_World",
+            "Scene_Unknown"
+        ]
+    },
+    "Scene_Brief": {
+        "doc": "简报界面：左上角标题「//简报」",
+        "recognition": "OCR",
+        "roi": [0, 0, 260, 70],
+        "expected": "简报",
+        "action": "DoNothing"
+    },
+    "Scene_Overhead": {
+        "doc": "俯瞰：顶部提示「退出俯瞰 CAPSLOCK」",
+        "recognition": "OCR",
+        "roi": [520, 50, 240, 32],
+        "expected": "退出俯瞰",
+        "action": "DoNothing"
+    },
+    "Scene_World": {
+        "doc": "大世界（工业模式）：顶部提示「进入俯瞰 CAPSLOCK」",
+        "recognition": "OCR",
+        "roi": [520, 50, 240, 32],
+        "expected": "进入俯瞰",
+        "action": "DoNothing"
+    },
+    "Scene_Unknown": {
+        "doc": "兜底：什么都没认出",
+        "recognition": "DirectHit",
+        "action": "DoNothing"
+    }
+}

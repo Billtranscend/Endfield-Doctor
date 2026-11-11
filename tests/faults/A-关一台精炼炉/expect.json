@@ -1,0 +1,20 @@
+{
+    "_note": "关掉一台精炼炉：修复后的快速扫描应报出且只报出这一条问题。patrol_deep.json 的坐标帧和 after_fix 不一致，先不合并深查。",
+    "patrol": "patrol_fast_after_fix.json",
+    "merge_deep": false,
+    "problems": [
+        {
+            "name": "精炼炉",
+            "status": "关闭"
+        }
+    ],
+    "max_problems": 1,
+    "must_not_problem": [
+        "封装机",
+        "粉碎机",
+        "采种机",
+        "种植机"
+    ],
+    "_note_theo_drop": "2026-11-04 曾因 污水 理论消耗低于参考多计一条地区级问题；2026-11-06 用户错题本 #5 说明废水处理器已换成暗管送净水节点，污水 列入 playbook.normal 不再报，上限改回 1。",
+    "blueprint": "_回归-1.6皇帝产线-旧基准1104"
+}

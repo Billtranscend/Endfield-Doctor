@@ -1,0 +1,12 @@
+{
+    "_note": "多故障 B–F 的应龙关部分：F 准入口物品改错 → 赤铜块 送不到 4 台固气转化机。不合并深查（15:20 那份深查把固气转化机记成了闪烁，已判为错误）。",
+    "patrol": "patrol_fast.json",
+    "merge_deep": false,
+    "problems": [
+        {
+            "title_contains": "赤铜块 送不到"
+        }
+    ],
+    "exact_problems": 1,
+    "blueprint": "_回归-1.6皇帝产线-旧基准1104"
+}

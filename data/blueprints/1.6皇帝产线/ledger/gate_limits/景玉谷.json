@@ -1,0 +1,307 @@
+{
+ "area": "景玉谷",
+ "time": "20261109-010451",
+ "shots": "debug\\shots\\20261109-010451_景玉谷_限速",
+ "rows": [
+  {
+   "p": [
+    647,
+    576
+   ],
+   "far": [
+    672.7,
+    659.6
+   ],
+   "kind": "物品",
+   "bp": "1.6景玉谷2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 1,
+   "u": [
+    674,
+    326
+   ],
+   "title": "物品准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_647_576.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1534,
+    1054
+   ],
+   "far": [
+    1186.0,
+    936.3
+   ],
+   "kind": "物品",
+   "bp": "1.6景玉谷2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    594,
+    424
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": true,
+   "status": "运行中",
+   "shot": "gate_1534_1054.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": 60.0,
+   "passed": 60.0
+  },
+  {
+   "p": [
+    1706,
+    817
+   ],
+   "far": [
+    1285.6,
+    799.1
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 5,
+   "item": "清水",
+   "rate": 60,
+   "view": 2,
+   "u": [
+    766,
+    182
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1706_817.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1706,
+    1056
+   ],
+   "far": [
+    1285.6,
+    937.4
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 7,
+   "item": "惰气",
+   "rate": null,
+   "view": 2,
+   "u": [
+    766,
+    426
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_1706_1056.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1706,
+    885
+   ],
+   "far": [
+    1285.6,
+    838.5
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 6,
+   "item": "清水",
+   "rate": 60,
+   "view": 2,
+   "u": [
+    766,
+    252
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1706_885.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1671,
+    1088
+   ],
+   "far": [
+    1265.3,
+    955.9
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    732,
+    460
+   ],
+   "title": "管道准入口",
+   "speed": 12.0,
+   "limit": 12.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1671_1088.png",
+   "speed_line": "当前速度12单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1706,
+    271
+   ],
+   "far": [
+    1285.6,
+    483.1
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 3,
+   "item": "清水",
+   "rate": 60,
+   "view": 3,
+   "u": [
+    682,
+    314
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1706_271.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1706,
+    442
+   ],
+   "far": [
+    1285.6,
+    582.1
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 4,
+   "item": "清水",
+   "rate": 60,
+   "view": 3,
+   "u": [
+    682,
+    488
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_1706_442.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1706,
+    100
+   ],
+   "far": [
+    1285.6,
+    384.2
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 2,
+   "item": "清水",
+   "rate": 60,
+   "view": 3,
+   "u": [
+    684,
+    140
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1706_100.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1636,
+    30
+   ],
+   "far": [
+    1245.1,
+    343.7
+   ],
+   "kind": "管道",
+   "bp": "1.6景玉谷2号",
+   "gate_no": 1,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    670,
+    326
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1636_30.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  }
+ ]
+}
