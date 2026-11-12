@@ -139,7 +139,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.3", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.4", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []

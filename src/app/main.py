@@ -9,11 +9,17 @@ import os
 import sys
 from pathlib import Path
 
-import webview
-
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
+
+from paths import unblock_downloaded  # noqa: E402
+
+if getattr(sys, "frozen", False):
+    # 浏览器下载的 zip 解压出来的文件带「来自网络」标记，.NET 不加载这样的 DLL，窗口起不来：先解除（要在 pythonnet 加载之前）
+    unblock_downloaded()
+
+import webview  # noqa: E402
 
 from api import Api  # noqa: E402
 

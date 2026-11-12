@@ -94,6 +94,10 @@ A Windows tool that finds what's wrong with your Arknights: Endfield factory.
 
 ## 常见问题
 
+**一启动就弹「Unhandled exception in script … Python.Runtime」。** 0.10.3 及更早的版本会这样：用浏览器下载的 zip，
+解压出来的文件带着 Windows 的「来自网络」锁定标记，界面组件加载不了。换 0.10.4 以上的版本（启动时会自己解除）；
+或者在程序文件夹里打开 PowerShell，运行 `Get-ChildItem -Recurse | Unblock-File` 后再启动。
+
 **提示画面比例不对。** 窗口模式选了和屏幕一样大的分辨率时，标题栏会把画面挤扁（比如 2560×1440 变成 2560×1368）。
 改成全屏或无边框，或者窗口模式选小一档。
 

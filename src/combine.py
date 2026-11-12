@@ -671,19 +671,37 @@ def idle_by_design(reg: Region, d: Device) -> str | None:
     return None
 
 
-_REF_ITEMS: dict[tuple[str, str], dict[str, Item]] = {}
+_REF_REGIONS: dict[tuple[str, str], tuple[list, Region]] = {}  # (档案, 地区) → (参考简报那几行, 按它建的 Region)
 
 
-def ref_item(reg: Region, iid: str) -> Item | None:
-    """蓝图参考简报里同地区的这个物品；没有参考简报或没有这一行时返回 None。"""
+def ref_region(reg: Region) -> Region | None:
+    """按蓝图参考简报建的 Region；没有参考简报时返回 None。参考简报换了（「更新基准」后重新读档案）就重建。"""
     plan = reg.blueprint
     rows = (plan.reference_brief or {}).get(reg.name)
     if not rows:
         return None
     key = (plan.name, reg.name)
-    if key not in _REF_ITEMS:
-        _REF_ITEMS[key] = Region(reg.name, rows, plan).items
-    return _REF_ITEMS[key].get(iid)
+    ent = _REF_REGIONS.get(key)
+    if ent is None or ent[0] is not rows:
+        ent = _REF_REGIONS[key] = (rows, Region(reg.name, rows, plan))
+    return ent[1]
+
+
+def ref_item(reg: Region, iid: str) -> Item | None:
+    """蓝图参考简报里同地区的这个物品；没有参考简报或没有这一行时返回 None。"""
+    ref = ref_region(reg)
+    return ref.items.get(iid) if ref is not None else None
+
+
+def ref_consumers(reg: Region, iid: str) -> list[dict]:
+    """基准简报里在用、吃 iid 的配方（当前简报里没在跑的备路配方只有基准里看得到）。"""
+    ref = ref_region(reg)
+    return ref.consumers.get(iid, []) if ref is not None else []
+
+
+def all_consumers(reg: Region, iid: str) -> list[dict]:
+    """当前简报和基准简报里在用、吃 iid 的配方（去重）。"""
+    return list({r["id"]: r for r in reg.consumers.get(iid, []) + ref_consumers(reg, iid)}.values())
 
 
 def ref_theo_cons(reg: Region, iid: str) -> int | None:
@@ -699,6 +717,20 @@ def halved_line(reg: Region, d: Device, out: Item) -> Verdict | None:
         return None
     if out.cur_prod >= ref.cur_prod * HALVED_RATIO or out.cur_cons >= ref.cur_cons * HALVED_RATIO:
         return None
+    cons = all_consumers(reg, out.id)
+    slow = [o for r in cons for o in r["outputs"] if tier_missing(reg, label_of(reg, o)) and not prod_dropped(reg, o)]
+    if cons and all(any(o in slow for o in r["outputs"]) for r in cons):
+        # 吃它的全是「提速」类备路产物（芽针针剂 / 锦草软饮：中容爆仓才提速，没爆仓只有基础产量），而且那些设备都还在算：
+        # 这条线比基准慢是下游只按基础产量吃，基准是备路触发时抓的。2026-11-12 另一个账号和群友 D：中容没爆仓，
+        # 蓝铁瓶(芽针溶液) 产 5/耗 5（基准 15/15），两台灌装机被报「可能输出传送带断了」。下游设备断了时它的理论产量会掉，不走这里
+        y = label_of(reg, slow[0])
+        tm = tier_missing(reg, y)
+        return Verdict(
+            "设计内",
+            d,
+            f"{out.label} 这条线比基准慢（产 {out.cur_prod}/耗 {out.cur_cons}，基准 {ref.cur_prod}/{ref.cur_cons}）："
+            f"下游 {y} 的备路没触发（{'、'.join(tm[1])} 未爆仓，只有基础产量），基准是备路触发时抓的；{d.name}阻塞是下游吃得慢",
+        )
     if reg.full(out) or reg.blocked_path(out.id):
         # 产物已爆仓（或下游全满回堵）：产量只跟着下游需求走，产耗一起比参考低只是下游收得少（砂叶/砂叶种子的种植循环就是这样），
         # 不能据此怀疑输出带断了——按爆仓停等处理。断了的进料/出料靠「空闲设备原料有库存却没送到」等规则抓
@@ -916,6 +948,11 @@ def group_starved_solid(reg: Region, devices: list[Device], used: set[int]) -> l
         if id(d) in used or d.off or d.kind != "machine" or effective_status(d) != "空闲中":
             continue  # 没认出产物的也参加：按这种设备在本地区在用的配方兜底（应龙关两台空闲固气转化机有一台认不出产物）
         if any(tier_missing(reg, label_of(reg, o)) for o in d.outputs) or overflow_product(reg, d) or design_limited_ok(reg, d):
+            continue
+        if d.recipe == NO_RECIPE and not d.guessed:
+            # 点开面板确认是「自动配方」模式（没有固定配方）：来料才动，理论值也不计它，空着是在等溢流（judge_core 判正常）。
+            # 不拿同种设备的别的配方说它「送不到」。2026-11-12 另一个账号：中容没爆仓，武陵城两台自动配方封装机
+            # (1207,932)(1346,932) 被按「致密源石粉末 送不到」报成问题（致密源石粉末 理论消耗 660 是别的定配方封装机的）
             continue
         pool = pool_recipes(d)
         cands = pool or [recipe_of(reg, replace(d, output=o, recipe_id=d.recipe_id if k == 0 else None)) for k, o in enumerate(d.outputs)]
@@ -1361,11 +1398,156 @@ def theo_drops(reg: Region) -> list[tuple[Item, int]]:
     return out
 
 
+EXHAUST_RATIO = 0.01  # 固体库存 < 上限 × 这个比例、理论消耗又大于理论产量：供不应求、库存见底
+PROD_KEEP = 0.95  # 产物理论产量不低于基准 × 这个比例：做它的设备都还在算
+
+
+def exhausted(reg: Region, x: Item) -> bool:
+    """固体 X 供不应求、库存见底：吃它的设备有一部分吃不到（不是被断开）。
+    2026-11-12 另一个账号：蓝铁块 库存 1（理论 产120/耗210，靠跨地区传输补、传输没开）。"""
+    return not x.fluid and x.stock is not None and x.stock < reg.cap * EXHAUST_RATIO and x.theo_cons > x.theo_prod
+
+
+def short_root(reg: Region, x: Item, seen: frozenset = frozenset()) -> Item:
+    """X 见底时沿生产配方往上找最上游那个见底的原料（蓝铁瓶 ← 蓝铁块）。"""
+    for r in reg.producers.get(x.id, []):
+        for i in r["inputs"]:
+            y = reg.items.get(i)
+            if y is not None and i not in seen and i != x.id and exhausted(reg, y):
+                return short_root(reg, y, seen | {x.id})
+    return x
+
+
+def prod_dropped(reg: Region, iid: str) -> bool:
+    """物品的理论产量比基准少（基准里没有这一行或本来就是 0 的不算：没有证据）。"""
+    ref = ref_item(reg, iid)
+    if ref is None or ref.theo_prod <= 0:
+        return False
+    cur = reg.items.get(iid)
+    return cur is None or cur.theo_prod < ref.theo_prod * PROD_KEEP
+
+
+def tier_off(reg: Region, iid: str) -> tuple[dict, list[str]] | None:
+    """iid 是备路产物、备路没触发，而且它确实没在产（理论产量 0 或比基准少）时，返回 tier_missing 的结果。
+    备路按严格满仓判（库存 = 上限），差一点没满时备路其实常在跑：基准简报自己赤铜块就是 89967、赤铜瓶 理论产 30。
+    所以光看「没满」不能说吃它的设备不算；要它真的没在产才行（复查时在基准上断开吃赤铜瓶的灌装机，原来会被放过）。"""
+    tm = tier_missing(reg, label_of(reg, iid))
+    if not tm:
+        return None
+    cur = reg.items.get(iid)
+    if cur is not None and cur.theo_prod > 0 and not prod_dropped(reg, iid):
+        return None
+    return tm
+
+
+def drop_excuse(reg: Region, x: Item) -> tuple[list[str], list[Item]] | None:
+    """X 的理论消耗比基准少，但不是消费者被断开：返回（备路没触发的说明, 见底的上游原料）；解释不了返回 None。
+    基准简报是在作者基地各备路都触发时抓的（中容、赤铜块、重息壤都爆仓），别人的基地备路没触发时：
+      - X 自己是备路产物、备路没触发、确实没在产（赤铜瓶 ← 赤铜块没满，见 tier_off）：吃它的设备本来就不算；
+      - 吃 X 的配方在等另一种这样的备路原料（灌装机 赤铜瓶 + 锦草溶液）：这条配方不算，X 的理论消耗跟着少；
+        （产物是「提速」类备路的配方不在此列：芽针针剂 / 锦草软饮没爆仓时也有基础产量、照样计入理论值）
+      - X 自己见底，或吃 X 的配方另一种原料见底（蓝铁块 库存 1）：是供不应求，归到见底的那个原料。
+    其余吃 X 的配方必须都还在算（产物理论产量没比基准少），否则还是按「消费者被断开」报。
+    2026-11-12 另一个账号（中容 73831 没爆仓、蓝铁块 库存 1）：赤铜瓶/液化重息壤/锦草溶液/蓝铁瓶 四条都被报成问题。"""
+    tm = tier_off(reg, x.id)
+    if tm:
+        return [f"{x.label} 是备路产物，{'、'.join(tm[1])} 未爆仓、没在产"], []
+    if exhausted(reg, x):
+        return [], [short_root(reg, x)]
+    tier: list[str] = []
+    short: list[Item] = []
+    # 基准里在用的配方也要看：备路配方（灌装机 赤铜瓶 + 锦草溶液）在当前简报里根本没在跑
+    for r in all_consumers(reg, x.id):
+        wait = next((i for i in r["inputs"] if i != x.id and tier_off(reg, i)), None)
+        if wait:
+            y = label_of(reg, wait)
+            tier.append(f"吃 {x.label} 的{r['machine_name']}在等备路原料 {y}（{'、'.join(tier_off(reg, wait)[1])} 未爆仓、没在产）")
+            continue
+        if not any(prod_dropped(reg, o) for o in r["outputs"]):
+            continue  # 这条配方的产物理论产量没少：做它的设备都还在算
+        e = next((reg.items[i] for i in r["inputs"] if i != x.id and i in reg.items and exhausted(reg, reg.items[i])), None)
+        if e is None:
+            return None  # 有消费者少了、又不是备路也不是原料见底：按被断开报
+        short.append(short_root(reg, e))
+    if not tier and not short:
+        return None
+    return list(dict.fromkeys(tier)), list({y.id: y for y in short}.values())
+
+
+def excused_verdicts(
+    reg: Region, tier: list[str], short: dict[str, tuple[Item, list[str]]], verdicts: list[Verdict], summary: bool = True
+) -> list[Verdict]:
+    """drop_excuse 解释掉的理论消耗下降：备路没触发的合成一条「正常」，原料见底的按见底的原料各合成一条「待确认」。
+    因为缺这个原料空着、原来单独列「原料不多但不为 0，判断不了」的设备收进对应那条。
+    这些是地区级的事实：summary=False（不是主分区）时只留本分区有设备在等的那几条，免得每个分区重复一遍。"""
+    out = []
+    nobody = Device(UNLABELED, "?", "?", 0, 0, "", None, None)
+    if tier and summary:
+        out.append(
+            Verdict(
+                "正常",
+                nobody,
+                "这些物品的理论消耗比基准少，是备路没触发（基准是作者基地备路都触发时抓的），不是消费者被断开：" + "；".join(tier),
+                title=f"备路未触发：{len(tier)} 种物品的理论消耗比基准少（设计内）",
+                key="tierdrop",
+            )
+        )
+    xfer = {t["item"]: t for t in bp.transfers(reg.blueprint.playbook) if t["to"] == reg.name}
+    for root, drops in short.values():
+        members = []
+        for v in [v for v in verdicts if not v.title and bucket(v.level) == "待确认" and v.device.kind == "machine"]:
+            # 空闲、原料里有见底的东西、而且追上去就是这个 root（塑形机 ← 蓝铁块）：是在等料。
+            # 阻塞的不收：它是出口堵，和原料见底不是一回事（群友 D 蓝铁瓶 库存 5 万，同样两台灌装机照样阻塞）
+            if effective_status(v.device) == "空闲中" and any(
+                (y := reg.items.get(i)) is not None and exhausted(reg, y) and short_root(reg, y).id == root.id
+                for i in recipe_inputs(reg, v.device)
+            ):
+                verdicts.remove(v)
+                members.append(v.device)
+        if not members and not summary:
+            continue
+        t = xfer.get(root.label)
+        ref = ref_item(reg, root.id)
+        fewer = prod_dropped(reg, root.id)  # 做它的设备有没在算的：生产端自己出了事（被断开 / 缺原料），不只是供不应求
+        made = f"{root.label} 的理论产量也比基准少（{ref.theo_prod}→{root.theo_prod}）：做它的设备有没在算的" if fewer else ""
+        if t:
+            how = (
+                f"它靠跨地区传输补（{bp.transfer_label(t)}）：到协议核心 → 协议管理看这条传输还开着没有、单批数量够不够（程序不会去点）；"
+                "没开过这条传输的话，在「蓝图」页的跨地区传输表里删掉这一行"
+                + (f"。另外{made}，顺便看一下" if fewer else "")
+            )
+        elif fewer:
+            how = (
+                f"先查做 {root.label} 的设备：是否重新放置过、没设配方/出货口（{RESET_HINT}），进料的传送带、准入口、上游原料；"
+                "修好后下游这几条会一起恢复"
+            )
+        else:
+            how = f"它的产量跟不上消耗：看做 {root.label} 的设备是不是少摆了、上游原料够不够"
+        where = "；巡检里等它的空闲设备：" + "、".join(f"{d.name} {d.where}" for d in members) if members else ""
+        broken = fewer and not t  # 没有传输兜底、生产端又少了：按问题报
+        out.append(
+            Verdict(
+                "问题" if broken else "待确认",
+                members[0] if members else nobody,
+                f"{root.label} 供不应求、库存见底：{reg.fmt(root)}。吃它的设备有一部分吃不到，下游跟着少（根子在 {root.label} 不够，"
+                f"不是下游各自被断开）：" + "；".join(drops) + (f"；{made}" if fewer else "") + where,
+                how,
+                title=(
+                    f"{root.label} 理论产量 {ref.theo_prod}→{root.theo_prod}、库存见底：下游 {len(drops)} 种物品的理论消耗跟着少"
+                    if broken else f"{root.label} 库存见底：下游 {len(drops)} 种物品的理论消耗跟着少"
+                ),
+                members=members,
+                key=f"short:{root.label}",
+            )
+        )
+    return out
+
+
 SOURCE_FLUIDS = ("清水",)  # 源头流体：理论消耗下降又定位不到消费者时只报待确认（和 expert.CONS_DROP_FLUIDS 一致）
 
 
 def attach_theo_drops(
-    reg: Region, devices: list[Device], verdicts: list[Verdict], skip: dict[str, str] | None = None
+    reg: Region, devices: list[Device], verdicts: list[Verdict], skip: dict[str, str] | None = None, summary: bool = True
 ) -> tuple[list[str], set[str]]:
     """理论消耗下降 = 有消费者被断开。能定位到本分区的就地报问题（改 verdicts）。
     返回（定位不到的说明, 本分区定位到的物品显示名）。skip：别的分区已经定位到的物品 → 分区名，这里不再报。
@@ -1375,10 +1557,21 @@ def attach_theo_drops(
     grouped = {id(d) for v in verdicts if v.title for d in v.members}
     unlocated: list[str] = []
     located: set[str] = set()
+    tier_notes: list[str] = []
+    shorts: dict[str, tuple[Item, list[str]]] = {}
     for x, ref in theo_drops(reg):
         if skip and x.label in skip:
             continue  # 已在别的分区并进了相关条目
         drop = ref - x.theo_cons
+        excuse = None if any(v.key in (f"line:{x.label}", f"env:{x.label}") for v in verdicts) else drop_excuse(reg, x)
+        if excuse:
+            # 备路没触发 / 上游原料见底：不是消费者被断开，各合成一条（见 drop_excuse）
+            why, roots = excuse
+            if why:
+                tier_notes.append(f"{x.label} {ref}→{x.theo_cons}（{'；'.join(why)}）")
+            for y in roots:
+                shorts.setdefault(y.id, (y, []))[1].append(f"{x.label} 理论消耗 {ref}→{x.theo_cons}")
+            continue
         env = next((v for v in verdicts if v.key == f"env:{x.label}"), None)
         if env is not None and bucket(env.level) == "问题":
             located.add(x.label)  # 面板确认了「无环境」：已经归到「缺环境」那条
@@ -1453,6 +1646,7 @@ def attach_theo_drops(
             )
         )
         located.add(x.label)
+    verdicts.extend(excused_verdicts(reg, tier_notes, shorts, verdicts, summary))
     return unlocated, located
 
 
@@ -1960,10 +2154,10 @@ def report(
     # 连锁归根：源头流体供不上时，「流体 S 供给可能不足」这类待确认收拢到一条根因下
     # 理论消耗比蓝图参考下降 = 有消费者被断开（放在根因归并之前）。能在本分区定位的（并进同物品的条目，
     # 或巡检里有吃它的空闲设备）报问题；定位不到的列在「简报：理论消耗下降」一节，不计入本分区问题数
-    unlocated, located = attach_theo_drops(reg, devices, verdicts, drops_elsewhere)
     # 定位不到分区的下降是地区级的事实：只在主分区（areas.json 里 "main": true，如武陵城协议核心）计为问题一次，
     # 其他分区列为信息，避免 full_patrol 汇总时每个分区重复算
     main_area = next((a for a in reg.blueprint.areas.get(reg.name, []) if reg.blueprint.area_options(a).get("main")), None)
+    unlocated, located = attach_theo_drops(reg, devices, verdicts, drops_elsewhere, summary=not area or not main_area or area == main_area)
     if unlocated and area and area == main_area:
         for text in unlocated:
             label = text.split(" 的理论消耗")[0]
@@ -1973,7 +2167,8 @@ def report(
                     Verdict(
                         "待确认",
                         Device(UNLABELED, "?", "?", 0, 0, "", None, None),
-                        f"{text}；巡检没找到缺{label}空闲的设备，多半是你的基地比作者少摆了几台用{label}的设备",
+                        f"{text}；巡检没找到缺{label}空闲的设备，多半是不出产物的用{label}和作者不一样"
+                        f"（比如基地外的水驱矿机换成了电驱，或少摆了几台），不是故障",
                         f"基地正常的话，在「蓝图」页点「更新基准」抓一份自己的简报；{label}输入端显示「阻塞」= {label}是满的、不缺",
                         title=f"{label} 理论消耗比作者基地少（巡检没找到缺{label}的设备）",
                         key=f"drop:{label}",

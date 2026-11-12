@@ -319,7 +319,9 @@ def fluid_cons_drop(cur: dict, ref: dict, fluid: str, plan: bp.Blueprint, areas_
         d = (rrow.get("theo_prod") or 0) - (row.get("theo_prod") or 0)
         if d <= 0 or name == fluid:
             continue
-        pids = set(NAME_IDS.get(name, []))
+        # 这一行是空瓶（灌了液体的瓶子在简报里是另外的行，rows_by_name 不收）：不能拿「蓝铁瓶 + 清水 → 蓝铁瓶(清水)」
+        # 这种灌装配方说空瓶吃清水。2026-11-12 另一个账号：蓝铁块见底、蓝铁瓶 理论产量 60→30，被说成「灌装机缺清水」
+        pids = {i for i in NAME_IDS.get(name, []) if not i.startswith("item_fbottle_")}
         # 配方的其他产物理论产量没少的不算（精炼炉 清水 → 赤铜块 + 污水：污水少了是反应池那头，赤铜块没少说明精炼炉都在算）
         rs = [x for x in RECIPES if pids & set(x["outputs"]) and fids & set(x["inputs"]) and all(_dropped(cur, ref, o) for o in x["outputs"])]
         if rs:
@@ -336,15 +338,14 @@ def fluid_cons_drop(cur: dict, ref: dict, fluid: str, plan: bp.Blueprint, areas_
         st.advice = (f"定向巡检 {'、'.join(st.where['areas'])} 的 {'、'.join(st.where['machines'])}（会一起看这些分区的{fluid}输入端），"
                      f"看哪台空着、为什么空着。{fluid}输入端显示「阻塞」= 水是满的、不缺，是设备自己停了（产物爆仓、被关）；"
                      f"设备空闲、原料格缺{fluid}才是水管断了")
-    elif stalled:
-        st.where = {"areas": areas_all, "machines": [], "checks": False}
-        st.advice = f"先处理爆仓的产物（反应池整池停等）；处理后{fluid}理论消耗还低，再定向巡检各分区的{fluid}输入端和用{fluid}的设备"
     else:
-        # 没有哪种产物的理论产量跟着少：多半是这个基地本来就比作者少摆了几台用水设备（2026-11-12 三个群友都少 450–600），
-        # 不当故障报，提示一下、教他用自己的基准
+        # 没有哪种吃它的产物理论产量跟着少：产线上用水的设备都在算，少的是不出产物的用水。
+        # 2026-11-12 四个账号都少 450–600，逐项对过：7 种吃清水的产物（赤铜块、息壤、芽针、锦草、液化息壤、芽针溶液、锦草溶液）
+        # 理论产量都和基准一样，差的那部分对不上任何产物（推断是基地外的水驱矿机，每台 20/分；换成电驱就不吃水，没在游戏里核对）。
+        # 不当故障报，提示一下、教他用自己的基准。有反应池因产物爆仓整池停的照样列在依据里
         st.status = "info"
-        st.cause = (f"比作者基地少 {drop}（约 {drop / unit:.0f} 台用{fluid}的设备）：简报里没有哪种产物跟着少，"
-                    f"多半是你的基地比作者少摆了几台用{fluid}的设备，不一定是故障")
+        st.cause = (f"比作者基地少 {drop}：简报里吃{fluid}的产物理论产量都没少，产线上用{fluid}的设备都在算。"
+                    f"少的是不出产物的用{fluid}（比如基地外的水驱矿机换成了电驱，或少摆了几台），不是故障")
         st.where = {"areas": areas_all, "machines": [], "checks": False}
         st.advice = (f"基地正常的话，在「蓝图」页点「更新基准」抓一份自己的简报，以后就按你自己的基地比；"
                      f"怀疑有设备停了，再定向巡检各分区的{fluid}输入端和用{fluid}的设备（输入端显示「阻塞」= 水是满的）")
