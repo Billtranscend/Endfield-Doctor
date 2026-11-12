@@ -4,6 +4,12 @@
   只点：蓝图卡片、「预览」(1232,155)、预览右上关闭 (1232,28)、预览画布里的暗管（显示/隐藏连接线，只读）。
   绝不点：放置蓝图、制造设备、导入蓝图、批量删除、分享 (1232,75)。悬停、拖动画布可以。
   每次点击前核对页面标题，对不上立刻停（抛 SafetyStop）。
+
+「我的蓝图」页签（2026-11-12 游戏内核对）：(1232,155) 是「预览&编辑」，点开的是「编辑蓝图」页，不是「蓝图预览」：
+  - 画布和预览页同一套（比例、拖动、滚动条位置、点暗管显示/隐藏连接线都一样）；
+  - 右侧多了标签和描述栏，设备一览往下 50 px，底部是「返回 / 保存」，一屏只有 4 行；
+  - 点到设备会弹「XX可选图标」小窗（改蓝图里显示的图标）：按 Esc 只关小窗；没改过东西时点右上关闭直接回列表，没有确认框。
+  在这一页同样只拖动、点暗管、点右上关闭；绝不点：保存、返回、名字、标签、描述、可选图标小窗里的任何选项。
 """
 
 from __future__ import annotations
@@ -19,10 +25,20 @@ import numpy as np
 from . import vision as V
 
 PREVIEW_BTN = (1232, 155)
+# 列表页顶部三个页签的文字区域（x0, x1）：当前页签是深色底（灰度约 30），其余是浅色底（约 185）
+TABS = {"我的蓝图": (90, 215), "系统蓝图": (280, 405), "共享蓝图": (470, 600)}
+TAB_Y = (14, 44)
+TAB_DARK = 110
+READABLE_TABS = ("共享蓝图", "我的蓝图")
+BAD_TAB = "游戏现在在「{tab}」页签，读蓝图只认「共享蓝图」和「我的蓝图」。请切到蓝图所在的页签、让卡片显示在屏幕上，再点「读蓝图」"
+# 点开后的页面：标题 → 模式。preview = 共享蓝图的「蓝图预览」；edit = 我的蓝图的「编辑蓝图」（只看不改）
+MODES = {"蓝图预览": "preview", "编辑蓝图": "edit"}
+# 各模式下设备一览的（首行格子 top, 列表可见区的顶, 底）和鼠标停放处（编辑页底部是「返回 / 保存」，停在按钮下面）
+LIST_BOX = {"preview": (253, 240, 716), "edit": (303, 290, 628)}
+PARKS = {"preview": (1110, 690), "edit": (1110, 702)}
+VK_ESC = 0x1B
 CLOSE_BTN = (1232, 28)
 XS = [1005, 1075, 1145, 1215]  # 设备一览四列中心
-PARK = (1110, 690)  # 鼠标停放处（不压在格子上，不出悬停提示）
-TILE_TOP0 = 253  # 设备一览未滚动时首行格子的 top
 # 悬停提示第二行的分类词，不是设备名（曾把 管道/管道桥/管道汇流器 都记成「物流」）
 CATEGORY_WORDS = {"物流", "物流设备", "普通设备", "功能设备", "资源开采", "仓储存取", "基础生产", "合成制造", "电力", "战斗辅助", "种植"}
 
@@ -44,6 +60,8 @@ class Game:
         self.ocr = offline_ocr.shared()
         self.log = log
 
+    mode = "preview"  # 当前打开的是哪种页面（open_preview 里按标题定）
+
     def close(self):
         """OCR 是进程内共用的，不关（OfflineOCR.close 会硬退出整个进程）。"""
 
@@ -53,7 +71,7 @@ class Game:
 
     def shot(self, park=True) -> np.ndarray:
         if park:
-            self.move(*PARK)
+            self.move(*PARKS[self.mode])
             time.sleep(0.35)
         self.ctrl.post_screencap().wait()
         return self.ctrl.cached_image.copy()
@@ -70,8 +88,35 @@ class Game:
         if not (V.V[0] + 25 <= x <= V.V[2] - 15 and V.V[1] + 15 <= y <= V.V[3] - 15):
             raise SafetyStop(f"点击 ({x:.0f},{y:.0f}) 超出预览画布")
         self._click(x, y, 0.9)
-        self.move(*PARK)
+        self.move(*PARKS[self.mode])
         time.sleep(0.4)
+        if self.mode == "edit":
+            self.dismiss_icon_popup()
+
+    def icon_popup(self, img) -> bool:
+        """编辑蓝图页点到设备弹出的「XX可选图标」小窗：浅色标题栏（带「可选图标」）+ 一排图标格 + 下面一块实心深色面板。
+        先找实心深色块（便宜），找到了再读它上方的标题确认。"""
+        gray = cv2.cvtColor(img[V.V[1]:V.V[3], V.V[0]:V.V[2]], cv2.COLOR_BGR2GRAY)
+        solid = cv2.erode((gray < 80).astype(np.uint8), np.ones((40, 40), np.uint8))
+        if not solid.any():
+            return False  # 画布上的管道、传送带都是细线，没有 40×40 的实心深色块
+        ys, xs = np.where(solid)
+        x0, y0 = int(xs.min()) + V.V[0], int(ys.min()) + V.V[1]
+        return "可选图标" in self.text(img, [max(0, x0 - 30), max(0, y0 - 170), 400, 200])
+
+    def dismiss_icon_popup(self) -> None:
+        """点暗管时点偏到设备上会弹「可选图标」小窗：按 Esc 关掉（只关小窗，页面还在），不点里面的任何选项。"""
+        img = self.shot(park=False)
+        if not self.icon_popup(img):
+            return
+        self.log("  点到了设备，弹出「可选图标」小窗：按 Esc 关掉（没有选任何图标）")
+        self.ctrl.post_key_down(VK_ESC).wait()
+        time.sleep(0.08)
+        self.ctrl.post_key_up(VK_ESC).wait()
+        time.sleep(0.9)
+        img = self.shot()
+        if self.icon_popup(img) or self.viewer_mode(img) != "edit":
+            raise SafetyStop("关「可选图标」小窗后页面不对，停下。游戏里如果还开着小窗或编辑蓝图页，请自己关掉，不要点保存")
 
     def drag(self, dx, dy):
         cx, cy = 470, 370
@@ -82,8 +127,28 @@ class Game:
     def on_list(self, img=None) -> bool:
         return "蓝图一览" in self.text(img if img is not None else self.shot(), [25, 55, 120, 30])
 
+    def active_tab(self, img=None) -> str | None:
+        """列表页当前的页签名（按页签底色认：深色的那个）；一个深色的都没有或不止一个时返回 None。"""
+        img = img if img is not None else self.shot()
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        dark = [n for n, (x0, x1) in TABS.items() if gray[TAB_Y[0]:TAB_Y[1], x0:x1].mean() < TAB_DARK]
+        return dark[0] if len(dark) == 1 else None
+
+    def check_tab(self, img=None) -> str | None:
+        """明确认出当前是读不了的页签（系统蓝图）时抛 SafetyStop（什么都不点）。认不出页签时不拦，交给后面的标题核对。"""
+        tab = self.active_tab(img)
+        if tab and tab not in READABLE_TABS:
+            raise SafetyStop(BAD_TAB.format(tab=tab))
+        return tab
+
+    def viewer_mode(self, img=None) -> str | None:
+        """点开蓝图后的页面：「蓝图预览」→ preview，「编辑蓝图」→ edit，都不是 → None。"""
+        title = self.text(img if img is not None else self.shot(), [25, 12, 150, 32])
+        return next((m for t, m in MODES.items() if t in title), None)
+
     def on_preview(self, img=None) -> bool:
-        return "蓝图预览" in self.text(img if img is not None else self.shot(), [25, 12, 150, 32])
+        """在蓝图预览页，或「我的蓝图」的编辑蓝图页（画布同一套）。"""
+        return self.viewer_mode(img) is not None
 
     def find_cards(self, img=None) -> dict[str, tuple[int, int]]:
         """列表页可见的卡片：名字 → 卡片中心（名字在卡片下方约 62 px）。"""
@@ -99,20 +164,38 @@ class Game:
         img = self.shot()
         if not self.on_list(img):
             raise SafetyStop("不在 F1 共享蓝图的列表页")
+        tab = self.check_tab(img)
         cards = self.find_cards(img)
         if name not in cards:
             raise SafetyStop(f"列表里没看到卡片「{name}」（只认当前屏幕可见的卡片）")
+        same = sum(1 for _, t, _ in self.ocr.boxes(img, [40, 95, 880, 540]) if t.strip().replace(" ", "") == name)
+        if same > 1:
+            raise SafetyStop(f"屏幕上有 {same} 张都叫「{name}」的卡片，分不清是哪张。请在游戏里把要读的那张改个不重复的名字，项目里也改成同样的名字")
         self._click(*cards[name], 1.2)
         title = self.text(self.shot(), [1050, 108, 200, 30])
         if name.replace("1.6", "") not in title and name not in title:
             raise SafetyStop(f"详情标题「{title}」和卡片「{name}」对不上")
         self._click(*PREVIEW_BTN, 2.0)
-        if not self.on_preview():
-            raise SafetyStop("没进到蓝图预览")
+        after = self.shot()
+        mode = self.viewer_mode(after)
+        if mode is None:
+            title = self.text(after, [25, 12, 200, 32])
+            raise SafetyStop(f"没进到蓝图预览（现在的页面标题读到「{title}」）。游戏停在这个页面，请自己按右上角关闭退回列表")
+        self.mode = mode
+        if mode == "edit":
+            # 2026-11-12 群友（蓝图作者）：蓝图在「我的蓝图」里，这个位置是「预览&编辑」，点开的是「编辑蓝图」页
+            self.log(f"  这张在「{tab or '我的蓝图'}」里，打开的是「编辑蓝图」页：只拖动画布、点暗管看连接，不点保存，读完直接关闭")
 
     def close_preview(self) -> None:
-        if self.on_preview():
-            self._click(*CLOSE_BTN, 1.5)
+        if not self.on_preview():
+            return
+        if self.mode == "edit":
+            self.dismiss_icon_popup()
+        self._click(*CLOSE_BTN, 1.5)
+        self.mode = "preview"
+        if not self.on_list():
+            # 没改过东西时编辑蓝图页点关闭直接回列表（2026-11-12 核对）；回不去说明弹了别的东西，不再点
+            raise SafetyStop("点右上角关闭后没回到蓝图列表（可能弹了确认框）。请自己在游戏里处理：不要保存，退回列表")
 
     # ---- 预览页：尺寸 + 设备一览
     def read_size(self, img) -> tuple[int, int] | None:
@@ -121,19 +204,20 @@ class Game:
         return (int(m.group(1)), int(m.group(2))) if m else None
 
     def read_devices(self, img) -> dict[str, int | None]:
-        """预览页右侧设备一览（网格：行距 70，未滚动时首行 top=253，一屏 6 行）。
+        """预览页右侧设备一览（网格：行距 70，未滚动时首行 top=253，一屏 6 行；编辑蓝图页首行 top=303，一屏 4 行，见 LIST_BOX）。
         超过 6 行要滚动：每次滚轮后用图像匹配求出准确的滚动量，只读新露出的行，直到列表不再动。
         认不出（或和已读的重名）的图标悬停读名字并补进图标库。"""
         lib = _load_icons()
         out: dict[str, int | None] = {}
         cur, shift, done = img, 0, 0  # done = 已读的行数（按未滚动时的行号）
-        for _ in range(8):
+        top0, box_top, box_bottom = LIST_BOX[self.mode]
+        for _ in range(12 if self.mode == "edit" else 8):
             r = done
             while True:
-                top = TILE_TOP0 + 70 * r - shift
-                if top + 62 > 716:
+                top = top0 + 70 * r - shift
+                if top + 62 > box_bottom:
                     break
-                if top >= 240:
+                if top >= box_top:
                     for cx in XS:
                         self._read_tile(cur, cx, top, lib, out)
                     done = r + 1
@@ -144,14 +228,14 @@ class Game:
             _wheel(self.win.hwnd, 1110, 500, -240)
             time.sleep(0.7)
             nxt = self.shot()
-            d = _scroll_delta(cur, nxt)
+            d = _scroll_delta(cur, nxt, box_top, box_bottom)
             if d is None:
                 self.log("  设备一览滚动后对不上位置，只读了前面的行")
                 break
             if d <= 0:
                 break  # 到底了
             cur, shift = nxt, shift + d
-        self.move(*PARK)
+        self.move(*PARKS[self.mode])
         return out
 
     def _read_tile(self, img, cx, top, lib, out) -> None:
@@ -310,16 +394,18 @@ def _wheel(hwnd, x, y, delta):
     game.wheel(hwnd, x, y, delta)
 
 
-def _scroll_delta(prev, nxt) -> int | None:
-    """设备一览滚动了多少 px（内容上移为正）。取上一屏下部一条，在新屏里找。"""
-    x0, x1, y0, h = 975, 1250, 520, 120
+def _scroll_delta(prev, nxt, box_top: int = 240, box_bottom: int = 716) -> int | None:
+    """设备一览滚动了多少 px（内容上移为正）。取上一屏下部一条，在新屏里找。
+    box_top / box_bottom：列表可见区（编辑蓝图页底部是按钮，可见区短，条子要取在按钮上面）。"""
+    x0, x1, h = 975, 1250, 120
+    y0 = min(520, box_bottom - h - 8)
     strip = prev[y0:y0 + h, x0:x1]
-    reg = nxt[240:716, x0:x1]
+    reg = nxt[box_top:box_bottom, x0:x1]
     r = cv2.matchTemplate(reg, strip, cv2.TM_CCOEFF_NORMED)
     _, mx, _, loc = cv2.minMaxLoc(r)
     if mx < 0.9:
         return None
-    return y0 - (240 + loc[1])
+    return y0 - (box_top + loc[1])
 
 
 # ---- 设备一览的图标库

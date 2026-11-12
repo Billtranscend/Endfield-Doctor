@@ -139,7 +139,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.4", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.5", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []
@@ -578,7 +578,8 @@ class Api:
         g = game_ops.Game(log=print)
         try:
             if not g.on_list():
-                raise RuntimeError("请先在游戏里按 F1 打开「共享蓝图」列表页，并让要分析的蓝图卡片显示在屏幕上")
+                raise RuntimeError("请先在游戏里按 F1 打开蓝图列表（「共享蓝图」或「我的蓝图」页签），并让要分析的蓝图卡片显示在屏幕上")
+            g.check_tab()  # 在「系统蓝图」页签时直接说明，不去点（共享蓝图、我的蓝图都能读）
             job.step = "读蓝图"
             P.read_blueprints(name, g, only, log=print, cancelled=lambda: job.cancel)
         finally:
