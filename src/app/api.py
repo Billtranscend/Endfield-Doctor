@@ -139,7 +139,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.5", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.6", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []
@@ -795,10 +795,30 @@ class Api:
         import diagnose
         import sources
 
+        import expert
+
         plan = bp.load(blueprint)
         brief_path = self._read_brief(job, plan, regions)
         job.step = "诊断"
         brief = json.loads(brief_path.read_text(encoding="utf-8"))
+        tree = expert.run(brief, plan)
+        reread = None
+        if any(s["status"] == "bad" for s in tree) and not job.cancel:
+            # 排查树有 ✗：复读一次简报，两次都 ✗ 的才算（expert.confirm）。复读失败或被取消就按第一次的出报告
+            bad = "、".join(s["title"] for s in tree if s["status"] == "bad")
+            print(f"排查树有 ✗（{bad}）：再读一次简报确认是不是一时的波动，约 1–2 分钟")
+            try:
+                again_path = self._read_brief(job, plan, regions)
+                again = json.loads(again_path.read_text(encoding="utf-8"))
+            except RuntimeError as e:
+                again = None
+                print(f"  复读没成功（{e}），按第一次读到的出报告")
+            if again is not None and not job.cancel:
+                tree, cleared = expert.confirm(tree, expert.run(again, plan))
+                reread = {"first_brief": brief_path.name, "cleared": cleared}
+                brief_path, brief = again_path, again
+                print("  复读后恢复正常：" + "、".join(cleared) if cleared else "  复读结果和第一次一样")
+            job.step = "诊断"
         regs = [diagnose.Region(name, rows, plan) for name, rows in brief.items() if rows and (not plan.areas or name in plan.areas)]
         text, data = diagnose.report(regs)
         try:
@@ -806,10 +826,9 @@ class Api:
             src_text, _ = sources.report(brief, plan)
         except FileNotFoundError:
             short, src_text = [], "（蓝图没有参考简报，不比缺矿缺气液）"
-        import expert
-        tree = expert.run(brief, plan)
         report = {
             "kind": "quick",
+            "reread": reread,
             "stamp": time.strftime("%Y%m%d-%H%M%S"),
             "blueprint": plan.name,
             "brief": brief_path.name,
@@ -921,6 +940,7 @@ class Api:
                 summary["problems"] = sum(a.get("counts", {}).get("问题", 0) for a in r.get("areas", []))
             else:
                 summary["problems"] = sum(1 for s in r.get("sources", []) if s.get("kind") in ("缺设备", "来源供不上", "缺地区", "缺物品"))
+                summary["tree_bad"] = sum(1 for s in r.get("tree") or [] if s.get("status") == "bad")
                 summary["pending"] = sum(len([x for x in reg.get("findings", []) if x["level"] == "待确认"]) for reg in r.get("regions", {}).values())
             out.append(summary)
         return out

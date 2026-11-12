@@ -40,6 +40,11 @@ FULL_RATIO = 0.995  # 库存 ≥ 上限 × 这个比例算爆仓（满仓时库�
 PLENTY_RATIO = 0.01  # 库存 > 上限 × 这个比例算「原料充足」
 BLOCKED = "输入端/准入口显示「阻塞」= 液体是满的、不缺，"  # 流体待确认的建议：先教用户分「满」和「缺」（2026-11-12 群友反馈）
 UNDER_RATIO = 0.95  # 当前产量 < 理论 × 这个比例算低于理论
+# 流体的门槛放宽：多配方池子轮着做、简报的当前值是一小段时间的平均，流体常在理论的 90%–97% 之间晃
+# （2026-11-12 五份群友简报：污水 561–591/600、惰性壤晶废液 108–120/120、壤晶废液 138–162/150，同一个基地隔一会儿读就不一样）。
+# 真缺流体时吃它的固体产物自己会低于理论，照样追到这种流体上（find_root 的「剩下的限制是流体」），不靠流体自己这一行
+FLUID_UNDER_RATIO = 0.85
+PROD_KEEP = 0.95  # 产物理论产量不低于基准 × 这个比例：做它的设备都还在算（和 combine.PROD_KEEP 一致）
 BASELINE_RATIO = 0.9  # 当前产量 ≥ 参考简报里的产量 × 这个比例 = 和基准一致（基准里就没跑满的备路/限速产物不报）
 DRAIN_MIN = 2  # 消耗比生产多出这么多（/分钟）以上才算在耗库存
 XFER_LOW = 0.01  # 跨地区传输送进来的物品，库存 ≤ 上限 × 这个比例算见底（传输停了 / 单批不够）
@@ -73,6 +78,9 @@ class Item:
 
 
 RECIPE_ITEMS = {i for r in RECIPES for i in (*r["inputs"], *r["outputs"])}
+_RECIPE_KEYS = {(frozenset(r["inputs"]), frozenset(r["outputs"])) for r in RECIPES}
+# 有逆向配方的配方（灌装 ⇄ 拆解、固气 / 液气双向转化）：光看简报分不出哪个方向在用
+REVERSIBLE = {r["id"] for r in RECIPES if (frozenset(r["outputs"]), frozenset(r["inputs"])) in _RECIPE_KEYS}
 
 
 def item_id(name: str, fluid: str | None) -> str | None:
@@ -228,6 +236,12 @@ class Region:
         ]
         self.producers: dict[str, list[dict]] = {}
         self.consumers: dict[str, list[dict]] = {}
+        # 去掉逆向之前的候选消费者：物品在被消耗、图里却一个消费者都没剩时（做重息壤的固气转化机被当成「另有来源」丢掉，
+        # 重息壤气就成了没人吃的东西），判回堵时退回来用这张表
+        self.loose_consumers: dict[str, list[dict]] = {}
+        for r in cands:
+            for i in r["inputs"]:
+                self.loose_consumers.setdefault(i, []).append(r)
         for r in self.recipes:
             for o in r["outputs"]:
                 self.producers.setdefault(o, []).append(r)
@@ -247,7 +261,7 @@ class Region:
         return i.stock is not None and i.stock > self.cap * PLENTY_RATIO
 
     def under(self, i: Item) -> bool:
-        return i.theo_prod > 0 and i.cur_prod < i.theo_prod * UNDER_RATIO
+        return i.theo_prod > 0 and i.cur_prod < i.theo_prod * (FLUID_UNDER_RATIO if i.fluid else UNDER_RATIO)
 
     def draining(self, i: Item) -> float | None:
         """在耗库存时返回预计耗尽的分钟数。"""
@@ -288,6 +302,17 @@ class Region:
         if self.full(i):
             return [i.label]
         cons = self.consumers.get(iid)
+        if not cons and (i.cur_cons or i.theo_cons):
+            # 在被消耗、图里却没有消费者：它的消费配方是可逆的、建图时被丢了。2026-11-12 群友 D：重息壤 满仓，
+            # 重息壤气 产 3/60 被报「疑似息壤气、液化重息壤供给不足」，深度巡检（面板确认过配方）判的是「下游重息壤爆仓回堵」。
+            # 候选里方向分不清（作者基地：重息壤气 → 重息壤 和 重息壤气 → 液化重息壤 都对得上，后一条其实没人用），
+            # 所以只要有一路的产物满了 / 回堵就算：真缺它的话，吃它的那一路不会满
+            for r in self.loose_consumers.get(iid, []):
+                for o in r["outputs"]:
+                    sub = self.blocked_path(o, seen | {iid})
+                    if sub:
+                        return [i.label] + sub
+            return None
         if not cons:
             return None
         paths = []
@@ -310,7 +335,9 @@ class Region:
             return _CYCLE
         return [i.label] + min(paths, key=len)
 
-    def excuse(self, i: Item) -> str | None:
+    def excuse(self, i: Item, _seen: frozenset = frozenset(), demand: bool = True) -> str | None:
+        """i 低于理论的正常原因。demand=False 时不算「下游用得少」：那只能解释流体自己为什么少，
+        不能拿来解释吃这种流体的产物为什么少（find_root 里「流体是设计限速的」那一支）。"""
         if self.full(i):
             return "仓库爆仓，生产自动降速"
         path = self.blocked_path(i.id)
@@ -324,7 +351,84 @@ class Region:
         limits = self.blueprint.design_limits
         if i.label in limits:
             return f"蓝图设计限速：{limits[i.label]}"
-        return self.baseline_excuse(i)
+        return self.slow_tier_line(i) or self.baseline_excuse(i) or (self.demand_limited(i, _seen) if demand else None)
+
+    def demand_limited(self, i: Item, seen: frozenset = frozenset()) -> str | None:
+        """流体 i 低于理论是因为用得少，不是供不上。流体没有库存，产多少就是下游抽了多少；吃它的每条配方都说得通才算：
+        产物爆仓 / 回堵；或产物自己低于理论但另有原因（备路没触发、设计限速、和基准一致、它自己也是下游用得少）；
+        或产物在满速出（这一路吃饱了）。只要有一条配方的产物低于理论又说不出原因，就不算——那条会照常追到这种流体头上。
+        2026-11-12 作者基地实跑（中容、软饮、针剂、息壤、重息壤全爆仓）：锦草溶液 18/60 一路回堵、另一路（赤铜瓶）和基准一致，
+        被报成「疑似 清水 供给不足」；0.10.5 同一份简报也是 3 条待确认。"""
+        if not i.fluid or i.id in seen:
+            return None
+        cons = self.consumers.get(i.id)
+        if not cons:
+            return None
+        why = []
+        for r in cons:
+            outs = [self.items[o] for o in r["outputs"] if o in self.items and o not in seen]
+            if not outs:
+                return None
+            stuck = next((y for y in outs if self.full(y) or self.blocked_path(y.id)), None)
+            if stuck:
+                why.append(f"{stuck.label} 爆仓回堵")  # 有一个产物出不去，这台设备就停
+                continue
+            for y in outs:  # 没堵的配方：每个产物都要说得通（精炼炉出 赤铜块 + 污水，不能只看前一个）
+                if not self.under(y):
+                    continue  # 在满速出：这一路吃饱了
+                ex = self.excuse(y, seen | {i.id})
+                if not ex:
+                    return None
+                why.append(f"{y.label} {ex.split('（')[0].split('：')[0]}")
+        if not why:
+            return None  # 每一路都在满速出，它自己却低于理论：说不通，不放行
+        return "下游用得少（" + "；".join(dict.fromkeys(why)) + "）"
+
+    def tier_missing(self, label: str) -> tuple[dict, list[str]] | None:
+        """label 是备路产物且备路没触发时，返回 (规则, 没爆仓的条件)。按严格满仓判（tier_full）。"""
+        rule = next((r for r in self.blueprint.tier_rules if r["product"] == label), None)
+        if rule is None:
+            return None
+        missing = [n for n in rule["requires_full"] if not (n in self.by_label and self.tier_full(self.by_label[n]))]
+        return (rule, missing) if missing else None
+
+    @property
+    def ref(self) -> "Region | None":
+        """按蓝图参考简报建的同地区 Region（要它的配方图：备路配方在当前简报里可能根本没在跑）；没有参考简报时为 None。"""
+        if not hasattr(self, "_ref"):
+            rows = (self.blueprint.reference_brief or {}).get(self.name) or []
+            self._ref = Region(self.name, rows, self.blueprint) if rows else None
+        return self._ref
+
+    def prod_dropped(self, iid: str) -> bool:
+        """物品的理论产量比基准少（基准里没有这一行或本来就是 0 的不算：没有证据）。和 combine.prod_dropped 同一个判断。"""
+        ref = self.ref_items.get(iid)
+        if ref is None or ref.theo_prod <= 0:
+            return False
+        cur = self.items.get(iid)
+        return cur is None or cur.theo_prod < ref.theo_prod * PROD_KEEP
+
+    def slow_tier_line(self, i: Item) -> str | None:
+        """i 这条线只按基础产量在跑：吃它的配方做的都是备路没触发的「提速」类产物（芽针针剂 / 锦草软饮：中容爆仓才提速，
+        没爆仓只有基础产量），而且做那些产物的设备都还在算（理论产量没比基准少；设备断了、缺料时游戏不把它算进理论值）。
+        基准简报是作者基地备路都触发时抓的（蓝铁瓶(芽针溶液) 15/30），别人的基地中容没爆仓时就是 5–7/30。
+        2026-11-12 五份群友简报全是这样，快速诊断按仓库里空瓶多不多，有时报「设计内」有时报「疑似芽针溶液供给不足」。
+        深度巡检的同一条规则在 combine.halved_line。可逆配方（拆解机）光看简报分不出在不在用，不算消费者。"""
+        ref = self.ref
+        seen = {r["id"]: r for r in self.consumers.get(i.id, []) + (ref.consumers.get(i.id, []) if ref else [])}
+        cons = [r for r in seen.values() if r["id"] not in REVERSIBLE]
+        if not cons:
+            return None
+        slow = []
+        for r in cons:
+            o = next((o for o in r["outputs"]
+                      if self.tier_missing(self.items[o].label if o in self.items else ID_NAME.get(o, o))
+                      and not self.prod_dropped(o)), None)
+            if o is None:
+                return None
+            slow.append(self.items[o].label if o in self.items else ID_NAME.get(o, o))
+        y = slow[0]
+        return f"下游 {y} 只有基础产量（备路没触发：{'、'.join(self.tier_missing(y)[1])} 未爆仓；基准是备路触发时抓的）"
 
     @property
     def ref_items(self) -> dict[str, Item]:
@@ -360,6 +464,16 @@ class Region:
             if i.theo_prod == 0 and i.cur_prod == 0:
                 chain.append(pad + "→ 没有任何来源（理论生产也是 0）")
                 return Root(f"idle:{i.id}", "闲置", f"{i.label} 没有来源，用它的设备闲置", "不打算生产可以忽略"), chain
+            makers = sorted({r["machine_name"] for r in RECIPES if i.id in r["outputs"]})
+            if not i.fluid and i.label not in SOURCE_NAMES and makers:
+                # 不是矿 / 水 / 气这类源头，只是简报里看不出做它的配方在不在跑（可逆配方两个方向都对得上时会被丢掉）：
+                # 别叫「源头」、别让人去查泵（2026-11-12 第三位群友：「源头 蓝铁瓶(锦草溶液) 产量低于理论，去查采集设备、泵」）
+                chain.append(pad + f"→ {i.label} 产量低于理论（{i.cur_prod}/{i.theo_prod}），简报里看不出做它的设备在不在跑")
+                return (
+                    Root(f"source:{i.id}", "待确认", f"{i.label} 产量低于理论（{i.cur_prod}/{i.theo_prod}）",
+                         f"去俯瞰查做 {i.label} 的设备（{'、'.join(makers)}）：原料到没到、出料口通不通、配方对不对"),
+                    chain,
+                )
             chain.append(pad + f"→ 源头产量低于理论（{i.cur_prod}/{i.theo_prod}）")
             key = f"fluid:{i.id}" if i.fluid else f"source:{i.id}"
             return (
@@ -384,7 +498,7 @@ class Region:
 
         fluids = [x for x in inputs if x.fluid]
         machines = self.machines_of(i)
-        if fluids and all(self.excuse(x) for x in fluids):
+        if fluids and all(self.excuse(x, demand=False) for x in fluids):
             names = "、".join(x.label for x in fluids)
             chain.append(pad + f"→ 固体原料都有库存，流体 {names} 是蓝图设计限速的")
             return Root(f"excused-fluid:{names}", "设计内", f"受 {names} 的设计限速影响"), chain
@@ -459,6 +573,12 @@ class Region:
             if ex:
                 reason = ex.split("（")[0]  # 「下游 X 爆仓回堵（路径）」按「下游 X 爆仓回堵」合并；设计限速各自保留说明
                 add(Root(f"ok:{reason}", "正常", reason), i.label, [])
+                continue
+            if i.fluid and i.label in SOURCE_NAMES:
+                # 源头流体（清水、沉积酸、惰气）按用量供给：当前值就是下游用了多少，理论值还含闲置的泵和基地外的用水设备，
+                # 低于理论只说明泵有富余。真缺的时候吃它的产物会低于理论，照样追到它头上（「疑似 清水 供给不足」）；
+                # 泵被拆了由 sources 的「缺设备」报。2026-11-12 群友 D、R1 各有一条「源头 清水 产量低于理论」待确认
+                add(Root("ok:源头流体按用量供给", "正常", "源头流体按用量供给（泵 / 气口有富余）"), i.label, [])
                 continue
             root, chain = self.find_root(i)
             add(root, i.label, chain)

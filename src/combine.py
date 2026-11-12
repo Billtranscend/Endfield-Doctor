@@ -258,11 +258,7 @@ def label_of(reg: Region, iid: str) -> str:
 
 def tier_missing(reg: Region, label: str) -> tuple[dict, list[str]] | None:
     """label 是备路产物且备路没触发时，返回 (规则, 没爆仓的条件)。"""
-    rule = next((r for r in reg.blueprint.tier_rules if r["product"] == label), None)
-    if rule is None:
-        return None
-    missing = [n for n in rule["requires_full"] if not (n in reg.by_label and reg.tier_full(reg.by_label[n]))]
-    return (rule, missing) if missing else None
+    return reg.tier_missing(label)
 
 
 def in_use(reg: Region, iid: str) -> bool:
@@ -1546,6 +1542,46 @@ def excused_verdicts(
 SOURCE_FLUIDS = ("清水",)  # 源头流体：理论消耗下降又定位不到消费者时只报待确认（和 expert.CONS_DROP_FLUIDS 一致）
 
 
+def drop_groups(reg: Region, labels: list[str]) -> list[list[str]]:
+    """定位不到设备的下降按配方连成片：同一条配方里的两种物品（两种原料，或原料和产物）都在下降名单里就算一片。
+    一条线停了，沿线每种物品的理论消耗都跟着少：2026-11-11 群友 R1 锦草 / 芽针药线停了，武陵城报了 11 条
+    「X 理论消耗下降：有消费者被断开」，其实是一件事。连片只看当前简报和基准简报里在用的配方。"""
+    ids = {reg.by_label[x].id: x for x in labels if x in reg.by_label}
+    parent = {i: i for i in ids}
+
+    def find(a: str) -> str:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    ref = ref_region(reg)
+    for r in {r["id"]: r for r in reg.recipes + (ref.recipes if ref else [])}.values():
+        hit = [i for i in (*r["inputs"], *r["outputs"]) if i in ids]
+        for a in hit[1:]:
+            parent[find(a)] = find(hit[0])
+    groups: dict[str, list[str]] = {}
+    for i, x in ids.items():
+        groups.setdefault(find(i), []).append(x)
+    rest = [[x] for x in labels if x not in reg.by_label]
+    return sorted(groups.values(), key=lambda g: labels.index(g[0])) + rest
+
+
+def stalled_ends(reg: Region, labels: list[str]) -> list[str]:
+    """这一片下降的物品往下游看，理论产量比基准少的产物（做它的设备没在算）。
+    标题只取前三个，所以要排得有用、顺序稳定：档案里定了目标产量的产物（排查树看的那些）在前，
+    再按这一片里有几种物品喂给它（越多越像这条线的出口），最后按名字。"""
+    ids = [reg.by_label[x].id for x in labels if x in reg.by_label]
+    feeds: dict[str, set[str]] = {}
+    for i in ids:
+        for r in all_consumers(reg, i):
+            for o in r["outputs"]:
+                if o not in ids and prod_dropped(reg, o):
+                    feeds.setdefault(label_of(reg, o), set()).add(i)
+    targets = {t["product"] for t in reg.blueprint.playbook.get("targets", [])}
+    return sorted(feeds, key=lambda x: (x not in targets, -len(feeds[x]), x))
+
+
 def attach_theo_drops(
     reg: Region, devices: list[Device], verdicts: list[Verdict], skip: dict[str, str] | None = None, summary: bool = True
 ) -> tuple[list[str], set[str]]:
@@ -2159,8 +2195,32 @@ def report(
     main_area = next((a for a in reg.blueprint.areas.get(reg.name, []) if reg.blueprint.area_options(a).get("main")), None)
     unlocated, located = attach_theo_drops(reg, devices, verdicts, drops_elsewhere, summary=not area or not main_area or area == main_area)
     if unlocated and area and area == main_area:
-        for text in unlocated:
-            label = text.split(" 的理论消耗")[0]
+        by_label = {text.split(" 的理论消耗")[0]: text for text in unlocated}
+        merged: set[str] = set()
+        for group in drop_groups(reg, [x for x in by_label if x not in SOURCE_FLUIDS]):
+            if len(group) < 2:
+                continue
+            merged.update(group)
+            ends = stalled_ends(reg, group)
+            rows = "、".join(f"{x} {ref_theo_cons(reg, reg.by_label[x].id)}→{reg.by_label[x].theo_cons}" for x in group)
+            where = f"先看做 {'、'.join(ends[:3])} 的设备" if ends else f"从最下游的物品查起（{group[-1]}）"
+            verdicts.append(
+                Verdict(
+                    "问题",
+                    Device(UNLABELED, "?", "?", 0, 0, "", None, None),
+                    f"同一条线上 {len(group)} 种物品的理论消耗一起比基准少：{rows}。"
+                    + (f"往下游看，{'、'.join(ends)} 的理论产量也少了（做它的设备没在算：没原料，或重新放置后没设配方；手动关掉的设备不会让理论值变少）。" if ends else "")
+                    + "一处停了，沿线每种物品的理论消耗都会跟着少，所以合成一条；本次巡检没找到吃它们的空闲设备（可能在协议区域外，或是环境类设备）",
+                    f"{where}：是否重新放置过、没设配方/出货口（{RESET_HINT}）；前面的准入口限速是否被改成 0、传送带/管道是否断了。"
+                    "修好一处后再跑一次，剩下的会单独列出来",
+                    title=(f"{'、'.join(ends[:3])} 这条线有设备没在算" if ends else f"{group[0]} 等物品的消费者被断开")
+                    + f"：{len(group)} 种物品的理论消耗跟着少（巡检没定位到设备）",
+                    key=f"drop:{'+'.join(group)}",
+                )
+            )
+        for label, text in by_label.items():
+            if label in merged:
+                continue
             if label in SOURCE_FLUIDS:
                 # 源头流体（清水）定位不到消费者：多半是基地比作者少摆了几台用水设备，不当问题报（2026-11-12 三个群友 450–600）
                 verdicts.append(

@@ -118,6 +118,12 @@ button { font-family: inherit; }
 .stat { background: var(--panel); border: 1px solid var(--line); padding: 12px 14px; }
 .stat .n { font-family: var(--mono); font-size: 28px; font-weight: 700; line-height: 1; }
 .stat .l { color: var(--muted); font-size: 12px; letter-spacing: 2px; margin-top: 6px; }
+/* 报告最上面的一句总结论：先说「有没有事」，再看数字 */
+.headline { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--ok); padding: 14px 16px; margin-bottom: 14px; }
+.headline.warn { border-left-color: var(--warn); } .headline.bad { border-left-color: var(--bad); }
+.headline .h { font-size: 18px; font-weight: 600; color: var(--ok); line-height: 1.4; }
+.headline.warn .h { color: var(--warn); } .headline.bad .h { color: var(--bad); }
+.headline .d { color: var(--muted); font-size: 13px; line-height: 1.7; margin-top: 6px; }
 .stat.bad .n { color: var(--bad); } .stat.warn .n { color: var(--warn); } .stat.ok .n { color: var(--ok); } .stat.info .n { color: var(--info); }
 
 .tabs { display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }

@@ -447,11 +447,18 @@ function renderReportList() {
 function reportItem(r) {
   const when = r.stamp ? `${r.stamp.slice(4, 6)}-${r.stamp.slice(6, 8)} ${r.stamp.slice(9, 11)}:${r.stamp.slice(11, 13)}` : '';
   const scope = r.kind === 'patrol' ? (r.areas || []).map(a => a.area).join('、') : (r.blueprint || '');
-  const pend = r.kind === 'patrol' ? (r.areas || []).reduce((s, a) => s + (a.counts?.['待确认'] || 0), 0) : (r.pending || 0);
-  const pl = r.kind === 'patrol' ? '问题' : '缺源';
   return `<div class="ritem ${r.id === state.reportId ? 'sel' : ''}" onclick="openReport('${r.id}')">
     <div class="ritem-1"><span class="kind ${r.kind}">${r.kind === 'patrol' ? '深入巡检' : '快速诊断'}</span><span class="when">${when}</span></div>
-    <div class="ritem-2"><span class="scope">${esc(scope)}</span><span class="cnt">${r.problems ? `<span class="p">${pl} ${r.problems}</span>` : `<span class="z">${pl} 0</span>`}${pend ? `<span class="w">待确认 ${pend}</span>` : ''}</span></div></div>`;
+    <div class="ritem-2"><span class="scope">${esc(scope)}</span>${reportCounts(r)}</div></div>`;
+}
+// 列表里的计数：深入巡检数「问题」；快速诊断数「要看」= 排查树 ✗ + 缺矿缺气液。没有就写「正常」，待确认是 0 就不显示
+function reportCounts(r) {
+  const patrol = r.kind === 'patrol';
+  const bad = patrol ? (r.problems || 0) : (r.problems || 0) + (r.tree_bad || 0);
+  const pend = patrol ? (r.areas || []).reduce((s, a) => s + (a.counts?.['待确认'] || 0), 0) : (r.pending || 0);
+  const failed = patrol ? (r.areas || []).filter(a => a.ok === false).length : 0;
+  const head = bad ? `<span class="p">${patrol ? '问题' : '要看'} ${bad}</span>` : failed ? `<span class="w">${failed} 区没巡成</span>` : `<span class="n">正常</span>`;
+  return `<span class="cnt">${head}${pend ? `<span class="w">待确认 ${pend}</span>` : ''}</span>`;
 }
 async function loadRecent() {
   const rs = await api('reports');
@@ -460,10 +467,7 @@ async function loadRecent() {
 function reportRow(r) {
   const when = r.stamp ? `${r.stamp.slice(4, 6)}-${r.stamp.slice(6, 8)} ${r.stamp.slice(9, 11)}:${r.stamp.slice(11, 13)}` : '';
   const what = r.kind === 'patrol' ? `深入巡检 <small>${(r.areas || []).map(a => a.area).join('、')}</small>` : `快速诊断 <small>${esc(r.blueprint || '')}</small>`;
-  const cnt = r.kind === 'patrol'
-    ? `<span class="cnt"><span class="p">问题 ${r.problems}</span><span class="w">待确认 ${(r.areas || []).reduce((s, a) => s + (a.counts?.['待确认'] || 0), 0)}</span></span>`
-    : `<span class="cnt"><span class="p">缺源 ${r.problems}</span><span class="w">待确认 ${r.pending || 0}</span></span>`;
-  return `<div class="row" onclick="openReport('${r.id}')"><span class="when">${when}</span><span class="what">${what}</span>${cnt}</div>`;
+  return `<div class="row" onclick="openReport('${r.id}')"><span class="when">${when}</span><span class="what">${what}</span>${reportCounts(r)}</div>`;
 }
 async function openReport(id, quiet) {
   const rep = await api('report', id);
@@ -484,6 +488,11 @@ function renderReport(rep) {
 const LEVEL_CLS = { '问题': 'bad', '待确认': 'warn', '正常': 'ok', '提醒': 'info', '设计内': 'ok', '闲置': 'ok' };
 
 function stat(n, label, cls) { return `<div class="stat ${cls}"><div class="n">${n}</div><div class="l">${label}</div></div>`; }
+// 数字是 0 的格子不用红 / 黄（2026-11-12：「缺矿 / 缺气液 0」也是红的，群友一眼看过去以为有事）
+function statN(n, label, cls) { return stat(n, label, n ? cls : 'ok'); }
+function headline(cls, title, lines) {
+  return `<div class="headline ${cls}"><div class="h">${esc(title)}</div>${lines.filter(Boolean).map(l => `<div class="d">${esc(l)}</div>`).join('')}</div>`;
+}
 
 function renderTree(tree, canTarget) {
   if (!tree || !tree.length) return '';
@@ -516,10 +525,25 @@ function renderQuick(rep) {
   const kinds = ['缺地区', '缺物品', '缺设备', '来源供不上', '库存在降'];
   const regions = Object.entries(rep.regions || {});
   const pending = regions.reduce((s, [, r]) => s + r.findings.filter(f => f.level === '待确认').length, 0);
-  const treeBad = (rep.tree || []).filter(s => s.status === 'bad').length;
-  let html = `<div class="summary">${stat(treeBad, '排查树 ✗', treeBad ? 'bad' : 'ok')}${stat(src.filter(s => s.kind !== '库存在降').length, '缺矿 / 缺气液', 'bad')}${stat(pending, '待确认', 'warn')}${stat(fmtSec(rep.elapsed), '用时', '')}</div>`;
+  const tree = rep.tree || [];
+  const badSteps = tree.filter(s => s.status === 'bad');
+  const treeBad = badSteps.length;
+  const srcBad = src.filter(s => s.kind !== '库存在降').length;
+  // 最上面先给一句总结论：排查树看的是最终产物，全 ✓ 就是产线在正常运转，待确认只是疑点
+  // 排查树有 ✗ 时，待确认多半是同一件事的另一面，别说成「不用管」
+  const pendNote = !pending ? ''
+    : treeBad ? `另有 ${pending} 条待确认：可能和上面这几项是同一件事，先把排查树的 ✗ 处理掉，再诊断一次看还剩哪些。`
+    : `另有 ${pending} 条待确认：只是简报上的疑点，多半是一时的波动或设计内，不用急着处理；连着几次诊断都在，再跑一次深入巡检确认。`;
+  const again = rep.reread
+    ? (rep.reread.cleared?.length ? `第一次读简报时 ${rep.reread.cleared.join('、')} 偏低，复读一次后正常，是一时的波动。` : '排查树有 ✗，所以复读了一次简报，两次结果一样。')
+    : '';
+  let html;
+  if (treeBad) html = headline('bad', `有 ${treeBad} 项要去看：${badSteps.map(s => s.title).join('、')}`, ['在下面的排查树里点「定向巡检这几处」，程序会去对应分区找出是哪台设备。', again, pendNote]);
+  else if (srcBad) html = headline('warn', `产物都在正常出，但有 ${srcBad} 种源头物品比蓝图少`, ['见下面「缺矿 / 缺气液」：多半是少开了矿机、水泵或气口。', again, pendNote]);
+  else html = headline('ok', '产线在正常运转', [tree.length ? '排查树里的产物都达标，源头物品够用。' : '源头物品够用。', again, pendNote]);
+  html += `<div class="summary">${statN(treeBad, '排查树 ✗', 'bad')}${statN(srcBad, '缺矿 / 缺气液', 'bad')}${statN(pending, '待确认', 'warn')}${stat(fmtSec(rep.elapsed), '用时', '')}</div>`;
   html += renderTree(rep.tree, true);
-  html += `<div class="hint">快速诊断只看简报。「来源供不上」和「待确认」是简报层面的疑点：水/气按需供给，下游爆仓时用量本来就低；要确认是不是真有设备因它停机，跑一次深入巡检。</div>`;
+  html += `<div class="hint">快速诊断只看简报。「待确认」是简报层面的疑点，不等于故障：排查树全 ✓ 时可以不管；想确认有没有设备真的停了，跑一次深入巡检。</div>`;
   html += `<div class="card"><div class="card-h"><span>缺矿 / 缺气液（对照蓝图参考）</span><span class="muted">简报 ${esc(rep.brief)}</span></div>`;
   if (!src.length) html += `<div class="empty">源头物品全部够用：没有缺开矿、缺水口、缺气口。</div>`;
   for (const k of kinds) {
@@ -536,7 +560,7 @@ function renderQuick(rep) {
     html += `<div class="card"><div class="card-h"><span>${esc(name)}</span><span class="muted">仓库上限 ${r.cap} · 爆仓 ${r.full.length} 种</span></div>`;
     for (const lv of ['待确认', '提醒', '设计内', '闲置', '正常']) {
       const g = groups[lv]; if (!g) continue;
-      html += `<div class="sec-title ${LEVEL_CLS[lv]}">${lv}（${g.length}）</div>` + g.map(f => `<details class="verdict ${LEVEL_CLS[lv]}" ${lv === '待确认' ? 'open' : ''}><summary><span class="t">${esc(f.text)}</span><span class="s">${esc((f.affected || []).slice(0, 3).join('、'))}</span></summary>
+      html += `<div class="sec-title ${LEVEL_CLS[lv]}">${lv}（${g.length}）</div>` + g.map(f => `<details class="verdict ${LEVEL_CLS[lv]}" ${lv === '待确认' && treeBad ? 'open' : ''}><summary><span class="t">${esc(f.text)}</span><span class="s">${esc((f.affected || []).slice(0, 3).join('、'))}</span></summary>
         <div class="body">${f.advice ? `<p class="advice"><span class="k">建议</span>${esc(f.advice)}</p>` : ''}<p><span class="k">影响</span>${esc((f.affected || []).join('、'))}</p>${f.chain?.length ? `<pre class="chain">${esc(f.chain.join('\n'))}</pre>` : ''}</div></details>`).join('');
     }
     if (r.full.length) html += `<p class="hint">爆仓：${esc(r.full.join('、'))}</p>`;
@@ -549,7 +573,20 @@ function renderQuick(rep) {
 function renderPatrol(rep) {
   const areas = rep.areas || [];
   const tot = (k) => areas.reduce((s, a) => s + (a.counts?.[k] || 0), 0);
-  let html = `<div class="summary">${stat(tot('问题'), '问题', 'bad')}${stat(tot('待确认'), '待确认', 'warn')}${stat(tot('正常'), '正常', 'ok')}${stat(areas.reduce((s, a) => s + (a.devices || 0), 0), '设备', 'info')}${stat(fmtSec(rep.elapsed), '用时', '')}</div>`;
+  const nBad = tot('问题'), nPend = tot('待确认'), nFail = areas.filter(a => !a.ok).length;
+  const nDev = areas.reduce((s, a) => s + (a.devices || 0), 0);
+  const pendNote = nPend ? `另有 ${nPend} 条待确认：是疑点，不一定是故障，有空时照着每条的建议看一眼。` : '';
+  // 总结论要和下面的排查树对得上：设备上没问题、排查树却有 ✗ 时不能写「没发现问题」
+  const badSteps = (rep.tree || []).filter(s => s.status === 'bad');
+  const treeNote = badSteps.length ? `排查树有 ${badSteps.length} 项没达标：${badSteps.map(s => s.title).join('、')}，见下面排查树每一项的「去哪 / 看什么」。` : '';
+  const scanned = `巡了 ${areas.length - nFail} 个分区，看了 ${nDev} 台带标记的设备。`;
+  const failNote = nFail ? `有 ${nFail} 个分区没巡成，原因写在下面的页签里，可以单独再巡一次。` : '';
+  let html;
+  if (nBad) html = headline('bad', `有 ${nBad} 个问题要去修`, ['每条问题都写了依据和建议，带定位图；从第一条看起，修好后再巡一次。', treeNote, failNote, pendNote]);
+  else if (badSteps.length) html = headline('warn', `巡过的设备没发现要修的问题，但排查树有 ${badSteps.length} 项没达标`,
+    [treeNote, scanned + '原因可能在没巡的分区，或在协议区域外（矿机、水泵）。', failNote, pendNote]);
+  else html = headline(nFail ? 'warn' : 'ok', nFail ? `巡完的分区没发现要修的问题，但有 ${nFail} 个分区没巡成` : '没发现要修的问题', [scanned, failNote, pendNote]);
+  html += `<div class="summary">${statN(nBad, '问题', 'bad')}${statN(nPend, '待确认', 'warn')}${stat(tot('正常'), '正常', 'ok')}${stat(areas.reduce((s, a) => s + (a.devices || 0), 0), '设备', 'info')}${stat(fmtSec(rep.elapsed), '用时', '')}</div>`;
   const uid = 'tabs' + Math.random().toString(36).slice(2, 7);
   // 默认打开第一个有问题的分区（没有就第一个）：打开报告先看到要修的东西
   const first = Math.max(0, areas.findIndex(a => a.ok && (a.counts?.['问题'] || 0) > 0));

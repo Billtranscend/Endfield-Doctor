@@ -287,7 +287,8 @@ def _pools_stalled_by_full(plan: bp.Blueprint, areas: list[str], fid: str, full_
 
 
 def fluid_cons_drop(cur: dict, ref: dict, fluid: str, plan: bp.Blueprint, areas_all: list[str], full=None) -> Step | None:
-    """源头流体（清水）的理论消耗比基准少：游戏里缺任一原料（或被关、断电）的设备不计入理论值，所以少多少 ≈ 停了几台用它的设备。
+    """源头流体（清水）的理论消耗比基准少：游戏里缺任一原料的设备不计入理论值，所以少多少 ≈ 停了几台用它的设备。
+    手动关掉的设备不在此列：关掉以后它仍计入理论值，只是当前值少（tests/faults 的三个「关一台」样本和 2026-11-12 实测都是这样）。
     再看同时「理论产量比基准少」、配方吃这种流体的产物，把范围收窄到做它的设备和所在分区。
     （2026-11-10 断水实测：断了武陵城输入端 13 往扩容反应池那段，清水理论消耗 3210→3120、液化息壤理论产量 150→60，
     排查树原来全是 ✓，靠人工比简报才找到反应池）"""
@@ -308,7 +309,8 @@ def fluid_cons_drop(cur: dict, ref: dict, fluid: str, plan: bp.Blueprint, areas_
         return st
     st.status = "bad"
     st.cause = (f"理论消耗比基准少 {drop}：约 {drop / unit:.0f} 台用{fluid}的设备（{unit:g}/分一台）停了、没在算"
-                f"——产物爆仓整池停、缺别的原料、被关或断电，或者缺{fluid}（水管断了/准入口被关），它们都不出现在理论值里")
+                f"——产物爆仓整池停、缺别的原料，或者缺{fluid}（水管断了/准入口被关），这样的设备不出现在理论值里"
+                f"（手动关掉的设备不会让理论值变少）")
     stalled = _pools_stalled_by_full(plan, areas_all, fid_of(fluid), full)
     if stalled:
         st.facts.append("这些反应池有产物已爆仓，多配方池子一个产物满了整池停、吃" + fluid + "的那条也跟着停（不是缺" + fluid + "）："
@@ -433,7 +435,7 @@ def run(brief: dict, plan: bp.Blueprint, region: str | None = None, power: str |
         if ref_theo and theo < ref_theo * THEO_UNDER:
             missing = (ref_theo - theo) / rate if rate else 0
             bad = True
-            st.cause = f"理论 {theo} 低于基准 {ref_theo}：约 {missing:.0f} 台{b['machine']}没在算——没原料（缺水/缺料）、断电或被关了，它们不出现在理论值里"
+            st.cause = f"理论 {theo} 低于基准 {ref_theo}：约 {missing:.0f} 台{b['machine']}没在算——没原料（缺水/缺料）或没设配方，这样的设备不出现在理论值里（手动关掉的设备不会让理论值变少）"
         elif goal and curp < goal * UNDER:
             down = next((b2["product"] for b2 in BRANCHES if b2.get("needs") == p and full(cur.get(b2["product"]))), None)
             if down:
@@ -445,7 +447,7 @@ def run(brief: dict, plan: bp.Blueprint, region: str | None = None, power: str |
                 steps.append(st)
                 continue
             bad = True
-            st.cause = f"当前 {curp} 只有{'目标' if goal != theo else '理论'} {goal:g} 的 {int(curp * 100 // goal)}%：设备在算但降速"
+            st.cause = f"当前 {curp} 只有{'目标' if goal != theo else '理论'} {goal:g} 的 {int(curp * 100 // goal)}%：设备在算但降速（有设备被手动关掉也是这样：关掉的设备仍计入理论值）"
         if not bad:
             st.status = "ok"
             st.cause = f"当前 {curp} / 理论 {theo}，满速"
@@ -502,6 +504,30 @@ def run(brief: dict, plan: bp.Blueprint, region: str | None = None, power: str |
                 st.advice = hints.get(p, "") or "按错题本对应条目排查"
         steps.append(st)
     return [asdict(s) for s in steps]
+
+
+def confirm(first: list[dict], second: list[dict]) -> tuple[list[dict], list[str]]:
+    """两次简报的排查树对一遍：两次都 ✗ 的才算 ✗。返回（以第二次为准的排查树, 复读后恢复正常的步骤标题）。
+    简报的「当前」值是一小段时间的平均，刚断过水、刚改过线、池子正在换配方时会低一阵子。
+    2026-11-12 群友 H：01:34 灼铜块 60/90 打 ✗，02:13 和 02:32 两次都是 90/90，中间什么都没动。
+    - 第一次 ✗、复读正常（✓ 或只是提示 ?）：按复读的算，原因里注明第一次读到的。
+      2026-11-12 作者基地实跑碰到一次真的：第一次 液化息壤 理论产量 150→120（一个池子那一刻没在算），「清水理论消耗」打 ✗，
+      85 秒后复读是 150，这一步回到提示；
+    - 第一次正常、复读才 ✗：两次不一致，降成提示（?），请用户过一会儿再跑；
+    - 两次都 ✗：照旧。"""
+    old = {s["key"]: s for s in first}
+    out, cleared = [], []
+    for s in second:
+        s = dict(s)
+        o = old.get(s["key"])
+        if o and o["status"] == "bad" and s["status"] in ("ok", "info"):
+            s["cause"] = f"{s['cause'] or '正常'}（第一次读是 ✗：{o['cause']}；复读没再出现，是一时的波动）"
+            cleared.append(s["title"])
+        elif o and o["status"] == "ok" and s["status"] == "bad":
+            s["status"] = "info"
+            s["cause"] = f"两次读数不一致：第一次正常，复读时 {s['cause']}。多半是一时的波动，过几分钟再跑一次快速诊断，还是这样再去看"
+        out.append(s)
+    return out, cleared
 
 
 def to_text(steps: list[dict]) -> list[str]:

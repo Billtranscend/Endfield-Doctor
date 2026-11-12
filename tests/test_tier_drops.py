@@ -112,7 +112,8 @@ def test_base_rate_packer_cut_still_reported():
         setv("铁制零件", None, theo_cons=60, cur_cons=30)
         setv("蓝铁瓶", G2, theo_cons=0, cur_cons=0)
     t = titles(inject(change))
-    assert any(x.startswith("蓝铁瓶(芽针溶液) 理论消耗") for x in t) and any(x.startswith("铁制零件 理论消耗") for x in t), t
+    # 蓝铁瓶(芽针溶液)、铁制零件 两条在同一条线上，现在合成一条问题，标题点名没在算的芽针针剂（combine.drop_groups，见 tests/test_calm.py）
+    assert len(t) == 1 and t[0].startswith("芽针针剂 这条线有设备没在算：2 种物品"), t
 
 
 def test_exhausted_because_producer_cut_is_problem():
