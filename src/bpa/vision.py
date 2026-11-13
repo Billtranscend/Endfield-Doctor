@@ -38,12 +38,26 @@ def wr(p, im, q: int | None = None) -> None:
 
 
 # ------------------------------------------------------------------ 滚动条 / 拼接
+def longest_run(mask: np.ndarray, min_len: int = 20) -> tuple[int, int] | None:
+    """一行（列）里最长的一段连续 True 的 (起, 止)；不到 min_len 返回 None。"""
+    idx = np.where(mask)[0]
+    if len(idx) == 0:
+        return None
+    cut = np.where(np.diff(idx) > 1)[0]
+    starts, ends = np.r_[idx[0], idx[cut + 1]], np.r_[idx[cut], idx[-1]]
+    k = int(np.argmax(ends - starts))
+    return (int(starts[k]), int(ends[k])) if ends[k] - starts[k] + 1 > min_len else None
+
+
 def thumbs(im):
-    """底部、右侧滚动条滑块的 (起, 止)。"""
+    """底部、右侧滚动条滑块的 (起, 止)：取那一行（列）里最长的一段深色。
+    原来取「第一个到最后一个深色像素」，滑块外面有零星深色像素时会把滑块读长。2026-11-13 issue #1「应龙关上」49×32：
+    第 04 帧 x=27–28 有 2 个深色像素，滑块 (140, 619) 被读成 (27, 619)，先验位移 797（真值 585），
+    这一帧贴偏了 213 px，后面几帧跟着偏 8 px，拼图宽 1723（应为 1703）。"""
     g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-    r = np.where(g[679, 0:940] < 90)[0]
-    c = np.where(g[60:690, 944] < 90)[0] + 60
-    return ((int(r[0]), int(r[-1])) if len(r) > 20 else None), ((int(c[0]), int(c[-1])) if len(c) > 20 else None)
+    r = longest_run(g[679, 0:940] < 90)
+    c = longest_run(g[60:690, 944] < 90)
+    return r, ((c[0] + 60, c[1] + 60) if c else None)
 
 
 def _crop(im):
@@ -78,6 +92,20 @@ def _best_near(v, prior, tol=15):
     return np.median(v[s2], axis=0), int(s2.sum())
 
 
+def scroll_scale(samples: list[float], thumb_len: float | None, view: float, near: float = 0.12) -> float:
+    """滑块移动 1 px，画面移动多少 px（负数）。先按滑块长度算（-有效视野 / 滑块长），帧间实测的比例只收和它差 near 以内的：
+    实测值取的是 ORB 票数最多的位移，蓝图里有重复结构时票最多的可能是假匹配。
+    2026-11-13 issue #1「武陵城右下」41×44：四步横移里两步认成 ±50 px（真值 ±496），比例样本 [-1.57, -1.57, 0.16, 0.16]，
+    中位数 -0.71，先验位移只有真值的 45%，ORB 在先验 ±15 px 里找不到票，拼图横向少了 276 px、中间错位一道。
+    按滑块长度算是 -900 / 572.5 = -1.572，正好是真值。没有滑块（蓝图在这个方向不用滚）时照旧用实测值。"""
+    prior = -view / thumb_len if thumb_len else None
+    if prior is not None:
+        samples = [s for s in samples if abs(s - prior) <= abs(prior) * near]
+    if len(samples) >= 2:
+        return float(np.median(samples))
+    return prior if prior is not None else -1.0
+
+
 def stitch(frames: list[np.ndarray], log=print) -> np.ndarray:
     """按拍摄顺序拼接预览帧。帧间位移先由滚动条推算，ORB 只在先验 ±15 px 内投票。"""
     T = [thumbs(im) for im in frames]
@@ -97,8 +125,8 @@ def stitch(frames: list[np.ndarray], log=print) -> np.ndarray:
             sy.append(ky * 2 / (b[1][0] - a[1][0]))
     lx = np.median([t[0][1] - t[0][0] for t in T if t[0]]) if any(t[0] for t in T) else None
     ly = np.median([t[1][1] - t[1][0] for t in T if t[1]]) if any(t[1] for t in T) else None
-    SX = float(np.median(sx)) if len(sx) >= 2 else (-VIEW_EFF[0] / lx if lx else -1.0)
-    SY = float(np.median(sy)) if len(sy) >= 2 else (-VIEW_EFF[1] / ly if ly else -1.0)
+    SX = scroll_scale(sx, lx, VIEW_EFF[0])
+    SY = scroll_scale(sy, ly, VIEW_EFF[1])
     pos = [np.zeros(2)]
     for i, v in enumerate(V2):
         a, b = T[i], T[i + 1]
@@ -124,17 +152,32 @@ def stitch(frames: list[np.ndarray], log=print) -> np.ndarray:
 
 
 def size_ok(mosaic: np.ndarray, size_cells: tuple[int, int] | None, tol_px: int = 20) -> tuple[bool, str]:
-    """拼图尺寸自检：应等于 蓝图尺寸 × 34.75。"""
+    """拼图尺寸自检：应等于 蓝图尺寸 × 34.75。
+    - 蓝图在某个方向比画布窄时，拼图在那个方向最小也是画布那么大（926×608），按画布核对。
+      2026-11-13 issue #1：「武陵左上」26×48 拼图 926×1665、「应龙关小组件」13×31 拼图 926×1085，高度都对，原来按 904 / 452 核对打了 ✗。
+    - 两个方向都比画布小的蓝图，游戏里是放大显示的（14×11 的「息壤三循环」），比例不是 34.75，尺寸没法核对，仍然不过，说明原因。"""
     if not size_cells:
         return True, "没读到蓝图尺寸，跳过尺寸自检"
     ew, eh = size_cells[0] * CELL, size_cells[1] * CELL
     h, w = mosaic.shape[:2]
-    ok = abs(w - ew) <= tol_px and abs(h - eh) <= tol_px
-    return ok, f"拼图 {w}×{h} px，应为 {ew:.0f}×{eh:.0f}（{size_cells[0]}×{size_cells[1]} 格）"
+    vw, vh = V[2] - V[0] + 2, V[3] - V[1] + 2
+    cells = f"{size_cells[0]}×{size_cells[1]} 格"
+    if ew <= vw and eh <= vh:
+        return False, f"拼图 {w}×{h} px；蓝图只有 {cells}，比预览画布小，游戏里放大显示，尺寸没法核对"
+    cw, ch = max(ew, vw), max(eh, vh)
+    ok = abs(w - cw) <= tol_px and abs(h - ch) <= tol_px
+    narrow = "；" + "、".join(n for n, small in (("宽", ew < vw), ("高", eh < vh)) if small) + "度比画布小，按画布核对" if ew < vw or eh < vh else ""
+    return ok, f"拼图 {w}×{h} px，应为 {cw:.0f}×{ch:.0f}（{cells}{narrow}）"
 
 
 # ------------------------------------------------------------------ 图标识别
-TPL_NAMES = {"单_出口": "暗管出口", "单_入口": "暗管入口", "多_出口": "多口暗管出口", "多_入口": "多口暗管入口", "供电桩": "息壤供电桩"}
+TPL_NAMES = {"单_出口": "暗管出口", "单_入口": "暗管入口", "多_出口": "多口暗管出口", "多_入口": "多口暗管入口", "供电桩": "息壤供电桩",
+             "单_出口_未连接": "暗管出口"}
+# 图标下面带红色标记、右上角没有放大镜角标的暗管 = 外接的：对面的口不在这张蓝图里（蓝图作者 2026-11-13 确认：
+# 「应龙关下那个水暗管和惰气暗管是外接的」）。预览里点它看不了连接线，所以算进暗管数量、照样当锚点，但读蓝图时不去点它。
+# issue #1「应龙关下」「应龙关上」设备一览各有 2 个暗管出口，拼图上是这个样子，和原来的模板只有 0.44 分，一个都没认到。
+# 入口的这种样子还没见过样本，没有模板。
+OPEN_TPLS = {"单_出口_未连接"}
 _tpl = None
 
 
@@ -162,7 +205,7 @@ def detect(mosaic: np.ndarray, thr: float = 0.72) -> list[dict]:
     for s, x, y, n in hits:
         if all(abs(x - k[1]) > 40 or abs(y - k[2]) > 40 for k in keep):
             keep.append((s, x, y, n))
-    return [{"name": TPL_NAMES[n], "p": [x, y], "score": round(s, 3)} for s, x, y, n in keep]
+    return [{"name": TPL_NAMES[n], "p": [x, y], "score": round(s, 3), **({"open": True} if n in OPEN_TPLS else {})} for s, x, y, n in keep]
 
 
 PIPE_NAMES = ("暗管入口", "暗管出口", "多口暗管入口", "多口暗管出口")

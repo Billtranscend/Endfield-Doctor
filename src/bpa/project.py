@@ -132,7 +132,7 @@ def status(name: str) -> dict:
             lgj = _jload(bd / "logistics.json", {}) or {}
             bps[b] = {"base": base, "devices": (bd / "devices.json").exists(), "mosaic": (bd / "mosaic.png").exists(),
                       "size_check": anc.get("size_check"), "pipe_check": anc.get("pipe_check"),
-                      "pipes": anc.get("pipe_count", 0),
+                      "pipes": anc.get("pipe_count", 0), "pipes_open": anc.get("pipe_open", 0),
                       "links": {k: sum(1 for s in st.values() if s == k) for k in ("双向", "单向", "矛盾", "未配")} if st else None,
                       "logistics": {t: sum(1 for o in lgj.get("items", []) if o["type"] == t) for t in LG.LG_TYPES + [LG.GATE]} if lgj else None,
                       "logistics_bad": lgj.get("presence_bad") if lgj else None}
@@ -181,13 +181,14 @@ def process_blueprint(name: str, bp: str, size: tuple[int, int] | None = None, l
     devices = _jload(bd / "devices.json", {}) or {}
     pipes = [f for f in found if f["name"] in V.PIPE_NAMES]
     ok_pipe, got, exp = V.pipe_count_check(pipes, devices)
+    n_open = sum(1 for f in pipes if f.get("open"))  # 外接的暗管（带红标，对面的口不在这张蓝图里，见 vision.OPEN_TPLS）：计数、当锚点，不去点
     res = {"size": size, "size_check": ok_size, "size_msg": msg_size, "pipe_check": ok_pipe, "pipe_got": got, "pipe_expected": exp,
-           "pipe_count": len(pipes), "pylons": sum(1 for f in found if f["name"] == "息壤供电桩"), "anchors": found}
+           "pipe_count": len(pipes), "pipe_open": n_open, "pylons": sum(1 for f in found if f["name"] == "息壤供电桩"), "anchors": found}
     _jsave(bd / "anchors.json", res)
     items = LG.detect(mos)
     bad = LG.presence_check(items, devices)
     _jsave(bd / "logistics.json", {"items": items, "presence_bad": bad})
-    log(f"  {bp}：{msg_size}{'' if ok_size else '  ← 尺寸不对，拼接可能错格'}；暗管 {len(pipes)} 个"
+    log(f"  {bp}：{msg_size}{'' if ok_size else '  ← 尺寸不对，拼接可能错格'}；暗管 {len(pipes)} 个{f'（其中 {n_open} 个外接）' if n_open else ''}"
         f"{'，和设备一览一致' if ok_pipe else f'，和设备一览不一致：识别 {got}，一览 {exp}'}；息壤供电桩 {res['pylons']} 个")
     cnt = {t: sum(1 for o in items if o["type"] == t) for t in LG.LG_TYPES + [LG.GATE]}
     log("  物流件：" + "，".join(f"{t} {n}" for t, n in cnt.items() if n)
@@ -217,7 +218,10 @@ def read_blueprints(name: str, game, only: list[str] | None = None, log=print, c
                 shutil.rmtree(bd / "frames")
             game.capture(bd)
             res = process_blueprint(name, bp, size, log)
-            pipes = [a for a in res["anchors"] if a["name"] in V.PIPE_NAMES]
+            # 外接的（红标）不点：预览里它没有放大镜，点了也不出连接线；配对候选里也不该有它
+            pipes = [a for a in res["anchors"] if a["name"] in V.PIPE_NAMES and not a.get("open")]
+            if (bd / "links.json").exists() and not pipes:
+                (bd / "links.json").unlink()  # 重读后一个可点的都没有了：旧的配对结果作废
             if pipes and not cancelled():
                 log(f"  暗管 {len(pipes)} 个：逐个单击确认连接")
                 mos = V.rd(bd / "mosaic.png")

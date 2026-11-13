@@ -761,7 +761,11 @@ async function bpaRefresh() {
     for (const n of names) {
       const b = s.blueprints[n] || {};
       const f = (bs.fit || {})[n];
-      const lk = b.links ? `双向 ${b.links['双向']} / 单向 ${b.links['单向']} / 未配 ${b.links['未配'] + b.links['矛盾']}` : (b.pipes ? '<span class="muted">未点</span>' : '<span class="muted">无暗管</span>');
+      // 外接的暗管（预览里带红标、没有放大镜：对面的口不在这张蓝图里）不去点，单独写出来
+      const openNote = b.pipes_open ? ` / 外接 ${b.pipes_open}` : '';
+      const lk = b.links ? `双向 ${b.links['双向']} / 单向 ${b.links['单向']} / 未配 ${b.links['未配'] + b.links['矛盾']}${openNote}`
+        : (b.pipes && b.pipes === b.pipes_open ? `<span class="muted">外接 ${b.pipes_open}（不用点）</span>`
+          : b.pipes ? '<span class="muted">未点</span>' : '<span class="muted">无暗管</span>');
       const fit = f ? (f.ok ? `<span class="ok">✓ 旋转 ${f.rot}° 锚点 ${f.inliers}/${f.total}</span>` : `<span class="bad">不确定（锚点 ${f.inliers}/${f.total}，次优 ${f.second}）</span>`)
                     : (bs.error ? `<span class="bad">${esc(bs.error)}</span>` : '<span class="muted">—</span>');
       const lgc = b.logistics ? Object.values(b.logistics).reduce((a, c) => a + c, 0) : null;
