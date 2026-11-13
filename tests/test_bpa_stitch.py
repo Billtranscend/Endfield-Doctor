@@ -9,9 +9,17 @@
   D. 「应龙关上」49×32：有一帧滚动条那一行在滑块外面多了 2 个深色像素，滑块 (140, 619) 被读成 (27, 619)，
      那一帧贴偏 213 px，拼图宽 1723（应为 1703）→ vision.thumbs 取最长的一段深色（longest_run）。
 
+
+第二轮（他升到 0.10.7 把 8 张重读了一遍：尺寸 8 张全过，「武陵城左下」37×47 还有两处）：
+  E. 外接的暗管入口、外接的多口暗管入口没有模板，被「单_出口_未连接」以 0.90 / 0.85 分认成外接出口：总数 8 个对，
+     类型分错，暗管数量 ✗ → 模板「单_入口_未连接」「多_入口_未连接」。
+  F. 对角的一对暗管（出口 (63,64)、入口 (1089,1562)，全长 1816）只配上单向：从出口点出去，线的最后一段落在空白画布上，
+     渐隐后读到 (973,1397) 就停了，差 202，超出出口这边的余量 70 → vision.pick_partner 原来的窗口里没有暗管时按距离放宽。
+
 样本 tests/data/bpa_pipes/：open_exit_left / open_exit_right = 他「应龙关下」拼图上那两个红标出口；
-paired_exit / paired_entry = 他「武陵城右下」上有配对的出口、入口（带放大镜）。原始预览帧 25 MB，不进仓库；
-A 的数字（滑块长度、四步的实测比例）取自那 8 帧的离线重放。
+paired_exit / paired_entry = 他「武陵城右下」上有配对的出口、入口（带放大镜）；
+open_entry / open_multi_entry = 他「武陵城左下」上外接的入口、外接的多口入口。原始预览帧 25 MB，不进仓库；
+A 的数字（滑块长度、四步的实测比例）取自那 8 帧的离线重放，F 的端点取自他的连接线截图的离线重放。
 """
 import sys
 from pathlib import Path
@@ -116,6 +124,21 @@ def test_open_exit_is_recognised_and_flagged():
         assert found[0]["score"] > 0.9
 
 
+def test_open_entries_are_recognised_as_entries():
+    """「武陵城左下」：外接的入口、外接的多口入口。0.10.7 都认成了「暗管出口」（外接）。"""
+    for name, want in (("open_entry.png", "暗管入口"), ("open_multi_entry.png", "多口暗管入口")):
+        found = V.detect(V.rd(DATA / name))
+        assert len(found) == 1 and found[0]["name"] == want and found[0].get("open") is True, (name, found)
+        assert found[0]["score"] > 0.9
+
+
+def test_open_exits_stay_exits():
+    """反例：加了外接入口的模板以后，外接出口还是出口（两种样子只差图标里三角的朝向）。"""
+    for name in ("open_exit_left.png", "open_exit_right.png"):
+        found = V.detect(V.rd(DATA / name))
+        assert [f["name"] for f in found] == ["暗管出口"], (name, found)
+
+
 def test_paired_pipes_are_not_flagged():
     """反例：有配对的出口、入口（带放大镜）不带 open 标记，名字也不变。"""
     for name, want in (("paired_exit.png", "暗管出口"), ("paired_entry.png", "暗管入口")):
@@ -132,6 +155,37 @@ def test_open_pipes_count_but_are_not_clicked():
     ok, got, exp = V.pipe_count_check(pipes, {"暗管出口": 2})
     assert ok and got["暗管出口"] == 2
     assert [a for a in pipes if not a.get("open")] == []  # project.read_blueprints 里的筛法
+
+
+# ---------------------------------------------------------------- F. 连接线远端渐隐
+
+LEFT_BOTTOM = [{"name": "暗管出口", "p": [336, 643]}, {"name": "暗管入口", "p": [1089, 1562]}, {"name": "暗管入口", "p": [1225, 95]},
+               {"name": "暗管出口", "p": [1189, 1565]}, {"name": "暗管入口", "p": [65, 1255]}, {"name": "暗管出口", "p": [63, 64]}]
+
+
+def pick(pipes, i, end):
+    others = [(j, c) for j, c in enumerate(pipes) if j != i]
+    r = V.pick_partner(pipes[i]["p"], end, pipes[i]["name"], [c for _, c in others])
+    return None if r is None else others[r[1]][0]
+
+
+def test_faded_line_from_exit_still_finds_partner():
+    """「武陵城左下」对角那一对：从出口 (63,64) 点出去，线读到 (973,1397) 就淡得读不到了，离入口 (1089,1562) 还差 202。"""
+    assert pick(LEFT_BOTTOM, 5, (973, 1397)) == 1
+    assert pick(LEFT_BOTTOM, 1, (180, 235)) == 5  # 反方向（从入口点出去）原来就配得上，照旧
+
+
+def test_exit_prefers_partner_within_normal_reach():
+    """反例：同一条直线上有两个入口，线读到头的那个（差 55）就是伙伴，不能因为放宽了就取更远的那个。"""
+    pipes = [{"name": "暗管出口", "p": [0, 500]}, {"name": "暗管入口", "p": [1500, 500]}, {"name": "暗管入口", "p": [1700, 500]}]
+    assert pick(pipes, 0, (1445, 500)) == 1
+
+
+def test_line_far_too_short_matches_nothing():
+    """反例：线只读到一半（中间被挡、没跟上），不能硬配：放宽的余量只有距离的 16% + 20。"""
+    assert pick(LEFT_BOTTOM, 5, (600, 848)) is None
+    pipes = [{"name": "暗管出口", "p": [0, 500]}, {"name": "暗管出口", "p": [1500, 500]}]
+    assert pick(pipes, 0, (1300, 500)) is None  # 类型相同的不配
 
 
 if __name__ == "__main__":

@@ -110,6 +110,66 @@ def block_shift(a, b, expect=None, radius: int = 60):
     return float(-v[ok, 0].mean()), float(-v[ok, 1].mean()), int(ok.sum())
 
 
+STILL_DIFF = 6.0  # 有效区平均灰度差小于这个 = 画面没变（按了方向键镜头没动：顶到边了）
+PAN_SPEED = 711.0  # 俯瞰里按住方向键，镜头每秒走多少近景像素（滚入 7 格时；11-07 至 11-13 五次实测 710–717，横竖一样）
+
+
+def frame_diff(a, b) -> float:
+    """两屏有效区的平均灰度差。"""
+    X0, Y0, X1, Y1 = _EFF
+    ga = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY)[Y0:Y1, X0:X1].astype(np.float32)
+    gb = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY)[Y0:Y1, X0:X1].astype(np.float32)
+    return float(np.abs(ga - gb).mean())
+
+
+def step_shift(prev, cur, axis: int, sign: int, typical: float):
+    """按了一步方向键以后，镜头沿 axis（0 横、1 竖）走了多少 → (位移, how, sure, alt)。
+    sign：这一步该往哪边（+1 右 / 下，−1 左）；typical：正常一步多远（正数，按键时长固定所以是已知的）。
+    how：still（画面没变）/ block / orb / nominal（量不出，或量出来不像一步按键：按正常步长暂记）。
+    sure=False 只跟着 nominal：这一步可能是整步（重复结构上量不出），也可能是顶到边的半步，
+    调用方再按一步看画面动不动才知道。alt：另一种读法（没有就 None）——
+    nominal 时是 ORB 量到的同方向小步；block 量到整步时是「不给预期的块匹配量到的同方向小步」：
+    按预期量到整步、不给预期却量到小步，两个里有一个错了周期（应龙关 11-08 是小步错：249 量成 44；
+    顶到边的半步旁边有两台一样的机器时是整步错），也要看下一步画面停不停。
+
+    只收「像一步按键」的测量：另一个方向 < 40 px，本方向同号且在正常步长的 0.6–1.4 倍里。
+    2026-11-13 issue #1：一位作者的武陵城一排排一样的精炼炉（横向约 205 px 一台），块匹配峰不唯一没结果，
+    退到 ORB 量成 −20（= 390 − 2×205）；第一次下移被右边一列水泵（约 171 px 一台）量成 −262（= 250 − 3×171）。
+    原来把「ORB 量到的步长 < 正常的 30%」直接当顶到边收行，下移连正负号都不查：13 行里 4 行没拍完，第 0 行和其余各行差 512 px。
+    顺序：块匹配 → 按正常步长当预期的块匹配（±80）→ 块匹配量到的同方向小步（峰唯一，是顶到边的半步）→ ORB（只收整步）。"""
+    if frame_diff(prev, cur) < STILL_DIFF:
+        return 0.0, "still", True, None
+    o = 1 - axis
+
+    def kind(m):
+        if m is None or abs(m[o]) >= 40:
+            return "bad"
+        v = sign * m[axis]
+        return "full" if 0.6 * typical <= v <= 1.4 * typical else "part" if -3 <= v < 0.6 * typical else "bad"
+
+    m = block_shift(prev, cur)
+    k = kind(m)
+    if k == "full":
+        return float(m[axis]), "block", True, None
+    exp = [0.0, 0.0]
+    exp[axis] = sign * typical
+    m2 = block_shift(prev, cur, expect=tuple(exp), radius=80)
+    if kind(m2) == "full":
+        return float(m2[axis]), "block", True, (float(m[axis]) if k == "part" else None)
+    if k == "part":
+        return float(m[axis]), "block", True, None
+    r = similarity(prev, cur)
+    alt = None
+    if r and r[3] >= 30:
+        mo = (-r[1], -r[2])
+        ko = kind(mo)
+        if ko == "full":
+            return float(mo[axis]), "orb", True, None
+        if ko == "part":
+            alt = float(mo[axis])
+    return float(sign * typical), "nominal", False, alt
+
+
 REFINE_TOL = 12  # 离线重算：块匹配和扫描时记的步长差多少 px 以上才改（11-07 三次旧扫描里最大差 9 px，量错的都差 85 px 以上）
 
 
@@ -391,7 +451,10 @@ def scan(p, area: str, out_dir: Path, extent: tuple[int, int] | None = None, log
                 vals.append(abs(r[1] if direction == "right" else r[2]) / 0.6)
         speeds[direction] = vals
     rec["speeds"] = speeds
-    nominal = float(np.median([v for vs in speeds.values() for v in vs])) if any(speeds.values()) else 593 * s
+    # 标定也会被重复结构量错（issue #1：下移标定量成 79、257 px/s），只收和已知速度差不多的
+    pan = PAN_SPEED * s / ZOOM_NEAR
+    okv = [v for vs in speeds.values() for v in vs if 0.8 * pan <= v <= 1.25 * pan]
+    nominal = float(np.median(okv)) if okv else pan
 
     p.hold(PAN_KEYS["up"], 3.0); time.sleep(0.3)
     p.hold(PAN_KEYS["left"], 4.0); time.sleep(0.6)
@@ -404,25 +467,35 @@ def scan(p, area: str, out_dir: Path, extent: tuple[int, int] | None = None, log
     row, n = 0, 0
     prev = p.shot()
     good_x, good_y = [], []
+    vpend = None  # 下移的两种读法，含义同横移的 pend（见下）：("A", 整步的 y) / ("B", 小步的 y)
 
-    def sane(v, goods):
-        """步长一致性：<30% 中位 = 顶到边界（如实记）；30–60% 或 >140% = 量错（周期布局会让匹配错一个周期），改用中位。"""
-        if len(goods) >= 2:
-            med = float(np.median(goods))
-            if abs(v) < 0.3 * med:
-                return v, False
-            if not (0.6 * med <= abs(v) <= 1.4 * med):
-                return (med if v >= 0 else -med), True
-        return v, False
+    def typical(goods, hold):
+        """正常一步多远：量到过 2 步以上用它们的中位，否则按速度 × 按键时长。"""
+        return float(np.median(goods)) if len(goods) >= 2 else nominal * hold
+
+    edge_x = {"left": 0.0, "right": None}  # 最近一次确认顶到边时的镜头 x（地图边界是直的，各行一样；左边界就是起点）
+    last_saved = [None, None]  # 最近存的那一屏：scan.json 里的条目、它的镜头位置数组（顶边对齐时回改）
+    saved_all = []  # 每一屏的（条目, 镜头位置数组）：下移改记时整行一起改
+
+    def set_last_x(x, step=None):
+        if last_saved[0] is not None:
+            last_saved[0]["cam_near"][0] = float(x)
+            last_saved[1][0] = x
+            if step:
+                last_saved[0]["step"] = step
+
+    def shift_row(r, dy):
+        for ent, arr in saved_all:
+            if ent["row"] == r:
+                ent["cam_near"][1] += float(dy)
+                arr[1] += dy
 
     def has_labels():
         boxes = p.ocr_boxes([260, 80, 840, 460])
         return sum(1 for _, t in boxes if len(t) >= 2 and re.match(r"^[一-鿿]", t)) >= 2
 
     def still(a, b):
-        ga = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY)[80:540, 260:1100].astype(np.float32)
-        gb = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY)[80:540, 260:1100].astype(np.float32)
-        return float(np.abs(ga - gb).mean()) < 6.0
+        return frame_diff(a, b) < STILL_DIFF
 
     ocr_cache, names = {}, _names()
     n_rot = n_skip = 0
@@ -469,7 +542,7 @@ def scan(p, area: str, out_dir: Path, extent: tuple[int, int] | None = None, log
             rn = fname.replace(".png", f"_r{i}.png")
             _wr(out_dir / "near" / rn, cur)
             out.append(rn)  # OCR 留给识别
-        covered.append(np.array(cam_now, float))
+        covered.append(cam_now)
         for attempt in range(4):
             _ctrl_r(p)
             cur = settle(cur)
@@ -490,8 +563,11 @@ def scan(p, area: str, out_dir: Path, extent: tuple[int, int] | None = None, log
         _wr(out_dir / "near" / f"{n:03d}.png", img)
         ent = {"file": f"{n:03d}.png", "cam_near": list(map(float, c)), "row": r, "step": how}
         rec["screens"].append(ent)
+        arr = np.array(c, float)
+        last_saved[:] = [ent, arr]
+        saved_all.append((ent, arr))
         if how != "still":  # 同一位置重复存的不再补拍
-            rot = rotate_shots(img, ent["file"], np.array(c, float))
+            rot = rotate_shots(img, ent["file"], arr)
             if rot:
                 ent["rot"] = rot
         how = "still"  # 同一位置再存一屏（顶到边）时
@@ -499,86 +575,105 @@ def scan(p, area: str, out_dir: Path, extent: tuple[int, int] | None = None, log
     while not cancelled():
         need_overhead(f"第 {row + 1} 行开始前")
         direction = "right" if row % 2 == 0 else "left"
+        sg = 1 if direction == "right" else -1
+        side = "右" if sg > 0 else "左"
+        # 收行只认一件事：再按一步，画面真的停了（帧差 < STILL_DIFF，或块匹配确认没动）。量到的步长小不算。
+        unsure, x0, alt = 0, 0.0, None  # 连着几步量不出（按正常步长暂记的）；第一步量不出之前的 x；那一步 ORB 量到的同方向小步
+        # 上一步有两种读法时留着另一种，看这一步画面停不停再定：
+        #   ("A", 整步的 x)：记的是块匹配量到的小步；这一步画面还在走 → 不是顶到边，改成整步
+        #   ("B", 小步的 x)：记的是按预期量到的整步；这一步画面停了 → 上一步是顶到边的半步，改成小步
+        pend = None
+        clamped = 0  # 暂记的位置连着几次被已知边界挡住
         while not cancelled():
             save(prev, cam, row)
             if direction == "right" and cam[0] >= W - 900 and not has_labels():
                 break
+            if cam[0] > W - 1280 + 2 * nominal * STEP_X or cam[0] < -2 * nominal * STEP_X or clamped >= 3:
+                # 兜底：一直量不出、画面又一直在变（不该发生）。记的位置已经在边界上 / 地图外面两步远，别无限走下去
+                log(f"  这一行记到 x={cam[0]:.0f}，一直量不出也不见画面停，收行（位置不可信，靠离线复核）")
+                break
             p.hold(PAN_KEYS[direction], STEP_X); time.sleep(0.5)
             cur = p.shot()
-            m = block_shift(prev, cur)
-            stuck = still(prev, cur)
-            if m and not stuck and len(good_x) >= 2 and not (0.6 * np.median(good_x) <= abs(m[0]) <= 1.4 * np.median(good_x)):
-                # 不像一步按键（一排相同机器错一个周期，或真的顶到边）：按正常步长当预期再量；量不到才当顶边
-                sg = 1 if direction == "right" else -1
-                m2 = block_shift(prev, cur, expect=(sg * float(np.median(good_x)), 0.0), radius=80)
-                if m2:
-                    log(f"  横向一步块匹配量成 {m[0]:.0f}，按预期重量 {m2[0]:.0f}")
-                    m = m2
-            if m and abs(m[1]) < 40:  # 块匹配测得出就信它（小步 = 真的顶到边了）
-                dx, how = m[0], "block"
-                if not stuck and len(good_x) >= 2 and abs(dx) < 0.3 * np.median(good_x):
-                    stuck = True
-                elif not stuck:
-                    good_x.append(abs(dx))
-                if stuck and abs(dx) < 3:
-                    dx = 0.0
-                cam[0] += dx
-                prev = cur
-                if stuck:
-                    save(prev, cam, row)
-                    break
-                continue
-            r = similarity(prev, cur)
-            ok = r and r[3] >= 30 and abs(r[2]) < 40
-            dx = -r[1] if ok else (nominal * STEP_X * (1 if direction == "right" else -1))
-            how = "orb" if ok else "nominal"
-            if stuck:
-                dx, how = 0.0, "still"
-            elif len(good_x) >= 2 and abs(dx) < 0.3 * np.median(good_x):
-                stuck = True
-            else:
-                dx2, changed = sane(dx, good_x)
-                if changed:
-                    how = "median"
-                    log(f"  横向步长量到 {dx:.0f}，和前面 {np.median(good_x):.0f} 差太多，按 {dx2:.0f} 记")
-                else:
-                    good_x.append(abs(dx))
-                dx = dx2
-            cam[0] += dx
+            typ = typical(good_x, STEP_X)
+            dx, how, sure, a2 = step_shift(prev, cur, 0, sg, typ)
             prev = cur
-            if stuck:
+            stopped = how == "still" or (how == "block" and abs(dx) < 3)
+            if pend and pend[0] == "A" and not stopped:
+                log(f"  上一步量成小步（记到 x={cam[0]:.0f}），这一步画面还在走：不是顶到边，按正常步长改记到 x={pend[1]:.0f}")
+                cam[0] = pend[1]
+                set_last_x(cam[0], "nominal")
+            elif pend and pend[0] == "B" and stopped:
+                log(f"  上一步按预期量成整步（记到 x={cam[0]:.0f}），这一步画面停了：上一步是顶到{side}边的半步，改记到 x={pend[1]:.0f}")
+                cam[0] = pend[1]
+                set_last_x(cam[0])
+            if stopped:
+                if unsure:
+                    # 前面有量不出、按正常步长暂记的步，现在画面停了：最后那一步其实是顶到边的半步，暂记的位置要改
+                    if edge_x[direction] is not None:
+                        cam[0] = edge_x[direction]
+                        log(f"  画面停了：顶到{side}边，位置对齐到{side}边界 x={cam[0]:.0f}")
+                    elif unsure == 1 and alt is not None and pend is None:
+                        cam[0] = x0 + alt
+                        log(f"  画面停了：顶到{side}边，还没有{side}边界的位置，上一步按 ORB 量到的 {alt:.0f} 记")
+                    else:
+                        log(f"  画面停了：顶到{side}边，还没有{side}边界的位置，暂记的 x={cam[0]:.0f} 可能偏大（靠离线复核）")
+                    set_last_x(cam[0])
+                else:
+                    edge_x[direction] = float(cam[0])
+                how = "still"
                 save(prev, cam, row)
                 break
+            pend = None
+            if not sure:
+                # 量不出（重复结构），或者是顶到边的半步：按正常步长暂记，再走一步，画面停了才算到边
+                unsure += 1
+                if unsure == 1:
+                    x0, alt = float(cam[0]), a2
+                cam[0] += dx
+                if edge_x[direction] is not None and sg * (cam[0] - edge_x[direction]) > 0:
+                    cam[0] = edge_x[direction]  # 不会走出边界
+                    clamped += 1
+                log(f"  横向一步量不出，按正常步长暂记到 x={cam[0]:.0f}，再走一步看画面停不停")
+                continue
+            cam[0] += dx
+            if 0.6 * typ <= abs(dx):
+                if a2 is not None:
+                    pend = ("B", float(cam[0] - dx + a2))
+                else:
+                    good_x.append(abs(dx))
+                unsure = clamped = 0
+            else:
+                pend = ("A", float(cam[0] - dx + sg * typ))
         if cam[1] >= H - 500 and not has_labels():
             log("== 走出基地了（这一行没有设备标签）")
             break
         p.hold(PAN_KEYS["down"], STEP_Y); time.sleep(0.5)
         cur = p.shot()
-        if still(prev, cur):
+        typ = typical(good_y, STEP_Y)
+        dy2, how, sure, a2 = step_shift(prev, cur, 1, 1, typ)
+        if how == "still" or (how == "block" and abs(dy2) < 3):
+            if vpend and vpend[0] == "B":
+                log(f"  上一次下移按预期量成整步，现在到底了：那是到底前的半步，这一行的 y 从 {cam[1]:.0f} 改记到 {vpend[1]:.0f}")
+                shift_row(row, vpend[1] - cam[1])
+                cam[1] = vpend[1]
             log("== 到底了（画面没变）")
             how = "still"
             save(cur, cam, row + 1)
             break
-        m = block_shift(prev, cur)
-        if m and len(good_y) >= 2 and not (0.6 * np.median(good_y) <= abs(m[1]) <= 1.4 * np.median(good_y)):
-            m2 = block_shift(prev, cur, expect=(0.0, float(np.median(good_y))), radius=80)
-            if m2:  # 2026-11-08 应龙关：右边一列重复的机器让 249 量成 44
-                log(f"  纵向一步块匹配量成 {m[1]:.0f}，按预期重量 {m2[1]:.0f}")
-                m = m2
-        if m and abs(m[0]) < 40:
-            dy2, changed, how = m[1], False, "block"
-            if len(good_y) < 2 or abs(dy2) >= 0.3 * np.median(good_y):
-                good_y.append(abs(dy2))
-        else:
-            r = similarity(prev, cur)
-            ok = r and r[3] >= 30 and abs(r[1]) < 40
-            dy = -r[2] if ok else nominal * STEP_Y
-            dy2, changed = sane(dy, good_y)
-            how = "median" if changed else ("orb" if ok else "nominal")
-            if changed:
-                log(f"  纵向步长量到 {dy:.0f}，和前面 {np.median(good_y):.0f} 差太多，按 {dy2:.0f} 记")
+        if vpend and vpend[0] == "A":
+            log(f"  上一次下移量成小步，现在还能往下走：不是到底，这一行的 y 从 {cam[1]:.0f} 按正常步长改记到 {vpend[1]:.0f}")
+            shift_row(row, vpend[1] - cam[1])
+            cam[1] = vpend[1]
+        vpend = None
+        if not sure:  # 重复结构上量不出（或到底前的半步）：按正常步长记，离线复核靠上下行重叠改
+            log(f"  纵向一步量不出，按正常步长 {dy2:.0f} 记")
+        elif 0.6 * typ <= dy2:
+            if a2 is not None:
+                vpend = ("B", float(cam[1] + a2))
             else:
-                good_y.append(abs(dy))
+                good_y.append(dy2)
+        else:
+            vpend = ("A", float(cam[1] + typ))
         cam[1] += dy2
         prev = cur
         row += 1
