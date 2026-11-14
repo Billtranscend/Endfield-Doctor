@@ -139,7 +139,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.8", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.9", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []
@@ -469,14 +469,30 @@ class Api:
         """离线：按底账自动锚点把蓝图拼到基地上，出核对图、暗管连线图、输入端候选。"""
         return self._start("bpa", self._bpa_fit, name)
 
+    @staticmethod
+    def _bpa_image_file(name: str, base: str, which: str) -> Path:
+        """「据点图」下拉框的一项 → 磁盘上的原图。"""
+        from bpa import project as P
+        if which == "gates":  # 全项目的准入口图标分组图，不分据点
+            return P.pdir(name) / "gate_icons.png"
+        return P.pdir(name) / "base" / base / {"check": "check.jpg", "flow": "flow.jpg", "links": "links.jpg", "logistics": "logistics.jpg", "placement": "placement.jpg",
+                                               "design": "design.jpg", "composite": "composite.png"}.get(which, "check.jpg")
+
+    def bpa_reveal_image(self, name: str, base: str, which: str = "check") -> dict:
+        """在资源管理器里选中当前这张据点图的原图（界面里显示的是缩到 60% 的），方便复制、发给别人。
+        2026-11-13 issue #1 的作者问「据点图怎么拿出来」：图一直在数据目录里，只是界面上没有入口。"""
+        f = self._bpa_image_file(name, base, which)
+        if not f.exists():
+            return {"ok": False, "error": "还没生成（先跑「据点拼合」）"}
+        reveal_in_explorer(f)
+        return {"ok": True, "path": str(f)}
+
     def bpa_image(self, name: str, base: str, which: str = "check", scale: float = 0.6) -> dict:
         import cv2
-        from bpa import project as P, vision as V
-        if which == "gates":  # 全项目的准入口图标分组图，不分据点、不缩放
-            f, scale = P.pdir(name) / "gate_icons.png", 1.0
-        else:
-            f = P.pdir(name) / "base" / base / {"check": "check.jpg", "flow": "flow.jpg", "links": "links.jpg", "logistics": "logistics.jpg", "placement": "placement.jpg",
-                                                "design": "design.jpg", "composite": "composite.png"}.get(which, "check.jpg")
+        from bpa import vision as V
+        f = self._bpa_image_file(name, base, which)
+        if which == "gates":  # 不缩放
+            scale = 1.0
         if not f.exists():
             return {"ok": False, "error": "还没生成（先跑「据点拼合」）"}
         im = cv2.resize(V.rd(f), None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
@@ -957,6 +973,12 @@ class Api:
         path = DEBUG if which == "debug" else ROOT
         os.startfile(str(path))  # noqa: S606
         return True
+
+
+def reveal_in_explorer(path: Path) -> None:
+    """打开资源管理器并选中这个文件。explorer 不管成不成功退出码都是 1，不看返回值。"""
+    import subprocess
+    subprocess.Popen(["explorer", f"/select,{Path(path)}"])  # noqa: S603, S607
 
 
 def build_patrol_report(plan: bp.Blueprint, items: list[dict], brief_path: Path, elapsed: float = 0.0, cancelled: bool = False) -> dict:

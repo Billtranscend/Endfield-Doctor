@@ -438,9 +438,35 @@ def _clean_digits(img, t):
     # 数字字高 10–12 px；图标的亮边（如传送带的斜边）漏进来只有几 px 高，会被读成「7」
     n, lab, st, _ = cv2.connectedComponentsWithStats(m)
     keep = np.zeros(n, bool)
-    keep[1:] = st[1:, cv2.CC_STAT_HEIGHT] >= 9
+    keep[1:] = digit_blobs([tuple(int(v) for v in st[i, :4]) for i in range(1, n)])
     out[y:y + h, x:x + w][keep[lab]] = 255
     return out
+
+
+def digit_blobs(boxes: list[tuple[int, int, int, int]], min_h: int = 9, gap: int = 2) -> list[bool]:
+    """数字区的白色连通块 (left, top, w, h) → 每块留不留。
+    笔画只有 1–2 px 粗，细的地方亮度够不上会断：「5」的横和下半之间断开后，一块高 2、一块高 8，
+    按单块高度 ≥ 9 判就两块都删了（2026-11-14 issue #1：应龙关上「仓库取货口 15」读成 1，放置检查多出 14 台；
+    同一张蓝图前两次读到的「5」是连着的）。左右重叠、上下只隔 ≤ gap px 的块算同一个数字，按合起来的高度判。"""
+    grp = list(range(len(boxes)))
+
+    def find(i):
+        while grp[i] != i:
+            grp[i] = grp[grp[i]]
+            i = grp[i]
+        return i
+
+    for i, (l1, t1, w1, h1) in enumerate(boxes):
+        for j in range(i):
+            l2, t2, w2, h2 = boxes[j]
+            if min(l1 + w1, l2 + w2) > max(l1, l2) and max(t1, t2) - min(t1 + h1, t2 + h2) <= gap:
+                grp[find(i)] = find(j)
+    span = {}
+    for i, (_, t, _, h) in enumerate(boxes):
+        g = find(i)
+        a, b = span.get(g, (t, t + h))
+        span[g] = (min(a, t), max(b, t + h))
+    return [span[find(i)][1] - span[find(i)][0] >= min_h for i in range(len(boxes))]
 
 
 def _match(lib, ic):

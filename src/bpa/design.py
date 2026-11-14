@@ -1610,6 +1610,16 @@ def run_base(bd: Path, archive: Path | None, area: str, ledger: Path | None = No
     led = json.loads((ledger or archive / "ledger" / f"{area}.json").read_text(encoding="utf-8"))
     rp = archive / "ledger" / f"{area}_recipes.json" if archive else None
     recipes = json.loads(rp.read_text(encoding="utf-8"))["devices"] if rp and rp.exists() else []
+    icon_recipes = []
+    if not any("→" in (d.get("recipe") or "") for d in recipes):
+        # 档案里没有这个据点的配方表（不是皇帝产线：配方表是开发期间巡检点面板攒的）：按预览里机身中间的产物图标推。
+        # 2026-11-13 issue #1 的作者拿自己的蓝图走到这一步是「共 0 台」。有配方表的据点不走这里，结果和原来一样
+        from . import recipe_icons as RI
+        from .pipenet import load_inputs
+        icon_recipes = RI.derive(bd, led, known=recipes, inputs=load_inputs(bd))
+        recipes = recipes + icon_recipes
+        (bd / "recipes_icon.json").write_text(json.dumps({"area": area, "from": "机身产物图标（recipe_icons）", "devices": icon_recipes},
+                                                         ensure_ascii=False, indent=1), encoding="utf-8")
     glp = archive / "ledger" / "gate_limits" / f"{area}.json" if archive else None
     gl = json.loads(glp.read_text(encoding="utf-8")) if glp and glp.exists() else None
     global RATE_LIMITED_INTAKE, MAIN_BLOCKED

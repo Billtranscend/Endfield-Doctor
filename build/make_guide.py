@@ -78,7 +78,7 @@ def main(argv):
 
     html = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>基建诊断使用说明</title><style>{CSS}</style></head><body><main>
-<h1>终末地基建诊断 · 使用说明<small>0.10.8 灰度测试版 · 1.6 皇帝产线</small></h1>
+<h1>终末地基建诊断 · 使用说明<small>0.10.9 灰度测试版 · 1.6 皇帝产线</small></h1>
 <div class="stripe"></div>
 <div class="card tip">先看视频：包里的 <a href="{a.video}">{a.video}</a>（约 2 分钟，有字幕），下面是同样的步骤配图。
 程序里每个功能旁边的 <b>「?」</b>（悬停看一句话，点一下看详细）和左栏最下面的<b>「帮助」</b>页，有更细的说明。</div>
@@ -93,7 +93,7 @@ def main(argv):
 
 <h2>包里有什么</h2>
 <table><tr><th>文件</th><th>做什么</th></tr>
-<tr><td><code>EndfieldFactoryDoctor-0.10.8.zip</code></td><td>程序本体，解压到任意目录（路径里别有空格）</td></tr>
+<tr><td><code>EndfieldFactoryDoctor-0.10.9.zip</code></td><td>程序本体，解压到任意目录（路径里别有空格）</td></tr>
 <tr><td><code>皇帝产线1.6-作者分析包.bpa.zip</code></td><td>作者的底账、配方表、准入口限速、管网拼合图。<b>不要解压</b>，在程序里导入</td></tr>
 <tr><td><code>{a.video}</code></td><td>上手视频</td></tr></table>
 

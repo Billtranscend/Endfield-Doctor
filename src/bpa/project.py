@@ -196,6 +196,17 @@ def process_blueprint(name: str, bp: str, size: tuple[int, int] | None = None, l
     return res
 
 
+def devices_changed(old: dict | None, new: dict) -> list[str]:
+    """两次读到的设备一览哪里不一样（只比有数量的类型）→ ["仓库取货口 15 → 1", "封装机 没有 → 3", ...]；第一次读或完全一样返回 []。
+    2026-11-14 issue #1：同一张蓝图第三次读时「仓库取货口 15」读成 1，自检表上看不出来，放置检查报成基地多出 14 台。"""
+    if not old:
+        return []
+    num = lambda d: {k: v for k, v in d.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}  # noqa: E731
+    a, b = num(old), num(new)
+    show = lambda v: "没有" if v is None else f"{v:g}"  # noqa: E731
+    return [f"{k} {show(a.get(k))} → {show(b.get(k))}" for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+
+
 def read_blueprints(name: str, game, only: list[str] | None = None, log=print, cancelled=lambda: False) -> None:
     """游戏内：逐张打开预览 → 读尺寸、设备一览 → 采集 → 离线处理 → 暗管逐个单击配对 → 关预览。"""
     proj = load(name)
@@ -212,8 +223,12 @@ def read_blueprints(name: str, game, only: list[str] | None = None, log=print, c
             size = game.read_size(img)
             _jsave(bd / "size.json", list(size) if size else None)
             devs = game.read_devices(img)
+            changed = devices_changed(_jload(bd / "devices.json"), devs)
             _jsave(bd / "devices.json", devs)
             log(f"  蓝图尺寸 {size}；设备一览 {len(devs)} 种")
+            if changed:
+                log("  设备一览和上次读到的不一样：" + "、".join(changed)
+                    + "。蓝图没改过的话，是这次或上次有一格读错了，请对着游戏里的设备一览核对一下")
             if (bd / "frames").exists():
                 shutil.rmtree(bd / "frames")
             game.capture(bd)

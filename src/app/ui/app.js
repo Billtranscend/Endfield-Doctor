@@ -931,6 +931,12 @@ async function bpaShowImage() {
   $('#bpaImage').innerHTML = r.ok ? `<img src="${r.image}" draggable="false">` : `<div class="empty">${esc(r.error)}</div>`;
   panZoom($('#bpaImage'));
 }
+async function bpaRevealImage() {
+  // 在资源管理器里选中当前这张图的原图（界面里的是缩小过的）
+  const base = $('#bpaBase').value; if (!bpa.name || !base) { toast('先选一个项目和据点'); return; }
+  const r = await api('bpa_reveal_image', bpa.name, base, $('#bpaWhich').value);
+  toast(r.ok ? '已在文件夹里选中这张图的原图' : r.error);
+}
 async function bpaInputs() {
   const base = $('#bpaInBase').value; if (!bpa.name || !base) return;
   const r = await api('bpa_inputs', bpa.name, base);

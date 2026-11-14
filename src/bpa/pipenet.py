@@ -280,6 +280,7 @@ def recipe_table(base_dir: Path, ledger: dict, recipes: list[dict]) -> dict:
     认不出或同类只有一种配方时按最常见的。都标「推断」。"""
     from collections import Counter
     rec = {(d["name"], d["x"], d["y"]): d.get("recipe") or "" for d in recipes}
+    unsure = {(d["name"], d["x"], d["y"]) for d in recipes if d.get("inferred")}  # 按机身图标推的、没把握的（recipe_icons）
     common = {}
     for (nm, rc), _ in Counter((d["name"], d.get("recipe")) for d in recipes if d.get("recipe") and "→" in d["recipe"]).most_common():
         common.setdefault(nm, rc)
@@ -313,7 +314,7 @@ def recipe_table(base_dir: Path, ledger: dict, recipes: list[dict]) -> dict:
         k = (d["name"], d["x"], d["y"])
         rc = rec.get(k, "")
         if _usable(rc):
-            out[k] = (rc, False)
+            out[k] = (rc, k in unsure)
             continue
         guess = common.get(d["name"], "")
         if icon.get(k) is not None:

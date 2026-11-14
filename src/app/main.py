@@ -41,7 +41,7 @@ def selftest() -> int:
     import importlib
     mods = {}
     for m in ("near_patrol", "core_ports", "pool_channels", "gate_limits", "combine", "expert", "diagnose", "patrol", "full_patrol",
-              "bpa.design", "bpa.pipenet", "bpa.project", "bpa.importer", "bpa.flow", "bpa.ledger_scan", "bpa.nearmap", "offline_ocr", "strike_scan"):
+              "bpa.design", "bpa.pipenet", "bpa.project", "bpa.importer", "bpa.flow", "bpa.ledger_scan", "bpa.nearmap", "bpa.recipe_icons", "offline_ocr", "strike_scan"):
         try:
             importlib.import_module(m)
             mods[m] = "ok"

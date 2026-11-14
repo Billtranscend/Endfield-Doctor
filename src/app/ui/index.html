@@ -128,10 +128,13 @@
       <div class="card">
         <div class="card-h"><span>据点图</span>
           <span class="btn-row inline"><select id="bpaBase" onchange="bpaShowImage()"></select>
-            <select id="bpaWhich" onchange="bpaShowImage()"><option value="placement">放置核对图</option><option value="check">底账核对图</option><option value="links">暗管连线图</option><option value="logistics">物流件标注图</option><option value="flow">物流方向图</option><option value="design">设计分析图</option><option value="gates">准入口图标分组</option></select></span></div>
+            <select id="bpaWhich" onchange="bpaShowImage()"><option value="placement">放置核对图</option><option value="check">底账核对图</option><option value="links">暗管连线图</option><option value="logistics">物流件标注图</option><option value="flow">物流方向图</option><option value="design">设计分析图</option><option value="composite">拼合底图（不带标注）</option><option value="gates">准入口图标分组</option></select>
+            <button class="btn ghost sm" onclick="bpaRevealImage()" title="在文件夹里选中这张图的原图（比这里显示的清楚），可以复制、发给别人">打开图片位置</button></span></div>
         <details class="hint-d"><summary>图例：每种图怎么看</summary><ul>
           <li><b>放置核对图</b>：左上是每张蓝图的核对结果；红色粗圈 = 疑似少摆的设备最可能的位置，细圈 = 备选位置，橙圈 = 蓝图里没有或多出来的设备。远景标签被挡也会显示成缺，到游戏里看一眼再动手。</li>
           <li><b>底账核对图</b>：红点是基地里扫到的设备，应落在蓝图对应设备上。</li>
+          <li><b>拼合底图</b>：几张蓝图按在基地里的位置拼成的一整张图，不带任何标注。</li>
+          <li>要把图拿出去（保存、发给别人）：选好据点和图，点右上的「打开图片位置」，文件夹里选中的就是这张图的原图。</li>
           <li><b>暗管连线图</b>：粗线 = 两头都点开确认，细线 = 只确认一头。</li>
           <li><b>物流方向图</b>：橙线 = 传送带、蓝线 = 管道，线上的三角 = 流向（分流器/汇流器的进出口 + 带子管子上的小三角，两者核对过）；灰线 = 方向还定不了。
             物流件旁的红短线 = 分流器进料口，绿短线 = 汇流器出口；紫框 = 上面压着管道、方向按小三角改过。线头绿方块 = 接到的设备（认出了名字），红方块 = 没认出。红圈 = 要人核对（分叉：两条线挨着没法往下追；单向：只从一头追到）。</li>
