@@ -100,6 +100,7 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                     gate_item[n["id"]] = m["item"]
     fixes = []
     fixed = set()
+    unfed = {}  # 配方是推断的、原料邻居里没人送的设备 → 它现在的配方（留给最后「跟着同类取」那一步）
     for _round in range(2):
         changed = False
         for i, d in enumerate(devices):
@@ -110,6 +111,7 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
             if len(cands) < 2:
                 continue
             made, eaten = set(), set()
+            makers = defaultdict(list)  # 物品 → 产它的邻居的配方（输入端准入口记空串）
             seen, frontier = {("d", i)}, [("d", i)]
             for _ in range(depth):
                 nxt = []
@@ -121,12 +123,15 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                         if v[0] == "n":
                             if v[1] in gate_item:
                                 made.add(gate_item[v[1]])
+                                makers[gate_item[v[1]]].append("")
                             nxt.append(v)
                         elif devices[v[1]]["name"] in BUFFERS:
                             nxt.append(v)
                         elif not rec.get(v[1], ("", True))[1] or v[1] in fixed:  # 配方可信的邻居（含上一轮按邻居改好的）
                             made |= set(outputs_of(rec[v[1]][0]))
                             eaten |= set(inputs_of(rec[v[1]][0]))
+                            for k in outputs_of(rec[v[1]][0]):
+                                makers[k].append(rec[v[1]][0])
                 frontier = nxt
 
             def score(r):
@@ -154,9 +159,60 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                 rec[i] = (best[1], True)
                 fixed.add(i)
                 changed = True
+                continue
+            # 同一种产物的几条配方（精炼炉做碳块：芽针 / 砂叶 / 锦草 / 荞花各一条）：现在这条「有支持」只是因为产物有人吃，
+            # 上面那条规则就不动它了；可它的原料邻居里没人送，另一条的原料有人送 → 换成有人送的那条。
+            # 产物一样，碰不上正反两个方向的配方（2026-11-14 issue #1：武陵城 6 台做碳块的精炼炉 5 台按砂叶算成没料，作者说用的是芽针）。
+            # 原料只由「吃这台产物」的邻居产的不算有人送：皇帝产线武陵城精炼炉 (1870,699) 做蓝铁块，旁边的粉碎机拿蓝铁块磨蓝铁粉末，
+            # 绕一圈，原料其实是蓝铁矿（和 recipe_icons.pick_recipe 同一条规矩）
+            if rc and i not in fixed:
+                same = [r for r in cands if set(outputs_of(r)) == set(outputs_of(rc))]
+
+                def sent(r):
+                    return [k for k in inputs_of(r) if k in made and not all(set(outputs_of(r)) & set(inputs_of(q)) for q in makers[k])]
+                fed = sorted(((len(sent(r)), r) for r in same), reverse=True)
+                if len(fed) >= 2 and fed[0][0] > fed[1][0] and fed[0][1] != rc:
+                    fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rc, "to": fed[0][1],
+                                  "how": "按相邻设备推断：做" + "、".join(outputs_of(rc)) + f"的配方有 {len(same)} 条，相邻设备送来的是"
+                                         + "、".join(sent(fed[0][1]))})
+                    rec[i] = (fed[0][1], True)
+                    fixed.add(i)
+                    unfed.pop(i, None)
+                    changed = True
+                elif len(same) >= 2 and fed[0][0] == 0:
+                    unfed[i] = rc
         if not changed:
             break
+    # 还是定不下来的（物流图里没接上、邻居里没人送原料）：同据点同种机器做同一种产物的，按邻居定下来的都是同一条 → 跟着取。
+    # 原来的配方是 recipe_icons.pick_recipe「按原料分不出来，先取一条」，本来就是随便取的
+    for i, rc in unfed.items():
+        if i in fixed:
+            continue
+        peers = {rec[j][0] for j in fixed if devices[j]["name"] == devices[i]["name"] and set(outputs_of(rec[j][0])) == set(outputs_of(rc))}
+        if len(peers) == 1 and rc not in peers:
+            to = peers.pop()
+            n = sum(1 for j in fixed if rec[j][0] == to and devices[j]["name"] == devices[i]["name"])
+            fixes.append({"device": devices[i]["name"], "x": devices[i]["x"], "y": devices[i]["y"], "from": rc, "to": to,
+                          "how": f"这台的原料没看到有谁送；同据点做同一种产物的 {n} 台{devices[i]['name']}按相邻设备定的是这条，跟着取"})
+            rec[i] = (to, True)
     return fixes
+
+
+UNK_BELT, UNK_PIPE = "*", "*管"  # 物品没看到的来料：带子来的（仓库取货口）/ 管子来的（暗管出口）。到设备再按缺口分
+UNKNOWN = (UNK_BELT, UNK_PIPE)
+
+
+def _is_fluid(item: str) -> bool:
+    """走管子的东西（液体、气体）。固体只走带子。"""
+    return "气" in item or "液" in item or item in ("清水", "污水", "沉积酸")
+
+
+def _unknown_fits(unk: str, item: str) -> bool:
+    """物品没看到的来料 unk 能不能当作 item：管子里来的只能是流体。
+    2026-11-14 别人的武陵城：暗管出口 → 管道分流器 → 天有洪炉（碳块 + 清水 → 息壤），管子里的 120/分被「当作碳块」，清水算成没人送。
+    带子来的照旧不限制：按理只能是固体，但皇帝产线武陵城塑形机 (844,423)（赤铜块 + 惰气）两条取货口带子里有一条一直被「当作惰气」，
+    它的惰气管在物流图里没连上；限制以后它从间歇 50% 变成没料。先不动，等惰气那条连线查清再收紧。"""
+    return unk != UNK_PIPE or _is_fluid(item)
 
 
 def _is_fuel(item: str, recipe: str) -> bool:
@@ -230,6 +286,10 @@ class Graph:
                 a = self._dev(lk["a_dev"], dev_canvas) if lk.get("a_dev") else None
                 b = self._dev(lk["device"], dev_canvas) if lk.get("device") else None
                 if a is None or b is None or a == b:
+                    continue
+                if devices[a[1]]["name"] == devices[b[1]]["name"] == "仓库取货口":
+                    # 取货口只往外出：两个取货口之间不会有带子。追线把取货口上面那一格短带追歪了、两头都落在取货口上
+                    # （2026-11-14 别人的武陵城 (1292,1650)：占着取货口的出边，后面「取货口紧贴设备」就不补了，上面的粉碎机没接上）
                     continue
                 d = lk.get("dir") or _guess_dir(devices[a[1]]["name"], devices[b[1]]["name"], rec.get(a[1], ("", 0))[0] if rec else "",
                                                  rec.get(b[1], ("", 0))[0] if rec else "")
@@ -486,6 +546,43 @@ def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, alt=None):
                           "basis": [f"{devices[u]['name']}和{devices[v]['name']}紧挨着、端口直接对接（按配方推断）"]}
                     G.out[("d", u)].append((("d", v), lk)); G.inn[("d", v)].append((("d", u), lk))
                     added.append(lk)
+    # 两台设备隔一格、中间只有一条直带（一格长），一台的产物是另一台的原料，这条带子又没追出来 → 接上。
+    # 2026-11-14 别人的武陵城：精炼炉 (252,1054) → 天有洪炉 (411,952) 的碳块带只有一格；精炼炉的端口朝向认反了（当成上进下出），
+    # 按格子补短带的那段找不到它的出口。只认「横跨这道缝、宽度是一条带子」的黄带：顺着缝走的带子（很长）不算。
+    # 黄带上面压着一根顺着缝走的管子时，带子中间一段是管子的深色：深色也算（没有带子的地方管子只占这道缝的 1/4，不到下面的 0.6）
+    yel = ((hsv[..., 0] >= 15) & (hsv[..., 0] <= 40) & (hsv[..., 1] > 60) & (hsv[..., 2] > 180)) | dark_thin.astype(bool)
+    have = {(u, v) for u in G.out for v, _ in G.out[u]}
+    for a_i, a in enumerate(ids):
+        for b in ids[a_i + 1:]:
+            ax, ay, aw, ah = box[a]; bx, by, bw, bh = box[b]
+            strip = None  # (缝的那一块黄带掩码, 沿边的轴)
+            for g0, g1, o0, o1, vert in ((ax + aw, bx, max(ay, by), min(ay + ah, by + bh), True), (bx + bw, ax, max(ay, by), min(ay + ah, by + bh), True),
+                                         (ay + ah, by, max(ax, bx), min(ax + aw, bx + bw), False), (by + bh, ay, max(ax, bx), min(ax + aw, bx + bw), False)):
+                if gap < g1 - g0 <= V.CELL + gap and o1 - o0 >= V.CELL:
+                    strip = (yel[o0:o1, g0:g1], 1) if vert else (yel[g0:g1, o0:o1], 0)
+            if strip is None:
+                continue
+            m, axis = strip
+            full = m.mean(axis=axis) >= 0.6  # 沿边每个位置：这道缝是不是大半都是黄带
+            runs, n = [], 0
+            for t in list(full) + [False]:
+                if t:
+                    n += 1
+                elif n:
+                    runs.append(n); n = 0
+            if len(runs) != 1 or not (0.35 * V.CELL <= runs[0] <= 0.9 * V.CELL):
+                continue
+            for u, v in ((a, b), (b, a)):
+                items = set(outputs_of(rec[u][0])) & set(inputs_of(rec[v][0]))
+                if not items or (("d", u), ("d", v)) in have or (("d", v), ("d", u)) in have:
+                    continue
+                if any(set(lk.get("items") or outputs_of(rec[w[1]][0]) if w[0] == "d" else ()) & items for w, lk in G.inn[("d", v)]):
+                    continue  # 这种原料已经有设备在送了
+                lk = {"layer": "belt", "adjacent": True, "dir": "a->b", "items": sorted(items),
+                      "basis": [f"{devices[u]['name']}和{devices[v]['name']}隔一格、中间一条直带（按配方推断）"]}
+                G.out[("d", u)].append((("d", v), lk)); G.inn[("d", v)].append((("d", u), lk))
+                added.append(lk)
+                break
     # 仓库取货口直接贴着一台一条进料都没有的设备（中间没有带子）：取货口往它送
     # （2026-11-10 武陵城精炼炉 (2308,644)：正上方就是蓝铁矿取货口，原来「没接上」）
     for p, d in enumerate(devices):
@@ -503,7 +600,8 @@ def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, alt=None):
             if by - m <= py <= by + bh + m:
                 gaps += [bx - px, px - (bx + bw)]
             g = min((x for x in gaps if x >= 0), default=None)
-            if g is not None and g <= 2.0 * V.CELL and (best is None or g < best[0]):
+            # 2.25 格：底账标签不在图标正中，离设备外框会多出半格（2026-11-14 别人的武陵城 (1291,1820) → 精炼炉 (1311,1944)，隔 73 px）
+            if g is not None and g <= 2.25 * V.CELL and (best is None or g < best[0]):
                 best = (g, v)
         if best is not None:
             v = best[1]
@@ -516,6 +614,35 @@ def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, alt=None):
 
 
 PORT_NAMES = ("仓库取货口", "仓库存货口", "仓库口")
+PORT_ICON_CLEAR, PORT_ICON_LEAD = 0.7, 0.15  # 仓库口图标「看得很清楚」：分数、领先都到这个数，才敢和连着的设备配方唱反调
+
+
+def _port_side(port_name: str, rc: str) -> set:
+    """仓库口旁边那台设备的配方 rc 里，这个口可能存/取的物品：取货口往外出料，只可能是那台设备的原料；存货口只可能是产物。
+    原来原料、产物都算：图标被管子压住时，「赤铜矿 → 赤铜块」的精炼炉旁边的取货口，赤铜矿、赤铜块都是 0.2 上下，
+    谁高全凭运气（2026-11-14 皇帝产线武陵城 6 个口，图标转回来以后从赤铜矿变成了赤铜块）。"""
+    s = set()
+    if port_name != "仓库存货口":
+        s |= set(inputs_of(rc))
+    if port_name != "仓库取货口":
+        s |= set(outputs_of(rc))
+    return s
+
+
+def _port_icon_clear(cs: list[dict], local: set) -> bool:
+    """仓库口图标的比对结果 cs（本据点配方里的物品，分数高的在前）能不能直接信。local = 连着的设备可能存/取的物品（没连设备是空的）。
+    分数 ≥0.5 且领先 ≥0.05 算看得清；但认出来的东西连着的设备用不上、图标又不算很清楚（不到 PORT_ICON_CLEAR / PORT_ICON_LEAD）时不信，
+    改按连着的设备认：图标上压着管子时转回来也只有 0.5 上下、领先 0.1。
+    2026-11-14 issue #1 武陵城 7 个被管子压住的赤铜矿口比成源石粉末 0.57（领先 0.10–0.14），旁边是吃赤铜矿的精炼炉；
+    皇帝产线景玉谷 (613,692) 整个图标压在管子下面，比成源石粉末 0.65，旁边的设备吃致密源石粉末（图标的蓝圈也是致密的那种）。"""
+    if not cs or cs[0]["score"] < 0.5:
+        return False
+    lead = cs[0]["score"] - (cs[1]["score"] if len(cs) > 1 else 0.0)
+    if lead < 0.05:
+        return False
+    if local and cs[0]["name"] not in local and (cs[0]["score"] < PORT_ICON_CLEAR or lead < PORT_ICON_LEAD):
+        return False
+    return True
 
 
 def _icon23(img, disk):
@@ -526,6 +653,24 @@ def _icon23(img, disk):
     if patch.shape[0] < 2 * h or patch.shape[1] < 2 * h:
         return None
     return _cv.resize(patch, (23, 23), interpolation=_cv.INTER_AREA)
+
+
+def _rots_fn(bd: Path):
+    """→ 函数 (拼合图 x, y) → 这个位置所在蓝图的旋转角 [度]。拼合图上的图标（仓库口、准入口、机身产物）跟着蓝图一起转了，
+    和 AKEData 比之前要转回来（LG.ake_candidates_upright）。读不到 transform.json：按没转算。"""
+    from . import recipe_icons as RI
+    try:
+        tf = json.loads((bd / "transform.json").read_text(encoding="utf-8"))
+        F0, k = np.array(tf["F0"], float), float(tf["K"])
+    except (OSError, ValueError, KeyError):
+        return lambda cx, cy: [0]
+    bp_dir = bd.parent.parent / "bp"
+    bp_dir = bp_dir if bp_dir.is_dir() else None
+
+    def at(cx, cy):
+        fx, fy = F0 + k * np.array([cx, cy], float)
+        return RI._rots_at(tf, bp_dir, float(fx), float(fy))
+    return at
 
 
 def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, recipes: list[dict]) -> list[dict]:
@@ -544,6 +689,7 @@ def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict,
     img = V.rd(bd / "composite.png")
     flow = json.loads((bd / "flow.json").read_text(encoding="utf-8"))
     _, disks = F.icon_disks(img, flow["nodes"])
+    rots_at = _rots_fn(bd)
     out = []
     for i, d in enumerate(devices):
         if d["name"] not in multi or not disks:
@@ -560,7 +706,7 @@ def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict,
             o = list(outputs_of(r))
             if o:
                 by_out.setdefault(o[0], r)
-        cs = [c for c in LG.ake_candidates(ic, top=999) if c["name"] in by_out]
+        cs = [c for c in LG.ake_candidates_upright(ic, rots_at(dk[0], dk[1]), top=999) if c["name"] in by_out]
         if not cs or cs[0]["score"] < 0.45 or (len(cs) > 1 and cs[0]["score"] - cs[1]["score"] < 0.25):  # 低容/中容电池图标很像，0.58 vs 0.38 也会认错
             continue
         new = by_out[cs[0]["name"]]
@@ -584,6 +730,7 @@ def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=Non
     img = V.rd(bd / "composite.png")
     flow = json.loads((bd / "flow.json").read_text(encoding="utf-8"))
     _, disks = F.icon_disks(img, flow["nodes"])
+    rots_at = _rots_fn(bd)
     cand = set()
     for rc, _ in rec.values():
         cand |= set(inputs_of(rc)) | set(outputs_of(rc))
@@ -599,17 +746,16 @@ def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=Non
         ic = _icon23(img, dk)
         if ic is None:
             continue
-        allc = [c for c in LG.ake_candidates(ic, top=999) if c["state"] == "固"]
+        # 图标跟着蓝图转了，转回来再比（2026-11-14 issue #1：转 90° 放的蓝图，18 个源矿口认成致密源石粉末，下游 30 台设备算成没料）
+        allc = [c for c in LG.ake_candidates_upright(ic, rots_at(dk[0], dk[1]), top=999) if c["state"] == "固"]
         local = set()
         if G is not None:
             for v, _ in G.out[("d", i)] + G.inn[("d", i)]:
                 if v[0] == "d":
-                    rc = rec[v[1]][0]
-                    local |= set(inputs_of(rc)) | set(outputs_of(rc))
+                    local |= _port_side(d["name"], rec[v[1]][0])
         cs_local = [c for c in allc if c["name"] in local]
         cs = [c for c in allc if c["name"] in cand] if cand else []
-        lead = (cs[0]["score"] - (cs[1]["score"] if len(cs) > 1 else 0.0)) if cs else 0.0
-        if cs and cs[0]["score"] >= 0.5 and lead >= 0.05:  # 图标看得清：只信图标（连着的设备配方可能配错台，会把仓库口也带错）
+        if _port_icon_clear(cs, {c["name"] for c in cs_local}):  # 图标看得清：只信图标（连着的设备配方可能配错台，会把仓库口也带错）
             found[i] = {"item": cs[0]["name"], "score": cs[0]["score"], "how": "图标比对", "sure": True, "icon": ic, "disk": [x, y]}
         elif cs_local:  # 图标看不清（上面压着管子）：在连着的设备配方里挑
             ll = cs_local[0]["score"] - (cs_local[1]["score"] if len(cs_local) > 1 else -1.0)
@@ -687,6 +833,13 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 if d["name"] == q["name"] and abs(d["x"] - q["x"]) <= 30 and abs(d["y"] - q["y"]) <= 30:
                     alt[i] = (q["alt"], q.get("note", ""))
     icon_fixes = _recipes_by_icon(bd, devices, dev_canvas, rec, recipes)
+    fx = load_fixes(bd)
+    for i, d in enumerate(devices):  # 作者指定的配方：盖过图标认的、按邻居推的，算可信（别的设备可以拿它当依据）
+        want = (fx.get("recipes") or {}).get(f"{d['name']}@{d['x']},{d['y']}")
+        if want and want != rec[i][0]:
+            icon_fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rec[i][0], "to": want, "how": "作者指定"})
+        if want:
+            rec[i] = (want, False)
     icon_fixes += _infer_by_neighbors(flow, devices, dev_canvas, rec, inputs if inputs is not None else load_inputs(bd), alt=alt)
     plant_notes = _plant_alternation(flow, devices, dev_canvas, rec, alt)
     G = Graph(flow, devices, dev_canvas, rec)
@@ -704,6 +857,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
     _glyph_dirs(G, flow, devices, dev_canvas, bd)
     _buffer_dirs(G, flow, devices, dev_canvas, rec, alt)
     _orphan_feeds(G, flow, devices, dev_canvas, rec)
+    reread, pending = _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=fx.get("feeds"))
     for u in list(G.out):  # 推断出来的连线打标，推料时经过它的路径带上〔推断连线〕
         for v, lk in G.out[u]:
             if _is_inferred(lk):
@@ -792,7 +946,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 return max(0.0, inputs_of(alt[u[1]][0])[item] - got_i.get(item, 0.0))
             if fuel and item and _is_fuel(item, rec[u[1]][0]):
                 return max(0.0, fuel - (_fuel_got(got_i, rec[u[1]][0]) if got_i else 0.0))  # 转化机/散布机烧的气：每台最低 6/分（4.7）
-            if item and item != "*":
+            if item and item not in UNKNOWN:
                 k_rate = 1.0
                 if resid[0] and RATE_LIMITED_INTAKE and item in need:  # 另一种原料只够跑 X%，这种也只吃 X%（灌装机缺赤铜耐压罐时不吃惰气，气改流向塑形机；用户 2026-11-09）
                     others = [min(1.0, max(last_sup.get(u[1], {}).get(k, 0.0), prev_sup.get(u[1], {}).get(k, 0.0)) / v)
@@ -802,14 +956,15 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 if resid[0]:
                     k_rate = min(k_rate, out_cap.get(u[1], 1.0))  # 产物出不去的设备也吃不了那么多
                 return max(0.0, need.get(item, 0.0) * k_rate - got_i.get(item, 0.0))
-            return max(0.0, sum(need.values()) - sum(got_i.get(k, 0.0) for k in need))
+            fit = [k for k in need if _unknown_fits(item, k)] if item in UNKNOWN else list(need)
+            return max(0.0, sum(need[k] for k in fit) - sum(got_i.get(k, 0.0) for k in fit))
         kd = G.kind(u)
         tot = 0.0
         for v, lk in G.out[u]:
             tot += min(_cap(lk), absorb(v, item, seen + (u,)))
         if kd == "准入口":
             g = gate.get(u[1], {})
-            if g.get("item") and item and item != "*" and g["item"] != item:
+            if g.get("item") and item and item not in UNKNOWN and g["item"] != item:
                 return 0.0
             if g.get("limit") is not None:
                 tot = min(tot, g["limit"])
@@ -829,8 +984,8 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         if q <= EPS:
             return
         if u[0] == "d" and u[1] not in buf_ids:
-            if item == "*":  # 仓库取货口来的、物品没看到：到设备再按缺口分
-                star[u[1]].append((q, path))
+            if item in UNKNOWN:  # 仓库取货口 / 暗管出口来的、物品没看到：到设备再按缺口分
+                star[u[1]].append((q, path, item))
                 return
             sup[u[1]][item] += q
             via[u[1]][item].append(path + [f"{q:g}"])
@@ -841,7 +996,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         kd = G.kind(u)
         if kd == "准入口" and u[1] in gate:
             g = gate[u[1]]
-            if item == "*" and g.get("item"):
+            if item in UNKNOWN and g.get("item"):
                 item = g["item"]
             if g.get("item") and item and g["item"] != item:
                 return
@@ -927,6 +1082,8 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 out[nid] = (a, name, total)
         return out
 
+    makers = {i for i in range(len(devices)) if inputs_of(rec[i][0])}  # 生产设备：找带子上的物品准入口时不穿过它们
+
     def sources():
         out = []
         pool = pools()
@@ -963,13 +1120,13 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 if pit:  # 底账名字/小三角把方向弄反了（连成 设备 → 仓库口）：这台设备要这种原料，就按仓库口往它出
                     outs += [(v, lk) for v, lk in G.inn[u] if v[0] == "d" and pit in inputs_of(rec[v[1]][0])]
                 for v, lk in outs:
-                    item = pit or _first_gate_item(G, v, gate) or "*"
-                    tag = f"{item}，认{how}" if pit else (item if item != "*" else "物品没看到，按设备缺口分")
+                    item = pit or _first_gate_item(G, v, gate, stop=makers) or (UNK_PIPE if lk.get("layer") == "pipe" else UNK_BELT)
+                    tag = f"{item}，认{how}" if pit else (item if item not in UNKNOWN else "物品没看到，按设备缺口分")
                     out.append((v, item, _cap(lk), [f"{d['name']}（{tag}）{_cap(lk):g}/分"]))
             elif d["name"] in SOURCE_PORTS and i not in buf_ids:  # 配上对的暗管出口是中转，不当来源
                 for v, lk in G.out[u]:
-                    item = _first_gate_item(G, v, gate) or "*"
-                    out.append((v, item, _cap(lk), [f"{d['name']}（{item if item != '*' else '物品没看到，按设备缺口分'}）{_cap(lk):g}/分"]))
+                    item = _first_gate_item(G, v, gate, stop=makers) or (UNK_PIPE if lk.get("layer") == "pipe" else UNK_BELT)
+                    out.append((v, item, _cap(lk), [f"{d['name']}（{item if item not in UNKNOWN else '物品没看到，按设备缺口分'}）{_cap(lk):g}/分"]))
             elif dev_rate.get(i, 0) > EPS:
                 rc, _ = rec[i]
                 if i in alt and i in alt_split:  # 交替配方：主配方和交替配方各按自己的开工时间出产物（扩容反应池轮流做锦草/芽针溶液）
@@ -1067,12 +1224,13 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         for u, item, q, path in sorted((s for s in srcs if s[0][0] == "out"), key=lambda s: len(prod_out[(s[0][1], s[1])])):
             split(prod_out[(u[1], item)], item, q, path, frozenset(), "出料口")
         resid[0] = False
-        for i, lst in star.items():  # 仓库带：一条带一种物品，先给还没有来源的原料，再给缺得最多的
+        for i, lst in star.items():  # 仓库带 / 暗管：一条带（管）一种物品，先给还没有来源的原料，再给缺得最多的
             need, _ = dev_need(i)
-            for q, path in sorted(lst, key=lambda z: -z[0]):
-                if not need:
-                    break
-                k = min(need, key=lambda k: (sup[i].get(k, 0.0) > EPS, sup[i].get(k, 0.0) / need[k]))
+            for q, path, unk in sorted(lst, key=lambda z: -z[0]):
+                fit = [k for k in need if _unknown_fits(unk, k)]  # 管子来的只能是流体原料，带子来的只能是固体原料
+                if not fit:
+                    continue
+                k = min(fit, key=lambda k: (sup[i].get(k, 0.0) > EPS, sup[i].get(k, 0.0) / need[k]))
                 sup[i][k] += q
                 via[i][k].append(path + [f"当作{k}", f"{q:g}"])
         prev_sup.clear()
@@ -1219,7 +1377,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 inferred.append({"from": nm(u), "to": nm(v), "layer": lk.get("layer"), "basis": [b for b in lk.get("basis") or []][-2:],
                                  "path": lk.get("path", [])[:1] + lk.get("path", [])[-1:]})
     out = {"devices": rows, "gates": gates, "ports": ports, "recipe_fixes": fixes, "tunnels": len(tpairs), "notes": notes + plant_notes, "issues": flow.get("issues", []),
-           "inferred_links": inferred}
+           "inferred_links": inferred, "reread": reread, "pending": pending}
     analyze.last_graph = (G, devices, nodes, dict(sup), buf_ids)  # 调试用：最近一次的图
     return out
 
@@ -1296,6 +1454,153 @@ def _glyph_dirs(G, flow, devices, dev_canvas, bd) -> list:
         G.out[u].append((v, nl)); G.inn[v].append((u, nl))
         added.append((devices[u[1]]["name"], devices[v[1]]["name"]))
     return added
+
+
+def load_fixes(base_dir: Path) -> dict:
+    """作者在设计分析页「待确认」里做的修正（<项目>/fixes.json 里这个据点的那一段）：
+    {"feeds": {设备键: "to:<另一头设备键>" / "none" / "unused"}, "recipes": {设备键: 配方}}。设备键 = 设备名@底账远景坐标（同确认记录）。"""
+    pj = base_dir.parent.parent / "fixes.json"
+    if not pj.exists():
+        return {}
+    try:
+        return (json.loads(pj.read_text(encoding="utf-8")) or {}).get(base_dir.name) or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=None) -> tuple[list, list]:
+    """自相矛盾：一台生产设备连着带子，但没有一条是进料（全被读成出口）。在生产的设备不可能没有进料，一定是哪条带子读错了。
+    先看这台设备自己的口格折角（`glyph_sides`：朝里 = 进口）：带子接在它的进口边上、却被读成往外出 → 这条读错了。
+      - 另一头的口格没说话，或也说方向反了 → 把方向改过来；
+      - 另一头也是进口（两头都是进口）→ 另一头的设备认错了：带子头旁边另有唯一一台设备、朝着带子头的那条边是出口 → 改认成它；
+      - 都定不了 → 不硬选，列进待确认（作者在设计分析页选）。
+    改过的连线依据里带「推断」，和别的推断连线一样进清单、等作者确认。→ (改了的, 待确认的)
+    2026-11-14 issue #1：精炼炉 (1448,850) 三条带子全被读成出口。作者回答：带子 3 是芽针进料——那条带子的另一头夹在
+    天有洪炉下边的进口和种植机上边的出口中间，被认成了天有洪炉。用户定的做法：遇到矛盾先看设备自己的进出口箭头，能定的程序自己改、标成推断。"""
+    import cv2 as _cv
+    from .pipenet import _rects, device_rect
+    canvas = V.rd(bd / "composite.png")
+    gray = _cv.cvtColor(canvas, _cv.COLOR_BGR2GRAY)
+    hsv = _cv.cvtColor(canvas, _cv.COLOR_BGR2HSV)
+    dark_thin = ((gray < 120) & (hsv[..., 1] < 60)).astype(np.uint8)
+    rects = _rects(canvas)
+    boxes, glyphs = {}, {}
+
+    def box(i):
+        if i not in boxes:
+            c = dev_canvas[i]
+            boxes[i] = device_rect(dark_thin, c[0], c[1], rects)
+        return boxes[i]
+
+    def side(i, edge):
+        if i not in glyphs:
+            glyphs[i] = glyph_sides(gray, box(i)) if box(i) is not None else {}
+        return glyphs[i].get(edge)
+    back = {"N": "S", "S": "N", "E": "W", "W": "E"}
+    C = V.CELL
+
+    def facing(j, P):
+        """点 P 贴着设备 j 的哪条边（在边外 0.9 格以内、沿边方向落在边的范围里）。"""
+        b = box(j)
+        if b is None:
+            return None
+        x, y, w, h = b
+        if x - 6 <= P[0] <= x + w + 6:
+            if -6 <= y - P[1] <= 0.9 * C:
+                return "N"
+            if -6 <= P[1] - (y + h) <= 0.9 * C:
+                return "S"
+        if y - 6 <= P[1] <= y + h + 6:
+            if -6 <= x - P[0] <= 0.9 * C:
+                return "W"
+            if -6 <= P[0] - (x + w) <= 0.9 * C:
+                return "E"
+        return None
+
+    def nm(i):
+        return f"{devices[i]['name']}[{int(dev_canvas[i][0])}, {int(dev_canvas[i][1])}]"
+
+    def move(u, v, lk, nu, nv, why):
+        G.out[u] = [(x, l) for x, l in G.out[u] if l is not lk]
+        G.inn[v] = [(x, l) for x, l in G.inn[v] if l is not lk]
+        nl = dict(lk, dir="a->b", basis=list(lk.get("basis") or []) + [why], reread=True)
+        G.out[nu].append((nv, nl)); G.inn[nv].append((nu, nl))
+        return nl
+    makers = [i for i in range(len(devices)) if devices[i]["name"] not in PORT_NAMES and devices[i]["name"] not in BUFFERS
+              and any(not _is_fluid(k) for k in inputs_of(rec[i][0]))]
+    fixed, ask = [], []
+
+    def dkey(i):
+        return f"{devices[i]['name']}@{devices[i]['x']},{devices[i]['y']}"
+    for i in makers:
+        u = ("d", i)
+        if any(lk.get("layer") != "pipe" for _, lk in G.inn[u]):
+            continue  # 有带子进料
+        outs = [(v, lk) for v, lk in G.out[u] if lk.get("free") and lk.get("layer") == "belt" and v[0] == "d"
+                and lk.get("a_dev") and lk.get("device") and not lk.get("adjacent")
+                and not lk.get("reread")]  # 这一趟刚改过来的连线不再回头看（不然改完的那一头又成了「只有出口」，会改回去或被列进待确认）
+        if not outs:
+            continue  # 一条带子都没连上：是「没接上」，不是读反了
+        ends = []  # (另一头, 连线, 我这头的口格, 另一头的口格, 另一头的带子头)
+        for v, lk in outs:
+            a, b = G._dev(lk["a_dev"], dev_canvas), G._dev(lk["device"], dev_canvas)
+            if a is None or b is None or {a, b} != {u, v}:
+                continue
+            mine_side, other_side = (lk.get("a_dev_side"), lk.get("dev_side")) if a == u else (lk.get("dev_side"), lk.get("a_dev_side"))
+            r_me = side(i, back[mine_side]) if mine_side else None
+            r_other = (None if devices[v[1]]["name"] in PORT_NAMES else side(v[1], back[other_side])) if other_side else None
+            ends.append((v, lk, r_me, r_other, lk["path"][-1] if a == u else lk["path"][0], lk["path"][0] if a == u else lk["path"][-1]))
+        options = [{"to": nm(v[1]), "key": dkey(v[1]), "at": [int(t) for t in at], "my_edge": r_me, "other_edge": r_other}
+                   for v, lk, r_me, r_other, _, at in ends]
+        item = {"kind": "没有进料", "key": dkey(i), "device": nm(i), "c": [int(dev_canvas[i][0]), int(dev_canvas[i][1])], "recipe": rec[i][0],
+                "msg": f"{devices[i]['name']}连着 {len(outs)} 条带子，但没有一条是进料（都被读成从它出去）。哪一条其实是进料？",
+                "links": options}
+        ans = (feeds or {}).get(dkey(i))
+        if ans == "unused":  # 作者说这台没在用：不用再问
+            ask.append(dict(item, answer=ans, applied=True))
+            continue
+        if ans and ans.startswith("to:"):
+            hit = [(v, lk) for v, lk, *_ in ends if dkey(v[1]) == ans[3:]]
+            if hit:
+                v, lk = hit[0]
+                nl = move(u, v, lk, v, u, "作者确认：这条带子是进料")
+                fixed.append({"device": nm(i), "kind": "作者确认", "from": nm(v[1]), "basis": nl["basis"][-1]})
+                ask.append(dict(item, answer=ans, applied=True))
+                continue
+        done = False
+        for k, (v, lk, r_me, r_other, P_other, _) in enumerate(ends):
+            if r_me != "in" or done:
+                continue
+            if devices[v[1]]["name"] == "仓库存货口":
+                continue  # 存货口只进不出，反不过来
+            if r_other in (None, "out"):
+                nl = move(u, v, lk, v, u, f"{devices[i]['name']}没有别的进料，这条带子接在它的进口边上（口格折角朝里）：方向改过来（推断）")
+                fixed.append({"device": nm(i), "kind": "方向改过来", "from": nm(v[1]), "basis": nl["basis"][-1]})
+                done = True
+                continue
+            # 两头都是进口：另一头的设备认错了。带子头旁边找朝着它的那条边是出口的设备（取货口只出不进，也算）
+            cands = []
+            for j in range(len(devices)):
+                if j in (i, v[1]) or devices[j]["name"] in BUFFERS:
+                    continue
+                if devices[j]["name"] == "仓库取货口":
+                    if np.hypot(dev_canvas[j][0] - P_other[0], dev_canvas[j][1] - P_other[1]) <= 1.2 * C:
+                        cands.append(j)
+                    continue
+                e = facing(j, P_other)
+                if e is not None and side(j, e) == "out":
+                    cands.append(j)
+            if len(cands) == 1:
+                j = cands[0]
+                nl = move(u, v, lk, ("d", j), u,
+                          f"两头都是进口：这头本来认的是{nm(v[1])}，改认成紧挨着带子头、那条边是出口的{nm(j)}（推断）")
+                fixed.append({"device": nm(i), "kind": "另一头改认设备", "from": nm(j), "was": nm(v[1]), "basis": nl["basis"][-1]})
+                done = True
+            else:
+                options[k]["candidates"] = [nm(j) for j in cands]
+        if not done:
+            ask.append(dict(item, answer=ans, applied=False))
+    return fixed, ask
 
 
 def _orphan_feeds(G, flow, devices, dev_canvas, rec) -> list:
@@ -1522,6 +1827,7 @@ def _gate_items(bd: Path, nodes: list[dict], rec: dict, inputs: list[dict] | Non
        （0.45 左右会把息壤气口认成气态赫铜，把气挡在准入口外，2026-11-09 应龙关）。"""
     from . import logistics as LG
     img = V.rd(bd / "composite.png")
+    rots_at = _rots_fn(bd)
     cand = set()
     for rc, _ in rec.values():
         cand |= set(inputs_of(rc)) | set(outputs_of(rc))
@@ -1540,13 +1846,19 @@ def _gate_items(bd: Path, nodes: list[dict], rec: dict, inputs: list[dict] | Non
         ic = LG.gate_icon(img, n["p"])
         if ic.shape[:2] != (23, 23):
             continue
-        st, nm = LG.lookup_item(ic, bd.parent.parent / "items" if (bd.parent.parent / "items").exists() else None)
+        # 图标库里存的是蓝图预览里的朝向（读蓝图时按预览拼图存的），拼合图上的要转回来才对得上：
+        # 不转的时候，转着放的据点（应龙关 180°、武陵城 90°）图标库一个都配不上，全靠后面和 AKEData 比（2026-11-14）
+        st, nm = None, ""
+        for r in rots_at(*n["p"]):
+            st, nm = LG.lookup_item(LG.upright(ic, r), bd.parent.parent / "items" if (bd.parent.parent / "items").exists() else None)
+            if nm:
+                break
         if nm:
             out[n["id"]] = {"item": nm, "how": "图标库"}
             continue
         k = n.get("kind")
         ok_state = ("液", "气") if k == "管道" else ("固",) if k == "物品" else ("液", "气", "固")
-        cs = [c for c in LG.ake_candidates(ic, top=999) if c["state"] in ok_state and (not cand or c["name"] in cand)]
+        cs = [c for c in LG.ake_candidates_upright(ic, rots_at(*n["p"]), top=999) if c["state"] in ok_state and (not cand or c["name"] in cand)]
         if not cs:
             continue
         lead = cs[0]["score"] - (cs[1]["score"] if len(cs) > 1 else 0.0)
@@ -1592,13 +1904,18 @@ def _fix_recipes_by_ports(G, devices, rec, recipes, pitem) -> list[dict]:
     return out
 
 
-def _first_gate_item(G, u, gate, depth=0):
+def _first_gate_item(G, u, gate, depth=0, stop=()):
+    """顺着出料找第一个标了物品的准入口（带子上的物品准入口说明这条带子运的是什么）。stop：生产设备，到这里就不往下找了——
+    过了设备就是它的产物那条线，再碰到的准入口和这条带子无关（2026-11-14 别人的武陵城：图标没看到的取货口 → 精炼炉，
+    顺着精炼炉的出料一路找到一个清水准入口，取货口就被当成出清水的，精炼炉的矿算成没人送）。"""
     if depth > 12:
         return ""
     if u[0] == "n" and u[1] in gate and gate[u[1]].get("item"):
         return gate[u[1]]["item"]
+    if u[0] == "d" and u[1] in stop:
+        return ""
     for v, _ in G.out[u]:
-        it = _first_gate_item(G, v, gate, depth + 1)
+        it = _first_gate_item(G, v, gate, depth + 1, stop)
         if it:
             return it
     return ""

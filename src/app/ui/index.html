@@ -151,6 +151,7 @@
         <details class="hint-d"><summary>作者确认：怎么用</summary>对着游戏里的实际情况逐台看「开工率 / 状态」：对就点「对」，不对就选实际情况（满速 / 间歇 / 平时空闲（设计如此） / 没在用）并写一句为什么。
           也可以先用上面的筛选挑出一批（比如「没满速的」），核对无误后点「这一页全部确认为对」。确认记录随 zip 导出；别人导入后，只有你确认过的「平时空闲 / 间歇」才会在巡检里当作设计如此、不报问题，没确认的只当参考。</details>
         <div id="bpaDsSummary"></div>
+        <div id="bpaDsPending"></div>
         <div class="btn-row"><span id="bpaDsProgress" class="muted"></span><button class="btn sm" onclick="bpaConfirmPage()">这一页全部确认为「对」</button></div>
         <div id="bpaDsTable" class="bpa-dstable"></div>
         <details class="hint-d"><summary>推断出来的连线（<span id="bpaDsInfN">0</span> 条）</summary><div id="bpaDsInf"></div></details>
@@ -167,7 +168,7 @@
           <span class="btn-row inline"><select id="bpaInBase" onchange="bpaInputs()"></select><button class="btn sm primary" onclick="bpaSaveInputs()">保存</button></span></div>
         <div class="hint">红圈 = 程序标的输入端，蓝圈 = 你补的。物品名和液体的量（一口一泵 60/分）已预填，请核对后补上气体的量；单个口流速不同（如 3 号 120/分）直接改那一行。</div>
         <details class="hint-d"><summary>详细说明</summary>程序先标出「接入口紧贴基地外侧」的准入口当输入端，水和沉积酸都按一口一泵 60/分预填。贴边但程序判断不是输入的（两旁接着分流器/汇流器、没贴着外侧等）画成灰色虚圈，列在表格下面，判断错了点「加回」；红圈标错了点「删」；漏了的在图上点一下补标。图上按住左键拖动、滚轮缩放，右上「复位」回到整图；单个口的流速不同（如 3 号 120/分）直接改那一行的「每分钟」，巡检和管网都按你填的算。外面先汇流成一个口的勾「汇流口」并填总量。</details>
-        <div class="bpa-batch">批量填：编号 <input id="bpaBRange" placeholder="1-8" size="6"> 物品 <input id="bpaBItem" placeholder="清水" size="6"> 每口 <input id="bpaBRate" placeholder="60" size="4">/分
+        <div class="bpa-batch">批量填：编号 <input id="bpaBRange" placeholder="1-8" size="6"> 物品 <input id="bpaBItem" list="bpaItemList" placeholder="清水" size="6"> 每口 <input id="bpaBRate" placeholder="60" size="4">/分
           <select id="bpaBVia"><option>水泵</option><option>暗管</option><option>多口暗管</option><option>其他</option></select>
           <button class="btn sm" onclick="bpaBatch()">应用</button></div>
         <div class="bpa-inwrap"><div id="bpaInImage" class="bpa-img clickable"></div><div id="bpaInTable"></div></div>
@@ -259,6 +260,17 @@
         <div class="btn-row">
           <button class="btn ghost" onclick="api('open_folder','debug')">打开数据目录</button>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span>导出反馈包</span></div>
+        <p class="muted">蓝图分析的结果看着不对、想让作者帮忙看时用：一键把排查要用的文件打成压缩包。每个不超过 24 MB，
+          可以直接拖进 GitHub 的评论框（单个附件上限 25 MB，一条评论可以放多个）。</p>
+        <div class="btn-row">
+          <select id="fbProj"></select>
+          <label class="chk"><input type="checkbox" id="fbRaw"> 带上游戏原始截图（很大，可能带 UID；只在读图、拼接出问题时需要）</label>
+          <button class="btn" id="fbBtn" onclick="feedbackExport()">导出</button>
+        </div>
+        <div id="fbResult" class="muted"></div>
       </div>
       <div class="card">
         <div class="card-h"><span>使用要求</span></div>

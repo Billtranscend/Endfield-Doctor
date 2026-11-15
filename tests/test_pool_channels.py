@@ -72,7 +72,10 @@ def test_link_cut_victims():
 
 def test_theo_flip_after_reconnect():
     """接回水后（17:47）：蓝铁粉末 理论消耗 60（参考 90）、壤晶废液 120（参考 180），实际 75 / 150 和参考一样 → 不报「消费者被断开」；
-    断水时（15:37）实际 0 / 0 → 照报。"""
+    断水时（15:37）实际 0 / 0 → 照报。
+    0.10.6 起同一条线上几种物品的下降合成一条（combine.drop_groups）：蓝铁粉末 90→0 和壤晶废液 180→0 并在
+    「壤晶、污水 这条线有设备没在算」里，不再单独有「蓝铁粉末 理论消耗…」这个标题。这条断言当时没跟着改，
+    脚本失败时又照样正常退出，一直到 2026-11-14 才发现。"""
     import combine as C
     after = ROOT / "debug" / "brief_20261110-174739.json"
     if not after.exists():
@@ -80,8 +83,11 @@ def test_theo_flip_after_reconnect():
     _, d = C.run(after, ROOT / "debug" / "patrol_20261110-174225.json", "1.6皇帝产线", merge=False)
     assert not [v for v in d["verdicts"].get("问题", []) if "理论消耗" in (v.get("title") or "")], d["verdicts"]["问题"]
     _, d = C.run(ROOT / "debug" / "brief_20261110-153748.json", ROOT / "debug" / "patrol_20261110-153300.json", "1.6皇帝产线", merge=False)
-    titles = [v.get("title") or "" for v in d["verdicts"].get("问题", [])]
-    assert any(t.startswith("蓝铁粉末 理论消耗") for t in titles) and any(t.startswith("液化息壤 理论消耗") for t in titles), titles
+    probs = d["verdicts"].get("问题", [])
+    titles = [v.get("title") or "" for v in probs]
+    iron = [v for v in probs if (v.get("title") or "").startswith("蓝铁粉末 理论消耗")
+            or ((v.get("key") or "").startswith("drop:") and "蓝铁粉末 90→0" in (v.get("reason") or ""))]
+    assert iron and any(t.startswith("液化息壤 理论消耗") for t in titles), titles
 
 
 if __name__ == "__main__":
@@ -94,3 +100,4 @@ if __name__ == "__main__":
         except AssertionError as e:
             print("FAIL", f.__name__, str(e)[:400])
     print(f"{ok}/{len(fs)} 通过")
+    sys.exit(0 if ok == len(fs) else 1)  # 原来有没过的也正常退出，跑全部测试时看不出来

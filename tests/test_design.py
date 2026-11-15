@@ -98,3 +98,4 @@ if __name__ == "__main__":
         except AssertionError as e:
             print("FAIL", f.__name__, str(e)[:300])
     print(f"{ok}/4 通过")
+    sys.exit(0 if ok == 4 else 1)  # 原来有没过的也正常退出，跑全部测试时看不出来

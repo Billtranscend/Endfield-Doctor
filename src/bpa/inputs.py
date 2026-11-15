@@ -85,7 +85,8 @@ def from_gates(canvas: np.ndarray, lg_canvas: list[dict], groups: dict | None = 
         if dist[e] > 2 * V.CELL:
             continue
         g = groups.get(o.get("icon_group")) or {}
-        rec = {"p": [x, y], "item": g.get("item", ""), "icon_group": o.get("icon_group"), "kind": o.get("kind", "?"), "bp": o.get("bp")}
+        rec = {"p": [x, y], "item": g.get("item", ""), "icon_group": o.get("icon_group"), "kind": o.get("kind", "?"), "bp": o.get("bp"),
+               "p_bp": o.get("p_bp")}
         if dist[e] > TOUCH * V.CELL:
             drop.append(dict(rec, why=f"离{e}边 {dist[e] / V.CELL:.1f} 格，没贴着外侧"))
             continue
@@ -122,6 +123,146 @@ def from_gates(canvas: np.ndarray, lg_canvas: list[dict], groups: dict | None = 
     keep.sort(key=lambda r: _order(r["p"], W, H))
     marks = [dict(r, no=i + 1, source="auto", merged=False, note="") for i, r in enumerate(keep)]
     return marks, drop
+
+
+# ------------------------------------------------------------------ 作者存的标记跟着拼合图走（2026-11-14 issue #1 第四轮）
+# 作者存的输入端原来只记拼合图上的坐标。拼合图的原点是各张蓝图位置里最靠左上的那个（vision.composite 的 F0）：重扫底账、
+# 重读蓝图、增减蓝图以后原点会变，存的坐标就指到别处。设计分析按位置（15 px）找输入端，一个都找不上，清水就「没有来源」
+# （他的武陵城：存着 7 个旧标记，现在的候选是 21 个清水口，一个都对不上；全据点清水 445/960）。
+# 现在每个标记另外记「在哪张蓝图预览里的什么位置」（bp、p_bp），这个不随拼合变；每次拼合后按它重新算拼合图坐标（rebase）。
+SNAP = 15  # 标记离准入口多少 px 以内算标在它上面（design.analyze 找输入端用的同一个数）
+
+
+def _hit(p, q, tol=SNAP) -> bool:
+    return abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) <= tol
+
+
+def _gate_at(p, lg_canvas):
+    best = None
+    for o in lg_canvas:
+        if o["type"] == "准入口" and o.get("p_bp") is not None and _hit(p, o["p"]):
+            dist = abs(p[0] - o["p"][0]) + abs(p[1] - o["p"][1])
+            if best is None or dist < best[0]:
+                best = (dist, o)
+    return best[1] if best else None
+
+
+def to_bp(tf: dict, bp: str, p) -> list[float]:
+    """拼合图坐标 → 这张蓝图预览里的坐标（vision.preview_to_canvas 反过来）。"""
+    b = tf["bps"][bp]
+    f = np.array(tf["F0"], float) + tf["K"] * np.array(p, float)
+    x, y = V.Rp((360 - int(b["rot"])) % 360, *((f - np.array(b["t"], float)) / V.K))
+    return [round(float(x), 1), round(float(y), 1)]
+
+
+def from_bp(tf: dict, bp: str, p_bp) -> list[int]:
+    x, y = V.preview_to_canvas(tf, bp, None, *p_bp)
+    return [int(round(x)), int(round(y))]
+
+
+def anchor(marks: list[dict], tf: dict, lg_canvas: list[dict]) -> list[dict]:
+    """给每个标记记上 bp、p_bp。标在准入口上的用那个准入口自己的（读蓝图时定的）；不在准入口上的（作者在图上随手点的）
+    算到离它最近的物流件所在的那张蓝图里。没有变换或没有物流件：原样返回。"""
+    if not tf or "bps" not in tf:
+        return marks
+    out = []
+    for m in marks:
+        m = dict(m)
+        g = _gate_at(m["p"], lg_canvas)
+        if g is not None:
+            m["bp"], m["p_bp"] = g["bp"], list(g["p_bp"])
+        else:
+            near = [o for o in lg_canvas if o.get("bp") in tf["bps"]]
+            if near:
+                o = min(near, key=lambda o: (o["p"][0] - m["p"][0]) ** 2 + (o["p"][1] - m["p"][1]) ** 2)
+                m["bp"], m["p_bp"] = o["bp"], to_bp(tf, o["bp"], m["p"])
+        out.append(m)
+    return out
+
+
+def seen_of(auto: list[dict]) -> list[list]:
+    """候选的位置清单 [[bp, [x, y]]]：保存时记下「作者看到过哪些候选」，以后拼合出新的候选才知道是新的还是作者删掉的。"""
+    return [[a["bp"], list(a["p_bp"])] for a in auto if a.get("bp") and a.get("p_bp") is not None]
+
+
+def rebase(saved: list[dict], tf: dict, lg_canvas: list[dict], auto: list[dict], seen: list | None = None) -> tuple[list[dict], list[dict], dict]:
+    """作者存的标记 → 按现在的拼合图重新定位。返回 (标记, 对不上的旧标记, {moved, stale, added})。
+    - 有 bp、p_bp 的：按现在的变换重新算位置，15 px 内有准入口就吸上去。它所在的蓝图不在这个据点里了 → 对不上。
+    - 老版本存的（没有 p_bp）：按原坐标看是不是落在准入口上。落在准入口上的不到一半 = 拼合图变过，这批旧标记全部算对不上
+      （碰巧落在某个准入口上的也不留：那多半是另一个口）；一半以上 = 拼合图没变，全部留下并补记 bp、p_bp。
+    - 候选里没被标记盖住的：保存时见过（seen 里有）= 作者删掉的，不加回；没见过 = 程序新认出来的，加进来。
+      老版本存的没有 seen：只在这次有对不上的旧标记时加（那份存档已经不能用了）；没有的话保持原样。
+    对不上的旧标记不参加分析，留着给作者看当时填的物品和流速。"""
+    old = [m for m in saved if m.get("p_bp") is None or not m.get("bp")]
+    on = sum(1 for m in old if _gate_at(m["p"], lg_canvas) is not None)
+    old_ok = not old or on * 2 >= len(old)
+    marks, stale, moved = [], [], 0
+    for m in saved:
+        m = dict(m)
+        if m.get("p_bp") is not None and m.get("bp"):
+            if m["bp"] not in tf["bps"]:
+                stale.append(dict(m, why=f"它所在的蓝图「{m['bp']}」不在这个据点里了"))
+                continue
+            p = from_bp(tf, m["bp"], m["p_bp"])
+            g = _gate_at(p, lg_canvas)
+            if g is not None:
+                p, m["bp"], m["p_bp"] = list(g["p"]), g["bp"], list(g["p_bp"])
+            if not _hit(p, m["p"], 1):
+                moved += 1
+            m["p"] = p
+            marks.append(m)
+        elif old_ok:
+            marks.append(anchor([m], tf, lg_canvas)[0])
+        else:
+            stale.append(dict(m, why="存的是旧拼合图上的位置，现在那里没有准入口"))
+    added = 0
+    if seen is not None or stale:
+        known = [(s[0], s[1]) for s in seen or []]
+        nxt = max([int(m.get("no") or 0) for m in marks] + [0])
+        for a in auto:
+            if any(_hit(a["p"], m["p"]) for m in marks):
+                continue
+            if any(bp == a.get("bp") and a.get("p_bp") is not None and _hit(a["p_bp"], q) for bp, q in known):
+                continue  # 保存时见过、现在不在标记里：作者删掉的
+            nxt += 1
+            marks.append(dict(a, no=nxt))
+            added += 1
+    return marks, stale, {"moved": moved, "stale": len(stale), "added": added}
+
+
+# ------------------------------------------------------------------ 物品名
+_NAMES = None
+
+
+def item_names() -> list[str]:
+    """分析认得的物品名：配方里出现过的物品 + 全部液体/气体（和 logistics._ake_templates 的候选是同一批）。"""
+    global _NAMES
+    if _NAMES is None:
+        import json
+        from paths import ROOT
+        rec = json.loads((ROOT / "data" / "recipes.json").read_text(encoding="utf-8"))
+        names = json.loads((ROOT / "data" / "item_id_names.json").read_text(encoding="utf-8"))
+        fluids = {f.stem for f in (ROOT / "resource" / "icons" / "fluid").glob("*.png")}
+        ids = {k for r in rec for k in list(r["inputs"]) + list(r["outputs"])} | fluids
+        _NAMES = sorted({names[i] for i in ids if names.get(i)})
+    return _NAMES
+
+
+def check_items(marks: list[dict]) -> list[dict]:
+    """物品名认不出来的标记 → [{no, item, suggest: [名字…]}]。物品那一栏是随手打字的，打错了分析里这个口送的东西没有设备吃
+    （2026-11-14 issue #1：应龙关填的「水」「重积酸」，应该是清水、沉积酸）。suggest：包含它的 / 长得像的名字，最多 3 个。"""
+    import difflib
+    names = item_names()
+    known = set(names)
+    out = []
+    for m in marks:
+        it = (m.get("item") or "").strip()
+        if not it or it in known:
+            continue
+        sug = sorted((n for n in names if it in n or n in it), key=len)[:3]
+        sug += [n for n in difflib.get_close_matches(it, names, n=3, cutoff=0.5) if n not in sug]
+        out.append({"no": m.get("no"), "item": it, "suggest": sug[:3]})
+    return out
 
 
 def numbered_image(canvas: np.ndarray, marks: list[dict], scale: float = 0.8, dropped: list[dict] | None = None) -> Image.Image:

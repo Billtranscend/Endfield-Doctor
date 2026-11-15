@@ -448,9 +448,68 @@ def to_preview(rot: int, t, offset_canvas, F0, mos_shape, fx, fy):
     return {0: (qx, qy), 180: (W - 1 - qx, H - 1 - qy), 90: (qy, H - 1 - qx), 270: (W - 1 - qy, qx)}[rot]
 
 
+GRID_PITCH = 34.13  # 预览底色上网格线的间距 px（11 张拼图实测 34.10–34.16）。一条线 = 一格的边
+# 注意它不是 CELL（34.75）：拼图 = 格数 × 34.13 + 固定的留边（横向约 21、纵向约 26 px），CELL 是把留边摊进去的近似值，
+# 所以尺寸自检总差几个像素（46 格 1592 对 1598、49 格 1695 对 1703、13 格 1085 对 1077）。CELL 的用处没动。
+GRID_MIN_LINES, GRID_MIN_FOCUS = 8, 0.8
+
+
+def grid_lines(gray: np.ndarray, axis: int) -> np.ndarray:
+    """预览底色（约 229）上 2 px 宽、比两边暗 3–14 的细线的位置。axis 0：竖线的 x；1：横线的 y。
+    一列（行）里底色像素 ≥ 40 个、其中 60% 以上比左右各 3 px 处暗，算一条线；相邻的列并成一条。"""
+    g = gray.astype(np.int16)
+    if axis == 1:
+        g = g.T
+    bg = (g >= 226) & (g <= 233)
+    c = g[:, 3:-3]
+    usable = bg[:, :-6] & bg[:, 6:]
+    dark = usable & (g[:, :-6] - c >= 3) & (g[:, :-6] - c <= 14) & (g[:, 6:] - c >= 3) & (g[:, 6:] - c <= 14)
+    n = usable.sum(0)
+    xs = np.nonzero((n >= 40) & (dark.sum(0) > 0.6 * np.maximum(n, 1)))[0] + 3
+    out, run = [], []
+    for x in xs:
+        if run and x - run[-1] > 1:
+            out.append(float(np.mean(run)))
+            run = []
+        run.append(int(x))
+    if run:
+        out.append(float(np.mean(run)))
+    return np.array(out)
+
+
+def grid_phase(pos: np.ndarray, pitch: float = GRID_PITCH) -> tuple[float, float]:
+    """格线位置 → (相位 0..pitch：第一条格线离原点多远, 集中度 0..1：这些线是不是在同一套等距的格子上)。"""
+    if len(pos) == 0:
+        return 0.0, 0.0
+    z = np.exp(2j * np.pi * (np.asarray(pos, float) % pitch) / pitch).mean()
+    return float((np.angle(z) % (2 * np.pi)) / (2 * np.pi) * pitch), float(abs(z))
+
+
+def grid_shifts(origins: list[np.ndarray], phases: list[tuple], pitch: float = GRID_PITCH) -> list[np.ndarray]:
+    """每张蓝图在画布上的原点（px，可以带小数）+ 它自己的格线相位 [(x 相位, x 集中度, x 线数), (y …)] → 每张该挪多少 px，
+    挪完各张的格线落在同一套格子上。游戏里所有蓝图在同一套建造格子上，蓝图之间的相对位置应该正好是整数格；
+    每张蓝图是各自按锚点拟合的，底账有几个像素的误差，接缝处就会错开（2026-11-14 issue #1：武陵左上 / 武陵左中错开 6.5 px；
+    本地皇帝产线三个据点也有 3–8 px）。目标相位取各张的圆周平均，每张挪最近的那个方向（不超过半格）。
+    格线认不够（线数 < GRID_MIN_LINES 或集中度 < GRID_MIN_FOCUS）的那个方向不参加、也不挪。"""
+    out = [np.zeros(2) for _ in origins]
+    for ax in (0, 1):
+        ok = [i for i, ph in enumerate(phases) if ph[ax][2] >= GRID_MIN_LINES and ph[ax][1] >= GRID_MIN_FOCUS]
+        if len(ok) < 2:
+            continue
+        q = np.array([(origins[i][ax] + phases[i][ax][0]) % pitch for i in ok])
+        z = np.exp(2j * np.pi * q / pitch).mean()
+        if abs(z) < 1e-6:
+            continue
+        target = (np.angle(z) % (2 * np.pi)) / (2 * np.pi) * pitch
+        for i, qi in zip(ok, q):
+            out[i][ax] = (target - qi + pitch / 2) % pitch - pitch / 2
+    return out
+
+
 def composite(items: list[dict]) -> tuple[np.ndarray, dict]:
     """items：[{bp, mosaic, rot, t}] → (据点拼合图, 变换 {F0, bps:{bp:{rot,t,offset}}})。
-    按基地朝向合成；每个像素取「墨迹」最多的蓝图；管道层压在传送带层上（用户说明）。"""
+    按基地朝向合成；每个像素取「墨迹」最多的蓝图；管道层压在传送带层上（用户说明）。
+    各张蓝图先按自己的格线对齐到同一套格子上（grid_shifts）：bps[bp].t 是对齐后的，拟合出来的原值在 t_fit，挪了多少在 grid_shift（px）。"""
     ROT = {0: None, 90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
     prep = []
     for it in items:
@@ -468,12 +527,25 @@ def composite(items: list[dict]) -> tuple[np.ndarray, dict]:
         imr = cv2.rotate(im, r) if r is not None else im
         if r is not None:
             score = cv2.rotate(score, r)
-        prep.append((it, np.array(it["t"], float), np.array(shift, float), imr, score))
+        gr = cv2.cvtColor(imr, cv2.COLOR_BGR2GRAY)
+        ph = []
+        for ax in (0, 1):
+            pos = grid_lines(gr, ax)
+            ph.append(grid_phase(pos) + (len(pos),))
+        prep.append([it, np.array(it["t"], float), np.array(shift, float), imr, score, ph])
+    moves = grid_shifts([t / K - sh for _, t, sh, _, _, _ in prep], [p[5] for p in prep])
+    fitted = {p[0]["bp"]: p[1].copy() for p in prep}
+    for p, mv in zip(prep, moves):
+        p[1] = p[1] + K * mv
+    moved = {p[0]["bp"]: mv for p, mv in zip(prep, moves)}
+    prep = [tuple(p[:5]) for p in prep]
     F0 = np.min([t - K * sh for _, t, sh, _, _ in prep], axis=0)
     placed = []
+    t_of = {}
     for it, t, sh, imr, sc in prep:
         off = np.round((t - F0) / K - sh).astype(int)
         placed.append((it, off, imr, sc))
+        t_of[it["bp"]] = t
     Wc = max(o[0] + im.shape[1] for _, o, im, _ in placed)
     Hc = max(o[1] + im.shape[0] for _, o, im, _ in placed)
     canvas = np.full((Hc, Wc, 3), 232, np.uint8)
@@ -494,7 +566,10 @@ def composite(items: list[dict]) -> tuple[np.ndarray, dict]:
         pipe = cv2.dilate(core, np.ones((5, 5), np.uint8)).astype(bool)
         sel = pipe & under[y:y + hh, x:x + ww]
         canvas[y:y + hh, x:x + ww][sel] = im[sel]
-    tf = {"K": K, "F0": F0.tolist(), "bps": {it["bp"]: {"rot": it["rot"], "t": list(map(float, it["t"])), "offset": off.tolist()} for it, off, _, _ in placed}}
+    tf = {"K": K, "F0": F0.tolist(),
+          "bps": {it["bp"]: {"rot": it["rot"], "t": list(map(float, t_of[it["bp"]])), "offset": off.tolist(),
+                             "t_fit": list(map(float, fitted[it["bp"]])), "grid_shift": [round(float(v), 2) for v in moved[it["bp"]]]}
+                  for it, off, _, _ in placed}}
     return canvas, tf
 
 

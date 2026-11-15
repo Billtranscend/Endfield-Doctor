@@ -274,6 +274,22 @@ def _ake_candidates(icon, top: int = 3) -> list[dict]:
     return res[:top]
 
 
+def upright(icon, rot: int):
+    """拼合图上的图标 → 蓝图预览里原来的朝向。拼合时每张蓝图的预览按旋转角顺时针转过再贴，图标跟着一起转了；np.rot90 是逆时针。"""
+    return icon if rot % 360 == 0 else np.ascontiguousarray(np.rot90(icon, (rot // 90) % 4))
+
+
+def ake_candidates_upright(icon, rots, top: int = 3) -> list[dict]:
+    """同 ake_candidates，先按蓝图旋转角把图标转回来。rots 有几个（这个位置在几张蓝图的范围里、或分不清在哪张）时每种物品取最高分。
+    2026-11-14 issue #1：他的 5 张蓝图都转 90° 放，取货口的源矿不转回来比是 0.38–0.45（输给致密源石粉末 0.50–0.59），转回来 0.86–0.93。"""
+    best: dict = {}
+    for rot in sorted(set(rots or [0])):
+        for c in ake_candidates(upright(icon, rot), top=999):
+            if c["id"] not in best or c["score"] > best[c["id"]]["score"]:
+                best[c["id"]] = c
+    return sorted(best.values(), key=lambda z: -z["score"])[:top]
+
+
 def ake_confident(cands: list[dict]) -> bool:
     return bool(cands) and cands[0]["score"] >= AKE_MIN and (len(cands) < 2 or cands[0]["score"] - cands[1]["score"] >= AKE_LEAD)
 

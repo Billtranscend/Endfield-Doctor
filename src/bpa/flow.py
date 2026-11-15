@@ -591,7 +591,8 @@ def _touching_device(P, d, ledger_pts, rects, tol=(-4, 9)):
 
 
 OUTLETS = ("暗管出口", "多口暗管出口", "仓库取货口")  # 只往外出：物流件进料口贴着它就是接上了（应龙关多口暗管出口 M2 → 汇流器 H2 → G5，2026-11-09）
-NOT_PORT = ("息壤供电桩", "供电桩", "中继器", "协议核心", "仓库存取线基段", "仓库存取线源桩")  # 不接带子/管子的设备，不当端点
+NOT_PORT = ("息壤供电桩", "供电桩", "中继器", "协议核心", "仓库存取线基段", "仓库存取线源桩", "长距滑索架")  # 不接带子/管子的设备，不当端点
+# 长距滑索架：2026-11-14 别人的武陵城 (1736,370)，精炼炉进料带的另一头本来是取货口 (1768,351)，被按最近标签认成了滑索架
 
 
 def _device_at(T, ledger_pts, rects):
@@ -713,7 +714,9 @@ def _port_bridges(M, links, nodes, max_cells=4) -> list[dict]:
     思路来自 IndustrialPlanner 的格子模型：带子一格一格地占格，口格外面那一格就是带子的第一格。
     从还没接线的出口格外面那一格出发，只走：格中心是黄带、和上一格之间的格边中点也是黄带（并排的两条带子之间隔着空隙，走不过去）、
     没被已经追出来的连线占着、不在别的设备外框里、不是物流件。走到另一台设备一个还没接线的进口格外面那一格就是接上了；
-    只接唯一一个。2026-11-10 武陵城左列：种植机 (155,1158) → 采种机 (120,987) 的一格弯带等。"""
+    只接唯一一个。2026-11-10 武陵城左列：种植机 (155,1158) → 采种机 (120,987) 的一格弯带等。
+    出口格外面那一格就是物流桥（没有黄带可走）：桥只能直着过，桥对面那一格要么直接是另一台设备的进口格、要么是带子接着按格子走。
+    2026-11-14 别人的武陵城（issue #1）：种植机的砂叶出口 → 物流桥 → 粉碎机进口，中间一格带子都没有，粉碎机算成没料。"""
     import cv2 as _cv
     yel = M["belt"]
     H, W = yel.shape
@@ -738,6 +741,9 @@ def _port_bridges(M, links, nodes, max_cells=4) -> list[dict]:
 
     def at_node(P):
         return any(abs(n["c"][0] - P[0]) <= 0.5 * C and abs(n["c"][1] - P[1]) <= 0.5 * C for n in nodes)
+
+    def bridge_at(P):
+        return next((n for n in nodes if n["type"] == "物流桥" and abs(n["c"][0] - P[0]) <= 0.5 * C and abs(n["c"][1] - P[1]) <= 0.5 * C), None)
     vs = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
     targets = []
     for j, q in ports:
@@ -752,6 +758,25 @@ def _port_bridges(M, links, nodes, max_cells=4) -> list[dict]:
         v = np.asarray(vs[p["side"]], float)
         e = np.asarray(p["edge"], float)
         s0 = e + v * C / 2
+        br = bridge_at(s0)
+        if br is not None:
+            # 直着过桥：桥这一格同时是对面那个进口格外面的一格（进口朝着这个出口）→ 两个口隔着桥直接对上
+            across = [(j, q) for j, q, t, _ in targets
+                      if j != i and np.hypot(*(s0 - t)) <= 0.35 * C and tuple(vs[q["side"]]) == tuple(-x for x in vs[p["side"]])]
+            if len(across) != 1:
+                continue
+            j, q = across[0]
+            a, b = _DEVS[i], _DEVS[j]
+            out.append({"layer": "belt", "free": True, "a": None, "a_side": None, "end": "device", "a_end": "device", "bridge": True,
+                        "a_dev": {"name": a["name"], "c": a["c"], "how": "端口布局", "port": "out", "port_c": [round(x, 1) for x in p["edge"]]},
+                        "a_dev_side": BACK[p["side"]],
+                        "device": {"name": b["name"], "c": b["c"], "how": "端口布局", "port": "in", "port_c": [round(x, 1) for x in q["edge"]]},
+                        "dev_side": BACK[q["side"]],
+                        "path": [[int(round(x)), int(round(y))] for x, y in (e, br["c"], q["edge"])], "jumps": [[int(round(x)) for x in br["c"]]],
+                        "arrows": 0, "dir": "a->b",
+                        "basis": [f"端口布局：{a['name']}出口 → 直着过物流桥 → {b['name']}进口（按格子补）"]})
+            targets = [t for t in targets if not (t[0] == j and t[1] is q)]
+            continue
         if _frac(yel, e + v * 4, 3) < 0.4 or _frac(yel, s0) < 0.4 or cov[int(s0[1]), int(s0[0])] or inside_dev(s0) or at_node(s0):
             continue
         seen = {(round(s0[0]), round(s0[1]))}
@@ -808,6 +833,12 @@ def _end_info(M, lay, r, ledger_pts, rects):
     if r["end"] != "device" or not _DEVS:
         return e, dv
     hit = _port_hit(r, lay, e, only_e=dv is not None and e != r["d"])
+    if hit is None and lay == "belt" and _weak(dv) and _under_pipe(M, r["path"][-1]):
+        # 只在带子头上压着管子时用：不压管子的带子头「往哪边伸」本来就判得出来。不加这个条件时皇帝产线三个据点有 9 条连线换了设备，
+        # 武陵城左列种植机 ↔ 采种机那一圈（作者确认过理论满速）变成了间歇 67%（2026-11-14 重算对比发现）
+        hit, alt = _side_port(M, r, [p for p in ledger_pts if not _pipe_only(p["name"])], rects)
+        if hit is None and alt is not None:
+            return alt
     if hit is None:
         return e, dv
     i, p = hit
@@ -818,6 +849,42 @@ def _end_info(M, lay, r, ledger_pts, rects):
         PORT_CMP.append({"layer": lay, "at": [int(v) for v in r["path"][-1]], "old": (e, dv and dv["name"], dv and dv.get("c")),
                          "new": (side, d["name"], d["c"], p["role"])})
     return side, new
+
+
+def _under_pipe(M, P, h=4) -> bool:
+    """带子头 P 这一小块大半是深色（管子和管子上的小三角；黄带、底色都是浅的）：上面压着一根管子。"""
+    x, y = int(round(P[0])), int(round(P[1]))
+    w = M["gray"][max(0, y - h):y + h + 1, max(0, x - h):x + h + 1]
+    return w.size > 0 and float((w < 170).mean()) >= 0.5
+
+
+def _side_port(M, r, ledger_pts, rects):
+    """带子头最后半格拐进旁边的设备，上面又压着一根顺着走的管子（拐弯的形状看不出来，按「往哪边伸」判成了直走）：
+    两侧各看一眼，离带子头 12 px 的地方是黄带（管子盖不到那么宽）。只有一侧是 → 带子拐向那边：那边正对着一个带子口就是那个口；
+    那台设备没有端口布局（外框没认出来）就往那边探着找设备。两侧都有黄带或都没有就不认。→ (端口命中, None) 或 (None, (边, 设备)) 或 (None, None)
+    2026-11-14 别人的武陵城 (304,99)：碳块带往下走到头向右拐进天有洪炉的进料口，原来按最近标签认成了左边的采种机，天有洪炉的碳块没人送。"""
+    from . import ports as PT
+    P = np.asarray(r["path"][-1], float)
+    sides = [s for s in (LEFT[r["d"]], RIGHT[r["d"]]) if _frac(M["belt"], P + _v(s) * 12, 3) >= 0.4]
+    if len(sides) != 1:
+        return None, None
+    s = sides[0]
+    h = PT.port_near(_DEVS, P, s, pipe=False)
+    if h is not None:
+        return h, None
+    # 追线停在拐角上、带子拐过去再走一格才进旁边的设备（U 形）：站到下一格上再看两侧
+    # （同一个据点 (302,610)：拐角往南一格，再向右进天有洪炉 (409,714) 的进料口；原来按线框认成了左边的采种机）
+    P2 = P + _v(s) * C
+    side2 = [t for t in (LEFT[s], RIGHT[s]) if _frac(M["belt"], P2 + _v(t) * 12, 3) >= 0.4]
+    if len(side2) == 1:
+        h = PT.port_near(_DEVS, P2, side2[0], pipe=False)
+        if h is not None:
+            return h, None
+    for k in (C / 2 + 10, C + 12, 1.5 * C + 12):
+        dv = _device_at(P + _v(s) * k, ledger_pts, rects)
+        if dv is not None:
+            return None, (s, dv)
+    return None, None
 
 
 def _port_hit(r, lay, e, only_e=False):

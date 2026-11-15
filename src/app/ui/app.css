@@ -271,6 +271,18 @@ ul.plain { margin: 0; padding-left: 18px; color: #c9d0d6; line-height: 1.8; font
 .bpa-st tr:hover td, .bpa-table tr:hover td { background: rgba(255,212,0,.035); }
 .bpa-st .ok { color: var(--ok); } .bpa-st .bad { color: var(--bad); } .bpa-st .muted { color: var(--muted); }
 .bpa-table .no { color: var(--bad); font-family: var(--mono); } .bpa-table .no.manual { color: var(--info); }
+.pend-head { margin: 8px 0 4px; }
+.pend-auto { font-size: 12px; color: var(--muted, #888); margin: 4px 0 8px; }
+.pend-auto ul { margin: 2px 0 0 18px; padding: 0; }
+.pend-item { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--bad); border-radius: 6px; padding: 8px; margin: 6px 0; }
+.pend-item.done { border-color: var(--line, #444); opacity: .85; }
+.pend-item img { max-width: 360px; max-height: 300px; border-radius: 4px; }
+.pend-body { flex: 1; min-width: 0; }
+.pend-msg { margin-bottom: 6px; }
+.pend-opts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pend-rec { margin-top: 8px; font-size: 12px; }
+#bpaDsPending.busy { opacity: .5; pointer-events: none; }
+.main .bpa-table input.bad { border-color: var(--bad); color: var(--bad); }
 .bpa-table .bad { color: var(--warn); }
 .bpa-table input:not([type=checkbox]) { padding: 3px 6px; }
 .bpa-table .btn.sm { padding: 2px 8px; }

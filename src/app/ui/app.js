@@ -695,6 +695,7 @@ function mdToHtml(md) {
   try {
     const v = await api('version');
     $('#setVersion').textContent = v.version; $('#setRoot').textContent = v.root; $('#setDebug').textContent = v.debug;
+    feedbackProjects();
     await loadBlueprints();
     await loadRecent();
     refreshGame();
@@ -705,6 +706,23 @@ function mdToHtml(md) {
 
 
 // ---------------------------------------------------------------- 蓝图分析
+// 设置页：导出反馈包（每个 ≤ 24 MB，能直接传 GitHub）
+async function feedbackProjects() {
+  const sel = $('#fbProj'); if (!sel) return;
+  const list = await api('bpa_projects');
+  const keep = sel.value || localStorage.getItem('bpaProject') || '';
+  sel.innerHTML = list.map(p => `<option ${p.name === keep ? 'selected' : ''}>${esc(p.name)}</option>`).join('') || '<option value="">（还没有蓝图分析项目）</option>';
+}
+async function feedbackExport() {
+  const name = $('#fbProj').value; if (!name) return toast('还没有蓝图分析项目');
+  const btn = $('#fbBtn'); btn.disabled = true; $('#fbResult').textContent = '正在打包…';
+  const r = await api('feedback_export', name, $('#fbRaw').checked);
+  btn.disabled = false;
+  if (!r.ok) { $('#fbResult').textContent = ''; return toast(r.error); }
+  $('#fbResult').innerHTML = `导出了 ${r.files.length} 个压缩包，共 ${r.total_mb} MB，在 <span class="mono">${esc(r.dir)}</span>：
+    <ul class="plain">${r.files.map(f => `<li>${esc(f.name)}　${f.mb} MB${f.note ? `　<b style="color:var(--bad)">${esc(f.note)}</b>` : ''}</li>`).join('')}</ul>
+    把这几个文件一起拖进 issue 的评论框就行。`;
+}
 const bpa = { name: localStorage.getItem('bpaProject') || '', status: null, marks: [], scale: 0.6, base: '' };
 async function bpaLoad() {
   const list = await api('bpa_projects');
@@ -803,9 +821,46 @@ async function bpaDesign() {
   $('#bpaDsSummary').innerHTML = `<div class="bpa-dssum">${Object.keys(DS_COLORS).map(k => `<span style="color:${DS_COLORS[k]}">● ${k} ${st[k] || 0}</span>`).join('')}
     <span class="muted">共 ${sm.devices || 0} 台 · 推断连线 ${sm.inferred_links || 0} 条 · 来料经过推断连线 ${sm.via_inferred || 0} 台 · 推断配方 ${sm.recipe_inferred || 0} 台 · 要稳定环境 ${sm.env_required || 0} 台</span></div>`;
   $('#bpaDsInfN').textContent = (r.inferred_links || []).length;
+  bpaPending();
   bpaLinksTable();
   bpaDesignTable();
   bpaProgress(r.progress);
+}
+// 待确认：程序自己定不下来的地方（一台设备连着带子却没有进料……），作者选一下，程序按选的重算。
+// 程序看设备口格箭头自己改对的（reread）也列在这里，让作者知道动过什么
+const FEED_WORDS = { none: '都不是（进料带没认出来）', unused: '这台设备没在用' };
+function bpaPending() {
+  const r = bpa.ds, box = $('#bpaDsPending'); if (!r || !box) return;
+  const items = r.pending || [], auto = r.reread || [];
+  if (!items.length && !auto.length) { box.innerHTML = ''; return; }
+  const open = items.filter(p => !p.answer).length;
+  const autoHtml = auto.length ? `<div class="pend-auto">程序按设备口格的箭头自己改过 ${auto.length} 处（已标成推断，在下面「推断出来的连线」里可以说对不对）：
+    <ul>${auto.map(a => `<li>${esc(a.device)}：${esc(a.basis || a.kind)}</li>`).join('')}</ul></div>` : '';
+  box.innerHTML = `<div class="pend-head">${open ? `<b>待确认 ${open} 处</b>：这些地方程序定不下来，需要你看一眼` : (items.length ? '待确认的都答过了' : '')}</div>${autoHtml}
+    ${items.map((p, i) => {
+      const ans = p.answer || '';
+      const btn = (val, label) => `<button class="btn sm${ans === val ? '' : ' ghost'}" onclick="bpaFix('feeds',${i},'${val}')">${label}</button>`;
+      const links = (p.links || []).map((l, k) => btn('to:' + l.key, `${k + 1} 号带子是进料（另一头是${esc(l.to)}）`)).join('');
+      const rsel = (p.recipes || []).length > 1 ? `<div class="pend-rec">配方不是「${esc((p.recipe || '').split('（')[0])}」的话改成：
+        <select onchange="bpaFix('recipes',${i},this.value)"><option value="">（不改）</option>${p.recipes.map(x => `<option${x === p.recipe_fix ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></div>` : '';
+      return `<div class="pend-item${ans ? ' done' : ''}">${p.image ? `<img src="${p.image}" alt="">` : ''}
+        <div class="pend-body"><div class="pend-msg">${esc(p.msg)}</div>
+          <div class="pend-opts">${links}${btn('none', FEED_WORDS.none)}${btn('unused', FEED_WORDS.unused)}
+            ${ans ? `<a class="undo" onclick="bpaFix('feeds',${i},'')">撤销</a>` : ''}</div>${rsel}
+          ${ans ? `<div class="muted">已选：${esc(ans.startsWith('to:') ? '指定了进料带' : FEED_WORDS[ans] || ans)}${p.applied ? '' : '（这一项还会留在这里）'}</div>` : ''}</div></div>`;
+    }).join('')}`;
+}
+async function bpaFix(kind, i, value) {
+  const r = bpa.ds; if (!r) return;
+  const p = (r.pending || [])[i]; if (!p) return;
+  const box = $('#bpaDsPending');
+  box.classList.add('busy');
+  toast('已记下，正在按你的选择重算这个据点（大据点要一两分钟）…');
+  const res = await api('bpa_fix', bpa.name, $('#bpaDsBase').value, kind, p.key, value || null);
+  box.classList.remove('busy');
+  if (!res.ok) return toast(res.error);
+  toast('重算好了');
+  bpaDesign();
 }
 function bpaProgress(p) {
   if (!p) return;
@@ -944,23 +999,38 @@ async function bpaInputs() {
   bpa.base = base; bpa.scale = r.scale;
   bpa.marks = r.marks.map(m => Object.assign({ item: '', rate: '', merged: false, via: '', note: '' }, m));
   bpa.dropped = r.dropped || [];
+  bpa.stale = r.stale || []; bpa.items = new Set(r.items || []);
   $('#bpaInImage').innerHTML = `<img src="${r.image}" draggable="false" onclick="bpaAddMark(event)">`;
   panZoom($('#bpaInImage'));
   bpaRenderTable();
 }
 function bpaRenderTable() {
   const vias = ['', '水泵', '暗管', '多口暗管', '其他'];
+  // 物品名原来随手打字：打错了（「水」「重积酸」）分析里这个口送的东西没有设备吃，也没有任何提示（2026-11-14 issue #1）。
+  // 现在带下拉（分析认得的全部物品名），不在列表里的标红
   const rows = bpa.marks.map((m, i) => `<tr><td class="no ${m.source === 'manual' ? 'manual' : ''}">${m.no}</td>
-      <td><input value="${esc(m.item)}" onchange="bpa.marks[${i}].item=this.value"></td>
+      <td><input list="bpaItemList" class="${bpaBadItem(m.item) ? 'bad' : ''}" title="${bpaBadItem(m.item) ? BPA_BAD_ITEM : ''}" value="${esc(m.item)}" onchange="bpaSetItem(${i}, this)"></td>
       <td><input value="${esc(m.rate ?? '')}" size="4" onchange="bpa.marks[${i}].rate=this.value"></td>
       <td><input type="checkbox" ${m.merged ? 'checked' : ''} onchange="bpa.marks[${i}].merged=this.checked"></td>
       <td><select onchange="bpa.marks[${i}].via=this.value">${vias.map(v => `<option ${v === m.via ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
       <td><button class="btn sm ghost" onclick="bpaDelMark(${i})">删</button></td></tr>`).join('');
   const drops = (bpa.dropped || []).map((d, i) => `<tr><td class="no" style="color:#888">${d.tag}</td><td>${esc(d.item || '')}</td>
       <td colspan="3" class="muted">${esc(d.why)}</td><td><button class="btn sm ghost" onclick="bpaAddDropped(${i})">加回</button></td></tr>`).join('');
-  $('#bpaInTable').innerHTML = `<table class="bpa-table"><tr><th>#</th><th>物品</th><th>每分钟</th><th>汇流口</th><th>接口</th><th></th></tr>${rows}</table>`
-    + (drops ? `<div class="hint" style="margin-top:8px">贴边但程序判断不是输入端的准入口（图上灰色虚圈），判断错了就点「加回」：</div><table class="bpa-table">${drops}</table>` : '');
+  const stale = (bpa.stale || []).map((s, i) => `<tr><td class="no" style="color:#888">${esc(s.no ?? '')}</td><td>${esc(s.item || '')}</td>
+      <td>${esc(s.rate ?? '')}</td><td colspan="2" class="muted">${esc(s.why || '')}</td><td><button class="btn sm ghost" onclick="bpaDelStale(${i})">删</button></td></tr>`).join('');
+  $('#bpaInTable').innerHTML = `<datalist id="bpaItemList">${[...(bpa.items || [])].map(n => `<option value="${esc(n)}">`).join('')}</datalist>`
+    + `<table class="bpa-table"><tr><th>#</th><th>物品</th><th>每分钟</th><th>汇流口</th><th>接口</th><th></th></tr>${rows}</table>`
+    + (drops ? `<div class="hint" style="margin-top:8px">贴边但程序判断不是输入端的准入口（图上灰色虚圈），判断错了就点「加回」：</div><table class="bpa-table">${drops}</table>` : '')
+    + (stale ? `<div class="hint" style="margin-top:8px">对不上的旧标记：拼合图变过，它们存的位置现在不在准入口上。不参加分析、图上也不画，只留着给你看当时填的物品和流速；核对完上面的表就可以删。
+      <button class="btn sm ghost" onclick="bpaDelStale(-1)">全部删掉</button></div><table class="bpa-table">${stale}</table>` : '');
 }
+const BPA_BAD_ITEM = '物品库里没有这个名字，分析里用不上。请从下拉里选一个';
+function bpaBadItem(v) { return !!(v && bpa.items && bpa.items.size && !bpa.items.has(v)); }
+function bpaSetItem(i, el) {
+  const v = el.value.trim(); el.value = v; bpa.marks[i].item = v;
+  el.classList.toggle('bad', bpaBadItem(v)); el.title = bpaBadItem(v) ? BPA_BAD_ITEM : '';
+}
+function bpaDelStale(i) { if (i < 0) bpa.stale = []; else bpa.stale.splice(i, 1); bpaSaveInputs(true); }
 // 大图查看：按住左键拖动、滚轮以鼠标处为中心缩放、右上「复位」回到适应宽度（2026-11-09 用户：不要靠横竖滑条）。
 // 拖动过就不算点击（输入端图上点击是补标），缩放后点击补标的坐标照样对（bpaAddMark 用变换后的外框换算）。
 function panZoom(box) {
@@ -1016,7 +1086,8 @@ function bpaBatch() {
 }
 async function bpaSaveInputs(reload) {
   const marks = bpa.marks.map(m => Object.assign({}, m, { rate: (m.rate === '' || m.rate === null || m.rate === undefined) ? null : Number(m.rate) }));
-  const r = await api('bpa_save_inputs', bpa.name, bpa.base, marks);
+  const r = await api('bpa_save_inputs', bpa.name, bpa.base, marks, bpa.stale || []);
   if (!r.ok) return toast(r.error);
-  if (reload === true) bpaInputs(); else { toast('输入端已保存'); bpaRefresh(); }
+  const bad = (r.bad_items || []).map(b => `${b.no} 号「${b.item}」` + (b.suggest && b.suggest.length ? `（是不是${b.suggest.join('、')}？）` : ''));
+  if (reload === true) bpaInputs(); else { toast(bad.length ? '已保存。有物品名认不出来，分析里用不上：' + bad.join('；') : '输入端已保存'); bpaRefresh(); }
 }

@@ -139,7 +139,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.9", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.10", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []
@@ -516,7 +516,50 @@ class Api:
             rows.append(row)
         links = [dict(lk, key=P.link_key(lk), confirm=conf.get("links", {}).get(P.link_key(lk))) for lk in d.get("inferred_links", [])]
         return {"ok": True, "summary": d.get("summary") or {}, "devices": rows, "inferred_links": links, "actuals": list(P.ACTUALS),
-                "progress": P.confirm_progress(name, base), "recipe_fixes": d.get("recipe_fixes", []), "gates": d.get("gates", [])}
+                "progress": P.confirm_progress(name, base), "recipe_fixes": d.get("recipe_fixes", []), "gates": d.get("gates", []),
+                "pending": self._pending_view(name, base, d), "reread": d.get("reread", [])}
+
+    def _pending_view(self, name: str, base: str, d: dict) -> list:
+        """待确认项：每项配一张小图（设备红圈、几条带子的头按 1、2、3 标号）和这种机器能做的配方。"""
+        import cv2
+        from bpa import design as DS, project as P, vision as V
+        items = d.get("pending") or []
+        if not items:
+            return []
+        f = P.pdir(name) / "base" / base / "composite.png"
+        img = V.rd(f) if f.exists() else None
+        fixes = P.load_fixes(name).get(base, {})
+        out = []
+        for it in items:
+            row = dict(it, recipes=DS._machine_recipes(it["device"].split("[")[0]), recipe_fix=(fixes.get("recipes") or {}).get(it.get("key")))
+            if img is not None:
+                cx, cy = it["c"]
+                pts = [cx, cy] + [t for l in it.get("links", []) for t in l["at"]]
+                x0, x1 = max(0, min(pts[0::2]) - 150), min(img.shape[1], max(pts[0::2]) + 150)
+                y0, y1 = max(0, min(pts[1::2]) - 150), min(img.shape[0], max(pts[1::2]) + 150)
+                s = min(1.6, 560 / max(x1 - x0, y1 - y0))
+                c = cv2.resize(img[y0:y1, x0:x1], None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC)
+                cv2.circle(c, (int((cx - x0) * s), int((cy - y0) * s)), int(60 * s), (30, 30, 230), 3)
+                for k, l in enumerate(it.get("links", []), 1):
+                    p = (int((l["at"][0] - x0) * s), int((l["at"][1] - y0) * s))
+                    cv2.circle(c, p, 13, (30, 30, 230), -1)
+                    cv2.putText(c, str(k), (p[0] - 6, p[1] + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                ok, buf = cv2.imencode(".jpg", c, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if ok:
+                    row["image"] = "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+            out.append(row)
+        return out
+
+    def bpa_fix(self, name: str, base: str, kind: str, key: str, value: str | None = None) -> dict:
+        """作者修正（待确认里选的）：kind = feeds（哪条带子是进料 / none / unused）或 recipes（配方）；value 为空 = 撤销。
+        存进项目 fixes.json 后只重算这个据点的设计分析，返回新的结果。"""
+        from bpa import project as P
+        try:
+            P.save_fix(name, base, kind, key, value)
+            P.rerun_design(name, base)
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        return self.bpa_design(name, base)
 
     def bpa_confirm(self, name: str, base: str, kind: str, entries: dict) -> dict:
         """作者确认（任务计划第 1 项）：kind = devices / links；entries = {键: {verdict: ok/wrong, actual, note} 或 None 撤销}。"""
@@ -564,11 +607,10 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
-    def bpa_save_inputs(self, name: str, base: str, marks: list[dict]) -> dict:
+    def bpa_save_inputs(self, name: str, base: str, marks: list[dict], stale: list[dict] | None = None) -> dict:
         from bpa import project as P
         try:
-            P.save_inputs(name, base, marks)
-            return {"ok": True}
+            return {"ok": True, "bad_items": P.save_inputs(name, base, marks, stale)}
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
@@ -966,6 +1008,25 @@ class Api:
         if not f.exists() or not rid.startswith(REPORT_PREFIX):
             return None
         return json.loads(f.read_text(encoding="utf-8"))
+
+    def feedback_export(self, name: str, raw: bool = False) -> dict:
+        """设置页「导出反馈包」：打到 数据目录/反馈包/<项目>_<时间>/，自动拆成每个 ≤ 24 MB 的压缩包，然后打开那个文件夹。"""
+        import os
+        from bpa import project as P
+        try:
+            out = DEBUG / "反馈包" / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
+            logs = sorted(DEBUG.glob(f"{LOG_PREFIX}*.log"), key=lambda p: p.stat().st_mtime)[-8:]
+            files = P.export_feedback(name, out, raw=bool(raw), logs=logs, version=self.version()["version"], log=lambda *_: None)
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        try:
+            import webview
+            if webview.windows:
+                os.startfile(str(out))  # noqa: S606
+        except Exception:
+            pass
+        return {"ok": True, "dir": str(out), "files": [{"name": f["name"], "mb": round(f["size"] / 1048576, 1), "note": f["note"]} for f in files],
+                "total_mb": round(sum(f["size"] for f in files) / 1048576, 1)}
 
     def open_folder(self, which: str = "debug") -> bool:
         import os

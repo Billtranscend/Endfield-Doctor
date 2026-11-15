@@ -448,6 +448,12 @@ def fit_bases(name: str, log=print) -> None:
                 if a["name"] in V.PIPE_NAMES:
                     px, py = V.preview_to_canvas(tf, it["bp"], it["mosaic"].shape, *a["p"])
                     pipes_canvas.append({"name": a["name"], "p": [px, py]})
+        # 输入端候选要在设计分析前面写好：设计分析靠它知道哪些准入口是输入端。原来排在后面，新项目第一次拼合时文件还没有，
+        # 设计分析直接报 FileNotFoundError，再拼一次才有结果，而且用的一直是上一次拼合的候选（2026-11-14 读代码发现）
+        marks, dropped = INP.from_gates(canvas, lg_canvas, ginfo, pipes_canvas)
+        _jsave(bd / "inputs_dropped.json", dropped)
+        _jsave(bd / "inputs_auto.json", marks)
+        _rebase_inputs(name, base, canvas, tf, lg_canvas, marks, log)  # 作者存的标记跟着这次的拼合图挪（也要在设计分析前面）
         try:  # 物流件方向和连接（任务计划第 4 项）→ flow.json / flow.jpg
             from . import flow as FL
             fr = FL.run_base(bd, led)
@@ -466,9 +472,6 @@ def fit_bases(name: str, log=print) -> None:
                     + f"；推断连线 {sm['inferred_links']} 条，来料经过推断连线的 {sm['via_inferred']} 台")
             except Exception as e:
                 log(f"   设计分析出错：{type(e).__name__}: {e}")
-        marks, dropped = INP.from_gates(canvas, lg_canvas, ginfo, pipes_canvas)
-        _jsave(bd / "inputs_dropped.json", dropped)
-        _jsave(bd / "inputs_auto.json", marks)
         log(f"== {base}：拼合 {len(items)} 张，画布 {canvas.shape[1] / V.CELL:.0f}×{canvas.shape[0] / V.CELL:.0f} 格；"
             f"物流件 {len(lg_canvas)} 个；输入端候选 {len(marks)} 个（边上的准入口另有 {len(dropped)} 个不算输入）")
     check_placement(name, log)
@@ -616,8 +619,14 @@ def inputs_view(name: str, base: str, scale: float = 1.0) -> dict:
     import io
     bd = pdir(name) / "base" / base
     canvas = V.rd(bd / "composite.png")
-    saved = ((_jload(pdir(name) / "inputs.json", {}) or {}).get(base) or {}).get("marks")
-    marks = saved if saved is not None else (_jload(bd / "inputs_auto.json", []) or [])
+    entry = (_jload(pdir(name) / "inputs.json", {}) or {}).get(base) or {}
+    if any(m.get("p_bp") is None for m in entry.get("marks") or []):
+        # 老版本存的（没记蓝图里的位置）：升级后还没重新拼合就打开这一页。先按现在的拼合图核一遍——不然作者一点保存，
+        # save_inputs 就把对不上的旧位置当成现在的位置记下来，以后再也认不出它是旧的
+        _rebase_inputs_from_disk(name, base)
+        entry = (_jload(pdir(name) / "inputs.json", {}) or {}).get(base) or {}
+    # 和 pipenet.load_inputs 同一个规矩：存的标记是空的就用候选（原来这里空表也算「填过」，页面是空的、分析用的却是候选）
+    marks = entry.get("marks") or (_jload(bd / "inputs_auto.json", []) or [])
     # 贴边但判断不算输入的准入口：已经被作者加回（和某个标记重合）的不再显示
     dropped = [d for d in (_jload(bd / "inputs_dropped.json", []) or [])
                if not any(abs(m["p"][0] - d["p"][0]) < 15 and abs(m["p"][1] - d["p"][1]) < 15 for m in marks)]
@@ -627,18 +636,69 @@ def inputs_view(name: str, base: str, scale: float = 1.0) -> dict:
     buf = io.BytesIO()
     im.save(buf, format="JPEG", quality=85)
     return {"marks": marks, "dropped": dropped, "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii"),
-            "width": im.size[0], "height": im.size[1], "scale": scale}
+            "width": im.size[0], "height": im.size[1], "scale": scale,
+            "stale": entry.get("stale") or [], "bad_items": INP.check_items(marks), "items": INP.item_names()}
 
 
-def save_inputs(name: str, base: str, marks: list[dict]) -> None:
-    """marks：[{no, p:[x,y], item, ports?, rate, merged, via, source, note}]，p 是拼合图坐标。"""
+def save_inputs(name: str, base: str, marks: list[dict], stale: list[dict] | None = None) -> list[dict]:
+    """marks：[{no, p:[x,y], item, ports?, rate, merged, via, source, note, bp, p_bp}]，p 是拼合图坐标；bp、p_bp 是它在哪张蓝图
+    预览里的什么位置（这里补记，重新拼合后靠它跟着挪，见 inputs.rebase）。stale：对不上的旧标记，不给就保留原来存的。
+    返回物品名认不出来的标记（inputs.check_items）。"""
     p = pdir(name) / "inputs.json"
     allin = _jload(p, {}) or {}
-    allin[base] = {"marks": marks, "saved": time.strftime("%Y-%m-%d %H:%M:%S")}
-    _jsave(p, allin)
     bd = pdir(name) / "base" / base
+    tf = _jload(bd / "transform.json", {}) or {}
+    marks = INP.anchor(marks, tf, _jload(bd / "logistics.json", []) or [])
+    entry = {"marks": marks, "saved": time.strftime("%Y-%m-%d %H:%M:%S"), "seen": INP.seen_of(_jload(bd / "inputs_auto.json", []) or [])}
+    keep = stale if stale is not None else (allin.get(base) or {}).get("stale")
+    if keep:
+        entry["stale"] = keep
+    allin[base] = entry
+    _jsave(p, allin)
     if (bd / "composite.png").exists():
         INP.numbered_image(V.rd(bd / "composite.png"), marks).save(bd / "inputs.jpg", quality=88)
+    return INP.check_items(marks)
+
+
+def _rebase_inputs_from_disk(name: str, base: str, log=lambda *_: None) -> None:
+    """同 _rebase_inputs，用据点目录里上次拼合的结果（不重新拼合）。老版本拼合出的候选没有 p_bp，这里补上。"""
+    bd = pdir(name) / "base" / base
+    tf, lg = _jload(bd / "transform.json"), _jload(bd / "logistics.json")
+    if not tf or "bps" not in tf or lg is None or not (bd / "composite.png").exists():
+        return
+    auto = INP.anchor(_jload(bd / "inputs_auto.json", []) or [], tf, lg)
+    _rebase_inputs(name, base, V.rd(bd / "composite.png"), tf, lg, auto, log)
+
+
+def _rebase_inputs(name: str, base: str, canvas, tf: dict, lg_canvas: list[dict], auto: list[dict], log=print) -> None:
+    """据点拼合时：作者存的输入端按这次的拼合图重新定位（inputs.rebase），结果写回项目 inputs.json。
+    有对不上的旧标记时，改之前的文件另存一份 inputs.json.bak（只存第一次）。"""
+    p = pdir(name) / "inputs.json"
+    allin = _jload(p, {}) or {}
+    entry = allin.get(base)
+    if not entry or not (entry.get("marks") or entry.get("stale")):
+        return
+    marks, stale, info = INP.rebase(entry.get("marks") or [], tf, lg_canvas, auto, entry.get("seen"))
+    if stale and not (p.parent / "inputs.json.bak").exists():
+        shutil.copyfile(p, p.parent / "inputs.json.bak")
+    new = dict(entry, marks=marks, seen=INP.seen_of(auto))
+    if stale or entry.get("stale"):
+        new["stale"] = (entry.get("stale") or []) + stale
+    if new != entry:
+        allin[base] = new
+        _jsave(p, allin)
+        if marks:
+            INP.numbered_image(canvas, marks).save(pdir(name) / "base" / base / "inputs.jpg", quality=88)
+    if info["moved"]:
+        log(f"   输入端：拼合图变了，作者存的 {info['moved']} 个标记跟着挪到了新位置")
+    if info["stale"]:
+        log(f"   输入端：作者存的标记有 {info['stale']} 个在现在的拼合图上对不上（存的是旧拼合图上的位置），已经挪到「输入端」页的"
+            f"「对不上的旧标记」里，不参加分析" + (f"；改用程序这次认出来的候选 {info['added']} 个" if info["added"] else "") + "。请到「输入端」页核对")
+    elif info["added"]:
+        log(f"   输入端：程序新认出 {info['added']} 个候选，已经加进作者存的标记里，请到「输入端」页核对")
+    for b in INP.check_items(marks):
+        log(f"   输入端：{b['no']} 号填的物品「{b['item']}」认不出来" + (f"（是不是「{'」「'.join(b['suggest'])}」？）" if b["suggest"] else "")
+            + "，分析里这个口送的东西没有设备吃，请到「输入端」页改")
 
 
 # ------------------------------------------------------------------ 作者确认（任务计划第 1 项）
@@ -680,6 +740,38 @@ def save_confirm(name: str, base: str, kind: str, entries: dict) -> dict:
     return confirm_progress(name, base)
 
 
+def load_fixes(name: str) -> dict:
+    """fixes.json：作者在「待确认」里做的修正。{据点: {feeds: {设备键: to:<设备键> / none / unused}, recipes: {设备键: 配方}}}。
+    和 confirm.json 的区别：确认只是记下作者的判断；修正会改变设计分析的算法输入（下次算就按它来）。"""
+    return _jload(pdir(name) / "fixes.json", {}) or {}
+
+
+def save_fix(name: str, base: str, kind: str, key: str, value: str | None) -> None:
+    """kind = feeds / recipes；value 为空 = 撤销。"""
+    if kind not in ("feeds", "recipes"):
+        raise ValueError(f"不认识的修正类别：{kind}")
+    if kind == "feeds" and value and not (value in ("none", "unused") or value.startswith("to:")):
+        raise ValueError(f"进料修正只能是 to:<设备键> / none / unused：{value}")
+    allf = load_fixes(name)
+    sect = allf.setdefault(base, {}).setdefault(kind, {})
+    if value:
+        sect[key] = value
+    else:
+        sect.pop(key, None)
+    allf["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _jsave(pdir(name) / "fixes.json", allf)
+
+
+def rerun_design(name: str, base: str) -> dict:
+    """只重算这个据点的设计分析（不重新拼合）：作者改了修正以后用。返回汇总。"""
+    from . import design as DS
+    bd = pdir(name) / "base" / base
+    arch = load(name).get("archive")
+    arch_dir = ROOT / "data" / "blueprints" / arch if arch else None
+    dr = DS.run_base(bd, arch_dir if arch_dir and arch_dir.exists() else None, base, ledger=ledger_path(name, base))
+    return dr["summary"]
+
+
 def confirm_progress(name: str, base: str) -> dict:
     """这个据点设计分析里多少台设备、多少条推断连线确认过（只数现在 design.json 里还有的）。"""
     dj = _jload(pdir(name) / "base" / base / "design.json", {}) or {}
@@ -689,6 +781,113 @@ def confirm_progress(name: str, base: str) -> dict:
     dv, lv = c.get("devices", {}), c.get("links", {})
     return {"devices": [sum(1 for k in dkeys if k in dv), len(dkeys)], "links": [sum(1 for k in lkeys if k in lv), len(lkeys)],
             "wrong": sum(1 for k in dkeys if dv.get(k, {}).get("verdict") == "wrong") + sum(1 for k in lkeys if lv.get(k, {}).get("verdict") == "wrong")}
+
+
+# ------------------------------------------------------------------ 反馈包
+FEEDBACK_LIMIT = 24 * 1024 * 1024  # GitHub issue 附件单个 25 MB：留 1 MB 余量
+_FB_IMAGES = (".png", ".jpg", ".jpeg")
+
+
+def feedback_groups(name: str, raw: bool = False, logs: list[Path] | None = None) -> list[tuple[str, list[tuple[Path, str]]]]:
+    """反馈包里放什么：[(组名, [(源文件, 包内路径)])]。
+    默认只放重算要用的：项目级的 json（输入端、修正、确认、准入口分组）、每个据点的底账、拼合图和全部 json、最近的任务日志。
+    标注图（*.jpg）都能从这些重新生成，不放。**不放游戏原始截图**：读蓝图的帧、扫底账的逐屏图很大（皇帝产线 1.1 GB），
+    而且截图里可能带 UID；raw=True 才放（排查读图 / 拼接问题时用）。
+    2026-11-14 issue #1：来回四轮里三轮是在跟作者要文件；用户定：做成设置里一键导出。"""
+    proj = load(name)
+    d = pdir(name)
+    g0 = [(d / f, f) for f in ("project.json", "inputs.json", "fixes.json", "confirm.json", "gates.json", "gate_icons.png") if (d / f).exists()]
+    for base in proj["groups"]:
+        lp = ledger_path(name, base)
+        if lp:
+            g0.append((lp, f"ledger/{base}.json"))
+    for lg in logs or []:
+        g0.append((lg, f"logs/{lg.name}"))
+    groups = [("项目", g0)]
+    for base in proj["groups"]:
+        bd = d / "base" / base
+        if bd.is_dir():
+            fs = [(f, f"base/{base}/{f.name}") for f in sorted(bd.iterdir()) if f.suffix == ".json" or f.name == "composite.png"]
+            if fs:
+                groups.append((base, fs))
+    if raw:
+        for sub, label in (("bp", "读蓝图原图"), ("ledger_scan", "扫底账原图")):
+            root = d / sub
+            if root.is_dir():
+                for one in sorted(p for p in root.iterdir() if p.is_dir()):
+                    fs = [(f, f"{sub}/{one.name}/{f.relative_to(one).as_posix()}") for f in sorted(one.rglob("*")) if f.is_file()]
+                    if fs:
+                        groups.append((f"{label}-{one.name}", fs))
+    return groups
+
+
+def _fb_est(f: Path) -> int:
+    """压缩后大概多大：图片压不动，文本按四分之一算。"""
+    n = f.stat().st_size
+    return n if f.suffix.lower() in _FB_IMAGES else n // 4 + 200
+
+
+def _fb_split(files: list[tuple[Path, str]], limit: int) -> list[list[tuple[Path, str]]]:
+    parts, cur, size = [], [], 0
+    for f, arc in files:
+        e = _fb_est(f)
+        if cur and size + e > limit:
+            parts.append(cur); cur, size = [], 0
+        cur.append((f, arc)); size += e
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def export_feedback(name: str, out_dir: str | Path, raw: bool = False, logs: list[Path] | None = None, version: str = "",
+                    limit: int = FEEDBACK_LIMIT, log=print) -> list[dict]:
+    """打反馈包到 out_dir：每个压缩包都能单独解压、都不超过 limit（只有单个文件自己就超了的那一包例外，说明里会写）。
+    返回 [{path, size, files, note}]。"""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    todo = []  # (组名, 这一包的文件)
+    for gname, files in feedback_groups(name, raw, logs):
+        parts = _fb_split(files, limit)
+        for k, part in enumerate(parts, 1):
+            todo.append((gname if len(parts) == 1 else f"{gname}-{k}", part))
+    merged = []  # 挨着的小包并成一个（皇帝产线三个据点加起来才 9 MB：一个文件比四个好拖）
+    for gname, part in todo:
+        est = sum(_fb_est(f) for f, _ in part)
+        if merged and merged[-1][2] + est <= limit:
+            merged[-1] = (merged[-1][0] + [gname], merged[-1][1] + part, merged[-1][2] + est)
+        else:
+            merged.append(([gname], part, est))
+    todo = [("全部" if len(merged) == 1 else "+".join(ns) if len(ns) <= 3 else f"{ns[0]}等{len(ns)}组", part) for ns, part, _ in merged]
+    done = []
+    while todo:
+        gname, part = todo.pop(0)
+        tmp = out_dir / "_写入中.zip"
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+            for f, arc in part:
+                z.write(f, arc)
+        size = tmp.stat().st_size
+        if size > limit and len(part) > 1:  # 估小了：对半拆开重打
+            tmp.unlink()
+            h = len(part) // 2
+            todo[:0] = [(f"{gname}a", part[:h]), (f"{gname}b", part[h:])]
+            continue
+        done.append({"group": gname, "tmp": tmp.rename(out_dir / f"_{len(done)}.zip"), "size": size, "files": [arc for _, arc in part],
+                     "note": "这一个文件自己就超过 24 MB，GitHub 传不上，要走别的方式发" if size > limit else ""})
+    n = len(done)
+    res = []
+    for k, it in enumerate(done, 1):
+        dest = out_dir / f"反馈包_{name}_{stamp}_{k}of{n}_{it['group']}.zip"
+        readme = "\n".join([f"终末地基建诊断 反馈包（第 {k} 个，共 {n} 个；每个都能单独解压）", f"项目：{name}", f"程序版本：{version or '未知'}",
+                            f"导出时间：{time.strftime('%Y-%m-%d %H:%M:%S')}", f"这一包：{it['group']}，{len(it['files'])} 个文件",
+                            "内容：" + ("含游戏原始截图（可能带 UID，发之前请自己看一眼）" if raw else "不含游戏原始截图，只有拼合图和分析数据"),
+                            "", *it["files"]])
+        with zipfile.ZipFile(it["tmp"], "a", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("说明.txt", readme)
+        it["tmp"].rename(dest)
+        res.append({"path": str(dest), "name": dest.name, "size": dest.stat().st_size, "files": len(it["files"]), "note": it["note"]})
+        log(f"  {dest.name}  {dest.stat().st_size / 1048576:.1f} MB，{len(it['files'])} 个文件" + (f"（{it['note']}）" if it["note"] else ""))
+    return res
 
 
 # ------------------------------------------------------------------ 导出 zip

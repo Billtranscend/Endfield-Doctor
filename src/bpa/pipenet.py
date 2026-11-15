@@ -244,7 +244,8 @@ def load_inputs(base_dir: Path) -> list[dict]:
         if marks:
             # 清水口作者没填流速：按一台水泵 60/分（和自动候选一样）
             return [dict(m, rate=60) if (m.get("item") == "清水" and m.get("rate") in (None, "")) else m for m in marks]
-    return json.loads((base_dir / "inputs_auto.json").read_text(encoding="utf-8"))
+    auto = base_dir / "inputs_auto.json"
+    return json.loads(auto.read_text(encoding="utf-8")) if auto.exists() else []  # 还没拼合出候选：当作没有输入端，不抛错
 
 
 def impact(base_dir: Path, ledger: dict, recipes: list[dict], break_far: tuple[float, float], inputs: list[dict] | None = None,

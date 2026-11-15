@@ -17,3 +17,6 @@ build/*.log
 # 性能分析
 prof.out
 build/*.spec
+
+# 程序启动时生成的带版本戳的入口页
+src/app/ui/_index_*.html
