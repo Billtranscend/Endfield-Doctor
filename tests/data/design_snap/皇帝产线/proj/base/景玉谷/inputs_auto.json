@@ -1,0 +1,114 @@
+[
+ {
+  "p": [
+   1636,
+   30
+  ],
+  "item": "清水",
+  "icon_group": 1,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": 60,
+  "via": "水泵",
+  "no": 1,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ },
+ {
+  "p": [
+   1706,
+   100
+  ],
+  "item": "清水",
+  "icon_group": 1,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": 60,
+  "via": "水泵",
+  "no": 2,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ },
+ {
+  "p": [
+   1706,
+   271
+  ],
+  "item": "清水",
+  "icon_group": 1,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": 60,
+  "via": "水泵",
+  "no": 3,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ },
+ {
+  "p": [
+   1706,
+   442
+  ],
+  "item": "清水",
+  "icon_group": 1,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": 60,
+  "via": "水泵",
+  "no": 4,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ },
+ {
+  "p": [
+   1706,
+   817
+  ],
+  "item": "清水",
+  "icon_group": 1,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": 60,
+  "via": "水泵",
+  "no": 5,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ },
+ {
+  "p": [
+   1706,
+   885
+  ],
+  "item": "清水",
+  "icon_group": 1,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": 60,
+  "via": "水泵",
+  "no": 6,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ },
+ {
+  "p": [
+   1706,
+   1056
+  ],
+  "item": "惰气",
+  "icon_group": 2,
+  "kind": "管道",
+  "bp": "1.6景玉谷2号",
+  "rate": null,
+  "via": "",
+  "no": 7,
+  "source": "auto",
+  "merged": false,
+  "note": ""
+ }
+]

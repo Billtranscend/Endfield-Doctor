@@ -1,0 +1,4863 @@
+{
+ "_doc": {
+  "判定口径": [
+   "程序结果先归类：rate > 0.005 → 在转；state 以「溢流位」开头 → 溢流位；其它（没料、没接上、配方未知）→ 没料。",
+   "cat=有料：在转 → 一致；rate 有值且差超过 0.1 → 开工率不一致；溢流位 / 没料 → 有没有料不一致。",
+   "cat=备路：溢流位 → 一致；没料 → 状态名不一致（软）；在转 → 有没有料不一致。",
+   "cat=平时没料：没料 / 溢流位 → 一致；在转 → 有没有料不一致。",
+   "cat=时有时无：没料 → 有没有料不一致；在转且 rate 有值、差超过 0.1 → 开工率不一致；其它一致。",
+   "recipe 有值时，程序配方文字里不含这段（或 env_required=true 而程序没标环境）→ 配方不一致。",
+   "cat=未知 → 没有实测。",
+   "变化时的判词：一致 → 不一致 ✗ 改错了；不一致 → 一致 ✓ 改对了（备路只差状态名的给弱 ✓「角色按规则推定」；cat=平时没料 / 时有时无 变成溢流位不给 ✓，判 ·）；不一致 → 不一致 看 rate 离实测（没给按 cat 取代表值：有料 1、备路 / 平时没料 0、时有时无 0.5）近了 ↗ / 远了 ↘ / 仍不一致 ·；role=主路 变成溢流位判 ↘；判 · 时注明实测管不到的字段（例「实测只证明有料；got 没有实测」）。",
+   "防退化的闸：同一种状态迁移落在 5 台以上、而迁移后和实测一致的不到一半时，--accept 必须带 --against-truth 并逐个列出这些设备。"
+  ],
+  "字段": {
+   "cat": "有料 / 备路 / 平时没料 / 时有时无 / 未知（未知 = 没有实测）",
+   "depends_on": "依赖哪台上游（同一段里那台也变了时，这台跟着变判「随上游变」，不算 ✗）",
+   "derived_from_program_recipe": "true = rate 是按程序自己的配方产物归到简报组推出来的（annotate.py:92-97、409-414，79 台，其中 16 台没有巡检记录）；这些设备的配方一变，判词一律「要人看」",
+   "env_required": "实际配方要稳定环境（true）；null = 实测没管",
+   "rate": "实测能证明的开工率（简报 当前 = 理论 = 台数 × 单台满速），没有就 null",
+   "recipe": "程序配方文字里一定会出现的片段（例「分离芯×1 + 气态赤铜×2 → 气态赫铜×2」「→ 蓝铁瓶×1」）；说明在 note 里",
+   "recipe_dispute": "配方存疑（巡检面板和机身图标说法相反）：状态 / 开工率变了判 ✗，只有配方变了判「要人看」",
+   "recipe_source": "配方不一致出在哪：数据侧 = 程序的配方来自冻结的档案配方表，改代码改不到（不计入给第 6、12、13 项的硬不一致目标）；代码侧 = 程序推断的",
+   "role": "主路 / 备路 / 未知：人工核过是主路的（应龙关灼铜链 9 台、重息壤固转 2 台）是主路；cat=备路 的是备路；其它未知",
+   "truth / confidence / evidence / user_confirmed / source / note / on_change": "原标注的文字、可信度、证据种类、作者确认的出处、出处、说明",
+   "verdict_at_annotation / mismatch_at_annotation": "标注当天（0.10.11，c462357 之后、审计第 3 项已合入，用项目里现成的 flow.json 算的 stored）的判定，只给 --audit-truth 核对用"
+  },
+  "数据新旧": "巡检 2026-11-04 ～ 11-10（近景 11-08 20:34 ～ 11-10 17:42），简报 11-04 ～ 11-12；离今天（11-20）10～16 天。11-12 两份简报多数产物跌到 1/4～1/2（原因没查），没有拿来判设备。",
+  "程序结果": "0.10.11（提交 c462357 之后、审计第 3 项已合入）用项目里现成的 flow.json 算的 stored 结果；设备键 = 设备名@底账 x,y",
+  "观测→状态对应规则": [
+   "阻塞 = 出口满、原料在：设备接上了、收到了料（有料），说明不了开工率；对应程序 满速 / 间歇 都算一致，程序 没料 算不一致；溢流位设备在主路也爆仓时会阻塞，不单凭阻塞判它是主路。",
+   "生产中 / 运行中（快速巡检点开面板）= 有料在转；近景 13 帧无标记 = 推断在转（近景只认阻塞 / 空闲 / 关闭 / 缺气四种标记）。",
+   "空闲中 = 那一刻原料没到（或没有在跑的配方）= 没料；未激活、缺气（橙色圈）= 燃料 / 激活气不足，也算没料。关闭 = 人为关掉，不参加判断。",
+   "已知故障实验和说不清的扰动时段里的「没料」类观测不参加投票（WINDOWS），照样列在 excluded 里。",
+   "自动判：有料类 ≥ 3 倍没料类 → 有料；反过来 → 平时没料；其它 → 时有时无。人工核过的设备（MANUAL）以人工为准。",
+   "开工率只用简报核：某产物 当前 = 理论 = 台数 × 单台满速，说明这一类每台都满速（理论只算有料的设备，关掉的也算）；单台读数没有。",
+   "程序类别：rate>0 → 在转；状态以「溢流位」开头 → 溢流位；其它（没料 / 没接上 / 配方未知）→ 没料。",
+   "一致：在转↔有料、溢流位↔备路、没料↔平时没料、间歇↔时有时无。不一致的种类：有没有料（在转↔平时没料/备路、没料/溢流位↔有料）、开工率（都在转但简报证明满速、程序 <0.9 或反之）、配方（实际配方和程序不同）、状态名（平时都不开工，但程序说没料、实际是备路 / 溢流位）。"
+  ],
+  "说明": "皇帝产线三据点设计分析结果逐台对实测（巡检、简报、作者确认）的标注。手工维护，和代码无关，--accept 不改写它。这不是标准答案：快照照样锁住程序现在的值（包括 51 台和实测不一致的），实测标注只负责在 diff 里给每台打判词（✗ 改错了 / ✓ 改对了 / ↗ 近了 / ↘ 远了 / · 仍一致 · 仍不一致 · 要人看）和挡 --accept。truth 不是「程序该输出的精确值」，只判有料 / 没料和设计角色，rate 只在简报能证明时给。改了这里以后跑 tests/test_design_snapshot.py --sync-truth 刷新 expect 里嵌入的副本。"
+ },
+ "应龙关": {
+  "固气转化机@1226,1274": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "气态赤铜 180/180 = 6 台全满速（40 次）；程序这 4 台 0.5（赤铜块 30/60）偏低，只有简报总数、没有单台读数。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 气态赤铜 当前=理论 40 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "参考简报 气态赤铜 180/180",
+    "data/皇帝产线-结构.json 第 384 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261105-200157、20261105-223155、20261106-144212、20261108-204338、20261108-232103、20261109-001213"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@1227,620": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 7 次有料 / 0 次没料，简报 气态赤铜 当前=理论（6 台固气转化机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 气态赤铜 当前=理论 40 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）（6 台固气转化机 × 30 = 180）",
+    "巡检 20261106-144212、20261106-155358、20261106-185959、20261106-211538、20261108-204338、20261108-232103 等 7 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@1227,760": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "气态赤铜 180/180 = 6 台全满速（40 次）；程序这 4 台 0.5（赤铜块 30/60）偏低，只有简报总数、没有单台读数。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 气态赤铜 当前=理论 40 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "参考简报 气态赤铜 180/180",
+    "data/皇帝产线-结构.json 第 384 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-185959、20261106-211538、20261108-204338、20261108-232103 等 7 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@1227,878": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 10 次有料 / 0 次没料，简报 气态赤铜 当前=理论（6 台固气转化机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 气态赤铜 当前=理论 40 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）（6 台固气转化机 × 30 = 180）",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@1228,1017": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "气态赤铜 180/180 = 6 台全满速（40 次）；程序这 4 台 0.5（赤铜块 30/60）偏低，只有简报总数、没有单台读数。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 气态赤铜 当前=理论 40 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "参考简报 气态赤铜 180/180",
+    "data/皇帝产线-结构.json 第 384 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@1228,1136": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "气态赤铜 180/180 = 6 台全满速（40 次）；程序这 4 台 0.5（赤铜块 30/60）偏低，只有简报总数、没有单台读数。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 气态赤铜 当前=理论 40 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "参考简报 气态赤铜 180/180",
+    "data/皇帝产线-结构.json 第 384 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@593,641": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜链是主路、满速设计，下游爆仓时阻塞；程序判「溢流位/平时空闲」不对（溢流位只有赫铜那一支）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 灼铜块 当前=理论 35 次（1104-085905 库61131 90/90；1108-213039 库61251 90/90；1108-213437 库61251 90/90）",
+    "近景 patrol_20261108-204338 无标记、patrol_20261108-232103 / 20261109-001213 阻塞 13/13",
+    "data/皇帝产线-结构.json 第 378 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜零件 18/分（用户错题本 2026-11-06）；tests/faults/基线-铜链爆仓-20261106 说明「整条铜链阻塞标记全亮，不得把铜链上的任何设备报成问题」；tier_rules 溢流位只登记了赫铜块（用户 2026-11-04）",
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@594,819": {
+   "cat": "备路",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "赫铜块溢流位，程序判溢流位/平时空闲，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "近景 patrol_20261108-204338 缺气 13/13，232103 / 20261109-001213 无标记",
+    "简报 赫铜块 当前=理论 4 次（1108-225029 库22 90/90；1109-001937 库22 90/90）",
+    "巡检 20261105-200157、20261105-223155、20261106-155358、20261106-174709、20261106-180544、20261106-185959 等 11 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules.overflow_products 赫铜块（用户 2026-11-04）",
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@633,1136": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "重息壤主路，2 台满速 = 24；程序判「溢流位/平时空闲」不对。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 重息壤 当前=理论 27 次（1104-090143 库73081 24/24；1110-174209 库84337 24/24；1110-174739 库84474 24/24）",
+    "data/皇帝产线-结构.json 第 382、423 行：重息壤由 2 台固转生产，设计上限 2×12=24（11-03 游戏内）",
+    "巡检 20261105-024411、20261105-232107、20261106-211538、20261107-162926、20261108-204338、20261108-232103 等 7 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 重息壤 24/分（用户错题本 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@653,1255": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "重息壤主路，2 台满速 = 24；程序判「溢流位/平时空闲」不对。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 重息壤 当前=理论 27 次（1104-090143 库73081 24/24；1110-174209 库84337 24/24；1110-174739 库84474 24/24）",
+    "data/皇帝产线-结构.json 第 382、423 行：重息壤由 2 台固转生产，设计上限 2×12=24（11-03 游戏内）",
+    "巡检 20261105-024411、20261105-200157、20261105-223155、20261105-232107、20261106-195711、20261106-211538 等 13 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 重息壤 24/分（用户错题本 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@653,404": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜链是主路、满速设计，下游爆仓时阻塞；程序判「溢流位/平时空闲」不对（溢流位只有赫铜那一支）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 灼铜块 当前=理论 35 次（1104-085905 库61131 90/90；1108-213039 库61251 90/90；1108-213437 库61251 90/90）",
+    "近景 patrol_20261108-204338 无标记、patrol_20261108-232103 / 20261109-001213 阻塞 13/13",
+    "data/皇帝产线-结构.json 第 378 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜零件 18/分（用户错题本 2026-11-06）；tests/faults/基线-铜链爆仓-20261106 说明「整条铜链阻塞标记全亮，不得把铜链上的任何设备报成问题」；tier_rules 溢流位只登记了赫铜块（用户 2026-11-04）",
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@653,522": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜链是主路、满速设计，下游爆仓时阻塞；程序判「溢流位/平时空闲」不对（溢流位只有赫铜那一支）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 灼铜块 当前=理论 35 次（1104-085905 库61131 90/90；1108-213039 库61251 90/90；1108-213437 库61251 90/90）",
+    "近景 patrol_20261108-204338 无标记、patrol_20261108-232103 / 20261109-001213 阻塞 13/13",
+    "data/皇帝产线-结构.json 第 378 行：11-03 游戏内 3 台均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜零件 18/分（用户错题本 2026-11-06）；tests/faults/基线-铜链爆仓-20261106 说明「整条铜链阻塞标记全亮，不得把铜链上的任何设备报成问题」；tier_rules 溢流位只登记了赫铜块（用户 2026-11-04）",
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@692,760": {
+   "cat": "备路",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "赫铜块溢流位：灼铜链没爆仓时缺气歇着，爆仓后转；程序判没料（气态赫铜 0/60），状态名该是溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "近景 patrol_20261108-204338 缺气 13/13，232103 / 20261109-001213 无标记",
+    "简报 赫铜块 当前=理论 4 次（1108-225029 库22 90/90；1109-001937 库22 90/90）",
+    "巡检 20261104-203502、20261104-211047、20261104-212126、20261105-024411、20261105-200157、20261105-223155 等 16 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules.overflow_products 赫铜块（用户 2026-11-04）；错题本 #9.1 赫铜块低优先级（用户 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@692,879": {
+   "cat": "备路",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "赫铜块溢流位，程序判溢流位/平时空闲，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "近景 patrol_20261108-204338 缺气 13/13，232103 / 20261109-001213 无标记",
+    "简报 赫铜块 当前=理论 4 次（1108-225029 库22 90/90；1109-001937 库22 90/90）",
+    "巡检 20261104-203502、20261104-211047、20261104-212126、20261105-024411、20261105-200157、20261106-144212 等 15 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules.overflow_products 赫铜块（用户 2026-11-04）",
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@830,1255": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 11 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261105-024411、20261105-200157、20261105-223155、20261105-232107、20261106-211538、20261107-093850 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@831,919": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 8 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261105-223155、20261105-232107、20261106-211538、20261107-093850、20261107-162926、20261108-204338 等 8 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@968,1017": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 11 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261105-024411、20261105-200157、20261105-223155、20261105-232107、20261106-211538、20261107-093850 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "固气转化机@969,1136": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "5 台息壤气固转都在用，三次近景没有标记；程序判没料（息壤 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261108-204338 / 232103、patrol_20261109-001213 都是 13 帧无标记",
+    "data/皇帝产线-结构.json 第 381 行：11-03 游戏内息壤→息壤气 5 台全点开，4 台生产中、1 台阻塞",
+    "巡检 20261108-204338、20261108-232103、20261109-001213"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "固气转化机@970,1255": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 10 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261105-024411、20261105-200157、20261105-223155、20261105-232107、20261106-211538、20261107-093850 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "扩容反应池@949,731": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 15 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-203502、20261104-211047、20261104-212126、20261105-024411、20261105-223155、20261106-111844 等 17 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "提纯机@1079,502": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": true,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率",
+    "配方"
+   ],
+   "note": "气态赫铜 180/180 = 3 台全满速；程序按 ×2 分离芯算成 0.5。 实际配方 分离芯×1 + 气态赤铜×2 → 气态赫铜×2（2秒），要稳定环境（env_required）。程序的配方来自冻结的档案配方表（应龙关_recipes.json），改代码改不到。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": "分离芯×1 + 气态赤铜×2 → 气态赫铜×2",
+   "recipe_dispute": false,
+   "recipe_source": "数据侧",
+   "role": "未知",
+   "source": [
+    "简报 气态赫铜 当前=理论 41 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "data/皇帝产线-结构.json 第 385 行",
+    "近景 patrol_20261108-204338 13 帧无标记",
+    "巡检 20261106-144212、20261106-155358、20261106-180544、20261106-185959、20261106-195711、20261106-211538 等 8 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "提纯机@1080,383": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": true,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率",
+    "配方"
+   ],
+   "note": "气态赫铜 180/180 = 3 台全满速；程序按 ×2 分离芯算成 0.5。 实际配方 分离芯×1 + 气态赤铜×2 → 气态赫铜×2（2秒），要稳定环境（env_required）。程序的配方来自冻结的档案配方表（应龙关_recipes.json），改代码改不到。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": "分离芯×1 + 气态赤铜×2 → 气态赫铜×2",
+   "recipe_dispute": false,
+   "recipe_source": "数据侧",
+   "role": "未知",
+   "source": [
+    "简报 气态赫铜 当前=理论 41 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "data/皇帝产线-结构.json 第 385 行",
+    "近景 patrol_20261108-204338 13 帧无标记",
+    "巡检 20261106-144212、20261106-155358、20261106-180544、20261106-185959、20261106-195711、20261108-204338"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "提纯机@1236,502": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": true,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料",
+    "配方"
+   ],
+   "note": "3 台做气态赫铜的提纯机全满速；程序判没料是物流图漏追，按 ×2 分离芯算是没选环境版配方。 实际配方 分离芯×1 + 气态赤铜×2 → 气态赫铜×2（2秒），要稳定环境（env_required）。程序的配方来自冻结的档案配方表（应龙关_recipes.json），改代码改不到。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": "分离芯×1 + 气态赤铜×2 → 气态赫铜×2",
+   "recipe_dispute": false,
+   "recipe_source": "数据侧",
+   "role": "未知",
+   "source": [
+    "简报 气态赫铜 当前=理论 41 次（1104-085905 库None 180/180；1108-232600 库None 180/180；1109-001937 库None 180/180）",
+    "简报 分离芯 理论消耗 150 = 3×30 + 2×30（只有 ×1 配方对得上）",
+    "data/皇帝产线-结构.json 第 380、385 行：11-03 游戏内 3 台全点开均阻塞，配方 ×1 分离芯",
+    "近景 patrol_20261108-204338 13 帧无标记",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-211538 等 7 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "提纯机@802,1156": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "重息壤气 60/60 = 2 台全满速（26 次，重息壤没爆仓时）；程序 0.5（息壤气 30/60）偏低。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 重息壤气 当前=理论 26 次（1104-085905 库None 60/60；1110-174209 库None 60/60；1110-174739 库None 60/60）",
+    "参考简报 重息壤气 60/60",
+    "data/皇帝产线-结构.json 第 383 行：11-03 游戏内生产中",
+    "巡检 20261105-024411、20261106-211538、20261107-113228、20261107-162926、20261108-204338"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "提纯机@860,1037": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "重息壤气 60/60 = 2 台全满速（26 次，重息壤没爆仓时）；程序 0.5（息壤气 30/60）偏低。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 重息壤气 当前=理论 26 次（1104-085905 库None 60/60；1110-174209 库None 60/60；1110-174739 库None 60/60）",
+    "参考简报 重息壤气 60/60",
+    "data/皇帝产线-结构.json 第 383 行：11-03 游戏内生产中",
+    "巡检 20261105-024411、20261105-200157、20261105-223155、20261105-232107、20261106-211538、20261107-093850 等 9 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "气体反应炉@812,542": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜链主路，满速设计，下游爆仓时阻塞；程序判没料（息壤气 / 气态赫铜没追到）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 气态灼铜 当前=理论 35 次（1104-085905 库None 90/90；1108-213039 库None 90/90；1108-213437 库None 90/90）",
+    "近景 patrol_20261108-232103 / 20261109-001213 阻塞 13/13",
+    "data/皇帝产线-结构.json 第 386 行：11-03 游戏内 3 台全点开均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "基线-铜链爆仓 说明（用户 2026-11-06）；错题本 #8.2「左侧气体反应炉不工作 → 查水和酸」",
+   "verdict_at_annotation": "不一致"
+  },
+  "气体反应炉@829,384": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜链主路，满速设计，下游爆仓时阻塞；程序判没料（息壤气 / 气态赫铜没追到）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 气态灼铜 当前=理论 35 次（1104-085905 库None 90/90；1108-213039 库None 90/90；1108-213437 库None 90/90）",
+    "近景 patrol_20261108-232103 / 20261109-001213 阻塞 13/13",
+    "data/皇帝产线-结构.json 第 386 行：11-03 游戏内 3 台全点开均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261107-181621、20261108-232103、20261109-001213"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "基线-铜链爆仓 说明（用户 2026-11-06）；错题本 #8.2「左侧气体反应炉不工作 → 查水和酸」",
+   "verdict_at_annotation": "不一致"
+  },
+  "气体反应炉@911,483": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜链主路，满速设计，下游爆仓时阻塞；程序判没料（息壤气 / 气态赫铜没追到）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 气态灼铜 当前=理论 35 次（1104-085905 库None 90/90；1108-213039 库None 90/90；1108-213437 库None 90/90）",
+    "近景 patrol_20261108-232103 / 20261109-001213 阻塞 13/13",
+    "data/皇帝产线-结构.json 第 386 行：11-03 游戏内 3 台全点开均阻塞",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 9 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "基线-铜链爆仓 说明（用户 2026-11-06）；错题本 #8.2「左侧气体反应炉不工作 → 查水和酸」",
+   "verdict_at_annotation": "不一致"
+  },
+  "液气转化机@950,879": {
+   "cat": "时有时无",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "用户确认的半速、酸气 / 息壤气交替设计，程序间歇 0.3，一致（具体开工率没有单台读数）。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "playbook.json device_designs",
+    "用户说明（2026-11-08 / 11-10）",
+    "巡检 20261110-153035"
+   ],
+   "truth": "时有时无",
+   "user_confirmed": "playbook.device_designs 液气转化机：半速混气设计，断续空闲 / 缺气是设计（用户 2026-11-08）",
+   "verdict_at_annotation": "一致"
+  },
+  "灌装机@695,1027": {
+   "cat": "备路",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "重息壤爆仓才有料的备路，巡检全是空闲；程序判没料（也进了待确认），状态名该是备路。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "tier_rules.json",
+    "data/皇帝产线-结构.json 第 447 行：11-03 当时空闲、液化重息壤缓存 0",
+    "巡检 20261104-203502、20261104-211047、20261104-212126、20261105-232107、20261106-111844、20261106-125802 等 13 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules 液化重息壤：重息壤没满就没有液化重息壤，灌装机（蓝铁瓶液化重息壤）不运行是设计（用户 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "种植机@387,958": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "巡检 20261107-093850"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@506,1097": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "巡检 20261107-093850"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@427,1156": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 碳块 当前=理论（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 碳块 当前=理论 8 次（1106-205236 库89993 360/360；1108-232600 库89994 360/360；1109-001937 库89982 360/360）（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）",
+    "巡检 20261107-093850"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@428,859": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 碳块 当前=理论（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 碳块 当前=理论 8 次（1106-205236 库89993 360/360；1108-232600 库89994 360/360；1109-001937 库89982 360/360）（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）",
+    "巡检 20261107-093850、20261107-162926"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@506,800": {
+   "cat": "备路",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "和 (605,918) 同一列的赫铜零件配件机，溢流打开时 3 台满速（18/18），平时空闲；程序判没料，状态名该是溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "简报 赫铜零件 当前=理论 4 次（1108-225029 库73040 18/18；1109-001937 库74648 18/18）",
+    "data/皇帝产线-结构.json 第 431 行：灌装机下方一列 3 台 = 赫铜零件",
+    "巡检 20261104-203502、20261104-211047、20261104-212126、20261105-024411、20261105-200157、20261105-223155 等 19 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "错题本 #9.1「赫铜块、赫铜零件优先级低」（用户 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "配件机@526,543": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜零件 18/18 = 3 台全满速；程序判没料（灼铜块 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 灼铜零件 当前=理论 33 次（1104-090143 库74317 18/18；1108-211208 库90000 18/18；1108-213039 库90000 18/18）",
+    "data/皇帝产线-结构.json 第 377、499 行：11-03 游戏内 3 台均阻塞，满速 3×6=18",
+    "巡检 20261104-203502、20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959 等 9 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜零件 18/分（用户错题本 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "配件机@565,365": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜零件 18/18 = 3 台全满速；程序判没料（灼铜块 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 灼铜零件 当前=理论 33 次（1104-090143 库74317 18/18；1108-211208 库90000 18/18；1108-213039 库90000 18/18）",
+    "data/皇帝产线-结构.json 第 377、499 行：11-03 游戏内 3 台均阻塞，满速 3×6=18",
+    "巡检 20261104-203502、20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959 等 9 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜零件 18/分（用户错题本 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "配件机@565,483": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "灼铜零件 18/18 = 3 台全满速；程序判没料（灼铜块 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "主路",
+   "source": [
+    "简报 灼铜零件 当前=理论 33 次（1104-090143 库74317 18/18；1108-211208 库90000 18/18；1108-213039 库90000 18/18）",
+    "data/皇帝产线-结构.json 第 377、499 行：11-03 游戏内 3 台均阻塞，满速 3×6=18",
+    "巡检 20261106-144212、20261106-155358、20261106-174709、20261106-180544、20261106-185959、20261106-195711 等 8 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜零件 18/分（用户错题本 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "配件机@584,740": {
+   "cat": "备路",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "和 (605,918) 同一列的赫铜零件配件机，溢流打开时 3 台满速（18/18），平时空闲；程序判没料，状态名该是溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "简报 赫铜零件 当前=理论 4 次（1108-225029 库73040 18/18；1109-001937 库74648 18/18）",
+    "data/皇帝产线-结构.json 第 431 行：灌装机下方一列 3 台 = 赫铜零件",
+    "巡检 20261104-203502、20261105-232107、20261106-111844、20261106-125802、20261106-155358、20261107-113228 等 8 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "错题本 #9.1「赫铜块、赫铜零件优先级低」（用户 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "配件机@605,918": {
+   "cat": "备路",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "赫铜零件溢流位，平时歇、溢流打开时满速；程序判没料，状态名该是溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "playbook.json device_designs",
+    "简报 赫铜零件 当前=理论 4 次（1108-225029 库73040 18/18；1109-001937 库74648 18/18）",
+    "巡检 20261104-212126、20261105-024411"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "playbook.device_designs (604,917)：赫铜块进入的配件机，上游灼铜没爆仓时休息是设计如此（用户 2026-11-08）",
+   "verdict_at_annotation": "不一致"
+  },
+  "采种机@368,1057": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）",
+    "巡检 20261107-093850"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@506,998": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）",
+    "巡检 20261107-093850"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  }
+ },
+ "景玉谷": {
+  "塑形机@1275,1093": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 gray_景玉谷_patrol_20261110-192542.json、20261106-194615、20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@855,423": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 6 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "巡检 20261107-092836、20261107-112313、20261108-203422、20261108-205859、20261108-210805、20261108-212711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@855,581": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "简报息壤 360/360 只有 12 台洪炉全满速才凑得上，三次近景都没有标记；程序判没料（碳块 0/30）是物流图漏追。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261108-213737 / 231408、patrol_20261109-000939 都是 13 帧无标记",
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）",
+    "巡检 20261107-092836、20261107-112313、20261108-203422、20261108-205859、20261108-210805、20261108-212711 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "天有洪炉@855,738": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "简报息壤 360/360 只有 12 台洪炉全满速才凑得上，三次近景都没有标记；程序判没料（碳块 0/30）是物流图漏追。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261108-213737 / 231408、patrol_20261109-000939 都是 13 帧无标记",
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261108-203422、20261108-205859、20261108-210805 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "天有洪炉@855,896": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料",
+    "配方"
+   ],
+   "note": "实际做息壤、在转；程序按邻居推断成重息壤、判没料，配方和状态都不对。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1",
+   "recipe_dispute": false,
+   "recipe_source": "代码侧",
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261108-213737 / 231408、patrol_20261109-000939 13 帧无标记",
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）",
+    "简报 重息壤 理论一直是 24（= 应龙关 2 台固转），这台若做重息壤应为 30",
+    "data/皇帝产线-结构.json 景玉谷 2 号 8 台洪炉产品图标都是息壤（第 241 行）",
+    "巡检 20261108-203422、20261108-205859、20261108-210805、20261108-212711、20261108-213105、20261108-213737 等 8 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "天有洪炉@993,423": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 9 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "巡检 gray_景玉谷_patrol_20261110-192542.json、20261104-150424、20261107-092836、20261107-112313、20261107-161916、20261108-203422 等 13 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@993,581": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "简报息壤 360/360 只有 12 台洪炉全满速才凑得上，三次近景都没有标记；程序判没料（碳块 0/30）是物流图漏追。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261108-213737 / 231408、patrol_20261109-000939 都是 13 帧无标记",
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）",
+    "巡检 gray_景玉谷_patrol_20261110-192542.json、20261104-150424、20261107-092836、20261107-112313、20261107-161916、20261108-203422 等 13 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "天有洪炉@993,738": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 11 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261107-092836、20261107-112313、20261107-185954 等 14 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@993,896": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 11 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "巡检 20261107-092836、20261107-112313、20261107-185954、20261108-203422、20261108-205859、20261108-210805 等 11 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "封装机@378,906": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "在转（巡检 5 次阻塞 / 生产中）；按 11-03 游戏内数的进料带应满速，程序 0.75（致密源石粉末 90/120）少算一条带。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "data/皇帝产线-结构.json 第 488 行：外围 2 台各 5 条进料带 = 1 壤晶 + 4 致密源石粉末，各 6/分",
+    "简报 中容 当前 14–15 / 理论 24",
+    "巡检 20261106-202655、20261106-203715、20261106-205034、20261107-092836、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@437,1261": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "用户确认的四分之一速设计，程序 0.25 一致；巡检里这台没对上记录。",
+   "on_change": "回归（不许变）",
+   "rate": 0.25,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "playbook.json device_designs（用户 2026-11-08）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.device_designs (436,1258)：只有一条致密源石粉末产线供料，理论四分之一速（1.5/分），大部分时间空闲是设计如此（用户 2026-11-08）",
+   "verdict_at_annotation": "一致"
+  },
+  "封装机@536,1261": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "外围满速的中容封装机，巡检 5 次阻塞 / 生产中、面板配方就是中容；程序判没料（壤晶 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "data/皇帝产线-结构.json 第 488 行：外围 3 台中容里 2 台各 5 条进料带、各 6/分（2026-11-03 游戏内逐台核算）",
+    "playbook.device_designs (436,1258) 才是只有一条料线的那台（用户 2026-11-08）",
+    "简报 中容 当前 14–15、理论 24（目标 14.7 = 6+6+1.5+1.2）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261107-112313、20261107-161916"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@733,768": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料",
+    "配方"
+   ],
+   "note": "内围中间这台做中容（约 1.2/分），程序认成低容、判没料。 实际配方 致密源石粉末×20 + 壤晶×5 → 中容武陵电池×1（10秒）。程序的配方来自冻结的档案配方表（景玉谷_recipes.json），改代码改不到。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 0.2,
+   "recipe": "致密源石粉末×20 + 壤晶×5 → 中容武陵电池×1",
+   "recipe_dispute": false,
+   "recipe_source": "数据侧",
+   "role": "未知",
+   "source": [
+    "patrol_20261107-185954 产物图标 中容、gray_景玉谷_patrol_20261110-192542 面板 致密源石粉末×20 + 壤晶×5 → 中容",
+    "data/皇帝产线-结构.json 第 488 / 497 行：内围中间 1 台中容（24/120 → 1.2/分），上下 2 台低容",
+    "简报 中容 理论 11-08 起是 24（4 台）",
+    "巡检 gray_景玉谷_patrol_20261110-192542.json、20261107-185954"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@733,906": {
+   "cat": "备路",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "低容封装机是备路：息壤满了才转（巡检 11-06 空闲 ×4、11-10 息壤满时阻塞）；程序判没料（息壤 0/30），平时都不开工这点一致，但状态名该是溢流位 / 备路。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "tier_rules.json 低容武陵电池",
+    "简报 低容武陵电池 当前=理论 13 次（1107-144140 库79135 18/18；1108-205834 库86561 12/12）",
+    "巡检 20261107-185954"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules：中容和息壤同时爆仓才生产低容（用户 2026-11-03 分级示意图）；错题本 #9.1「低电优先级低，息壤不去封装机是正常」（用户 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@753,453": {
+   "cat": "备路",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "低容封装机是备路：息壤满了才转（巡检 11-06 空闲 ×4、11-10 息壤满时阻塞）；程序判没料（息壤 0/30），平时都不开工这点一致，但状态名该是溢流位 / 备路。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "tier_rules.json 低容武陵电池",
+    "简报 低容武陵电池 当前=理论 13 次（1107-144140 库79135 18/18；1108-205834 库86561 12/12）",
+    "巡检 gray_景玉谷_patrol_20261110-192542.json、20261104-150424、20261106-194615、20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules：中容和息壤同时爆仓才生产低容（用户 2026-11-03 分级示意图）；错题本 #9.1「低电优先级低，息壤不去封装机是正常」（用户 2026-11-06）",
+   "verdict_at_annotation": "不一致"
+  },
+  "研磨机@1028,1261": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@378,394": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）",
+    "巡检 20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@398,1162": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@417,532": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "致密源石粉末 270/270 = 9 台研磨机全满速，巡检多次阻塞 / 生产中；程序判没料（源石粉末 0/60）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034、20261107-092836、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "研磨机@418,650": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 6 次有料 / 0 次没料，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034、20261107-092836、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@476,807": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）",
+    "巡检 20261106-205034、20261107-092836、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@674,1202": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）",
+    "巡检 20261106-202655"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@792,1221": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 致密源石粉末 当前=理论（9 台研磨机 × 30 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）（9 台研磨机 × 30 = 270）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "研磨机@910,1221": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "致密源石粉末 270/270 = 9 台研磨机全满速，巡检多次阻塞 / 生产中；程序判没料（源石粉末 0/60）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 致密源石粉末 当前=理论 46 次（1104-090143 库90000 270/270；1110-174209 库88394 270/270；1110-174739 库88260 270/270）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "种植机@1117,581": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "巡检 20261108-212711、20261108-213105、20261108-213737"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@1117,877": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "巡检 20261108-212711、20261108-213105、20261108-213737"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@1216,463": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "巡检 20261107-092836、20261107-112313、20261108-212711、20261108-213105、20261108-213737"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@1216,758": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "巡检 20261107-092836、20261108-212711、20261108-213105、20261108-213737"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1039,1133": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1098,1133": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@388,1054": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@467,384": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-202655、20261106-203715、20261106-205034、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@467,877": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-202655、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@467,936": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@507,463": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 6 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034、20261107-092836、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@507,522": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-202655、20261106-205034、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@507,581": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "两台都在转、满速一致；配方哪台是砂叶，巡检面板和机身图标说法相反，没定论，标「配方存疑」不算不一致。",
+   "on_change": "状态不许变；配方存疑（巡检面板和机身图标相反），配方变了要人看",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": true,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）",
+    "简报 砂叶粉末 当前=理论 47 次（1104-090143 库89992 270/270；1110-174209 库89991 270/270；1110-174739 库89997 270/270）",
+    "巡检面板：(507,581) 读到 源矿 → 源石粉末（patrol_20261106-194615 / 203715）、(507,640) 读到 砂叶 → 砂叶粉末（patrol_20261106-202655 / 205034、20261107-092836）",
+    "tests/test_design.py 第 5、44 行：按机身图标判 (507,581)=砂叶、(507,640)=源矿，说「历史配对配反」",
+    "巡检 20261106-194615、20261106-203715"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@507,640": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "两台都在转、满速一致；配方哪台是砂叶，巡检面板和机身图标说法相反，没定论，标「配方存疑」不算不一致。",
+   "on_change": "状态不许变；配方存疑（巡检面板和机身图标相反），配方变了要人看",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": true,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）",
+    "简报 砂叶粉末 当前=理论 47 次（1104-090143 库89992 270/270；1110-174209 库89991 270/270；1110-174739 库89997 270/270）",
+    "巡检面板：(507,581) 读到 源矿 → 源石粉末（patrol_20261106-194615 / 203715）、(507,640) 读到 砂叶 → 砂叶粉末（patrol_20261106-202655 / 205034、20261107-092836）",
+    "tests/test_design.py 第 5、44 行：按机身图标判 (507,581)=砂叶、(507,640)=源矿，说「历史配对配反」",
+    "巡检 20261106-202655、20261106-205034、20261107-092836"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@507,699": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@526,364": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-202655、20261106-203715、20261106-205034、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@526,916": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@546,1172": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@645,1094": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@743,1133": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@802,1133": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034、20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@861,1133": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 砂叶粉末 当前=理论（3 台粉碎机（景玉谷 2 + 武陵城 1）× 90 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶粉末 当前=理论 47 次（1104-090143 库89992 270/270；1110-174209 库89991 270/270；1110-174739 库89997 270/270）（3 台粉碎机（景玉谷 2 + 武陵城 1）× 90 = 270）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@920,1132": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-194615、20261106-202655、20261106-203715、20261106-205034"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@980,1133": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 源石粉末 当前=理论（18 台粉碎机 × 30 = 540）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 源石粉末 当前=理论 46 次（1104-090143 库13110 540/540；1110-174209 库14502 540/540；1110-174739 库14502 540/540）（18 台粉碎机 × 30 = 540）",
+    "巡检 20261106-202655、20261106-203715"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1000,659": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "碳块 360/360 = 6 台精炼炉全满速，11-06 巡检阻塞；程序判没料（芽针 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 碳块 当前=理论 8 次（1106-205236 库89993 360/360；1108-232600 库89994 360/360；1109-001937 库89982 360/360）",
+    "巡检 20261106-194615"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "精炼炉@1078,680": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 碳块 当前=理论（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 碳块 当前=理论 8 次（1106-205236 库89993 360/360；1108-232600 库89994 360/360；1109-001937 库89982 360/360）（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1098,955": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 碳块 当前=理论（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 碳块 当前=理论 8 次（1106-205236 库89993 360/360；1108-232600 库89994 360/360；1109-001937 库89982 360/360）（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1118,364": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 碳块 当前=理论（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 碳块 当前=理论 8 次（1106-205236 库89993 360/360；1108-232600 库89994 360/360；1109-001937 库89982 360/360）（6 台精炼炉（景玉谷 4 + 应龙关 2）× 60 = 360）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@1117,758": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@1118,463": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）",
+    "巡检 20261107-112313"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@1216,581": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）",
+    "巡检 20261107-092836、20261107-161916"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@1216,877": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）",
+    "巡检 20261106-194615、20261107-092836、20261107-112313、20261107-161916"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  }
+ },
+ "武陵城": {
+  "反应池@1357,1332": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "两条配方并行、被下游堵住，程序 0.10.11 已按并行算间歇 0.5，状态一致（0.5 是理论上限，没实测）。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-04 – 11-10 一直阻塞，近景 patrol_20261110-153300 / 174225 阻塞 13/13",
+    "面板：芽针溶液、锦草溶液都满（11-06 20:14 起）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-143952、20261104-144248、20261104-144556 等 28 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "反应池@1830,1055": {
+   "cat": "时有时无",
+   "confidence": 0.55,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "壤晶废液不足、时转时停，平均约半速；程序判没料（壤晶废液 0/60）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 0.5,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "data/皇帝产线-结构.json 第 450 行：11-03 反应池（4 号）壤晶合成，生产中（壤晶废液不足）",
+    "简报 壤晶 当前 73–75 / 理论 90（扩容 B、D 各 30，剩下约 15 来自这台）",
+    "巡检 11-06 / 11-07 阻塞、生产中；近景 patrol_20261110-153300 / 174225 空闲 13/13",
+    "巡检 20261104-173211、20261104-190858、20261104-193037、20261106-201417、20261107-095430、20261107-114659 等 9 份"
+   ],
+   "truth": "时有时无",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "塑形机@1097,818": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料；程序间歇 0.5，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261106-201417、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "塑形机@1138,384": {
+   "cat": "备路",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "赤铜块满仓才有料的备路，巡检全是空闲；程序判满速。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "tier_rules.json 赤铜瓶",
+    "简报 赤铜瓶 11-07 当前 0（赤铜块 89954 未满）、11-10 / 11-12 60/60（赤铜块 90000）",
+    "巡检 20261104-173211、20261104-173925、20261104-181911、20261104-182456、20261104-182932、20261104-183414 等 15 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules 赤铜瓶：进料带是协议储存箱入库带的溢流段，赤铜块满仓才有料（用户 2026-11-04 截图）",
+   "verdict_at_annotation": "不一致"
+  },
+  "塑形机@1256,798": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-151011、20261107-114659、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "塑形机@1257,384": {
+   "cat": "备路",
+   "confidence": 0.55,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名",
+    "配方"
+   ],
+   "note": "应是第二台赤铜瓶塑形机（备路，平时空闲）；程序按「同类最常见」填成耐压罐、判没料（惰气 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": "赤铜块×2 → 赤铜瓶×1",
+   "recipe_dispute": false,
+   "recipe_source": "代码侧",
+   "role": "备路",
+   "source": [
+    "data/皇帝产线-结构.json 第 443 行：11-03 游戏内 12 台精炼炉上方 2 台塑形机都是赤铜块→赤铜瓶",
+    "data/皇帝产线-结构.json 第 81 行：1.6 武陵城1号蓝图里有一台塑形机「未设置」配方",
+    "简报 赤铜瓶 理论 60 = 2 台；赤铜耐压罐 理论 90 = 3 台（景玉谷 1 + 武陵城 2 号 2），容不下第 4 台耐压罐",
+    "巡检：这台位置上 11-04 ×9、11-07 ×4 有空闲角标，但名字被认成（无标签）/ 协议储存箱 / 长距滑索架，没算进观测"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "tier_rules 赤铜瓶（用户 2026-11-04）",
+   "verdict_at_annotation": "不一致"
+  },
+  "塑形机@844,423": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [
+    "配方"
+   ],
+   "note": "在用（常年阻塞），配方多半是蓝铁瓶；程序按同类最常见填成赤铜耐压罐、0.5，状态类别一致但配方不对。 实际配方多半是 蓝铁块×2 → 蓝铁瓶×1（2秒），待游戏内点开确认；recipe 只要求产物是蓝铁瓶×1。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": "→ 蓝铁瓶×1",
+   "recipe_dispute": false,
+   "recipe_source": "代码侧",
+   "role": "未知",
+   "source": [
+    "巡检 25 次阻塞，产物图标每次都认成蓝铁瓶（11-04、11-07）",
+    "debug/审计-20261119/audit_round2_result.json：机身图标认的就是蓝铁瓶，这台不吃惰气；设计文档第 1562–1563 行",
+    "data/皇帝产线-结构.json 第 443 行：附近另 1 台塑形机做蓝铁瓶",
+    "巡检 20261104-103646、20261104-104412、20261104-132227、20261104-133715、20261104-143952、20261104-144248 等 25 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "天有洪炉@1506,858": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+    "巡检 20261104-160712、20261107-095430、20261108-204040、20261108-210310、20261108-224726、20261108-231641 等 7 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@1526,739": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+    "巡检 20261107-095430、20261108-204040、20261108-210310、20261108-224726、20261108-231641、20261109-001542"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@1644,739": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 6 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+    "巡检 20261107-095430、20261107-164347、20261108-204040、20261108-210310、20261108-224726、20261108-231641 等 7 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "天有洪炉@1665,858": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 息壤 当前=理论 6 次（1106-205236 库69676 360/360；1108-232600 库83046 360/360；1109-001937 库87994 360/360）（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）",
+    "巡检 20261104-151011、20261104-160712、20261107-095430、20261108-204040、20261108-210310、20261108-224726 等 8 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "封装机@1070,1243": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "在用、因产物爆仓阻塞；程序判没料（灌好的蓝铁瓶 0/30，灌好的瓶子和空瓶同名，审计第 12 项）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-04 阻塞 ×18–19、11-07 阻塞（产物芽针针剂 / 锦草软饮 90000 爆仓）",
+    "data/皇帝产线-结构.json 第 439 行：11-03 只有两台优质的空闲（缺赤铜零件），这两台不在空闲之列",
+    "巡检 20261104-132227、20261104-143952、20261104-144248、20261104-144556、20261104-151011、20261104-160712 等 19 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@1185,1243": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "在用、因产物爆仓阻塞；程序判没料（灌好的蓝铁瓶 0/30，灌好的瓶子和空瓶同名，审计第 12 项）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-04 阻塞 ×18–19、11-07 阻塞（产物芽针针剂 / 锦草软饮 90000 爆仓）",
+    "data/皇帝产线-结构.json 第 439 行：11-03 只有两台优质的空闲（缺赤铜零件），这两台不在空闲之列",
+    "巡检 20261104-132227、20261104-133715、20261104-143952、20261104-144248、20261104-144556、20261104-151011 等 21 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@1187,966": {
+   "cat": "备路",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "优质药封装机是备路，巡检全是空闲；程序判没料，状态名该是备路 / 溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "tier_rules.json",
+    "简报 优质芽针针剂 当前=理论 5 次（1106-144402 库76732 6/6；1112-122818 库85888 6/6）",
+    "data/皇帝产线-结构.json 第 439 行：11-03 两台优质的均空闲",
+    "巡检 20261104-173925、20261104-181911、20261104-182456、20261104-182932、20261104-183414、20261104-184254 等 15 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "错题本 #9.1「优质药优先级低，不生产是正常」（用户 2026-11-06）；tier_rules 赤铜零件有富余才生产优质药（用户 2026-11-03）",
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@1325,966": {
+   "cat": "备路",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "状态名"
+   ],
+   "note": "优质药封装机是备路，巡检全是空闲；程序判没料，状态名该是备路 / 溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "tier_rules.json",
+    "简报 优质芽针针剂 当前=理论 5 次（1106-144402 库76732 6/6；1112-122818 库85888 6/6）",
+    "data/皇帝产线-结构.json 第 439 行：11-03 两台优质的均空闲",
+    "巡检 20261104-173211、20261104-173925、20261104-181911、20261104-182456、20261104-182932、20261104-184254 等 11 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "错题本 #9.1「优质药优先级低，不生产是正常」（用户 2026-11-06）；tier_rules 赤铜零件有富余才生产优质药（用户 2026-11-03）",
+   "verdict_at_annotation": "不一致"
+  },
+  "封装机@615,433": {
+   "cat": "有料",
+   "confidence": 0.55,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上这台，但分离芯产量要它在转才凑得上；程序满速，状态一致（开工率没法单独核）。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 分离芯 理论 180（3 台），当前最高 150 = 60 + 60 + 30，另两台合计最多 90，这台必须在转",
+    "参考简报 分离芯 150/180"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "封装机@753,512": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-151011、20261106-201417、20261107-095430、20261107-114659、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "封装机@991,828": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料；程序间歇 0.5，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-132227、20261104-143952、20261104-144556、20261104-173925、20261104-193037"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "扩容反应池@1313,1114": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "近景巡检"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "在转，程序间歇 0.5 状态一致；配方是邻居推断的，50% 没有实测依据。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261110-153300 / 174225 13 帧无标记",
+    "巡检 20261110-153300、20261110-174225"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "扩容反应池@1489,1055": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 惰性壤晶废液 当前=理论（4 台扩容反应池 × 30 = 120）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 惰性壤晶废液 120/120（1108-225029、1109-001937、1110-174209、1110-174739；参考简报也是 120/120）（4 台扩容反应池 × 30 = 120）",
+    "巡检 20261106-201417、20261107-114659、20261107-164347、20261110-153300、20261110-174225"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "扩容反应池@1490,1174": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "在转；程序判没料（液化息壤 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-07 16:43 生产中、近景 patrol_20261110-174225 无标记（11-04、11-07 09:54、11-10 15:33 的空闲都在故障 / 扰动时段）",
+    "简报 惰性壤晶废液 120/120（1108-225029、1109-001937、1110-174209、1110-174739；参考简报也是 120/120）",
+    "巡检 20261104-151011、20261104-160712、20261107-095430、20261107-164347、20261110-153300、20261110-174225"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "扩容反应池@1647,1055": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "11-03 游戏内点开（结构.json）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "在转；程序把三条配方并成要「液化息壤」进料的净配方，液化息壤 0/30 判没料。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-07 阻塞 ×2、近景 patrol_20261110-153300 阻塞 13/13、174225 无标记",
+    "简报 惰性壤晶废液 120/120（1108-225029、1109-001937、1110-174209、1110-174739；参考简报也是 120/120）",
+    "data/皇帝产线-结构.json 第 450 行：11-03 扩容反应池 B、D 三条配方（含壤晶合成），产壤晶 = B + D + 反应池",
+    "巡检 20261107-114659、20261107-164347、20261110-153300、20261110-174225"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "扩容反应池@1768,1174": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "惰性壤晶废液 120/120 要 4 台池子全转；程序判没料（液化息壤 / 壤晶废液 0/30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "近景 patrol_20261110-174225 无标记（15:33 那次空闲在扰动时段）",
+    "简报 惰性壤晶废液 120/120（1108-225029、1109-001937、1110-174209、1110-174739；参考简报也是 120/120）",
+    "巡检 20261110-153300、20261110-174225"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "提纯机@1650,1173": {
+   "cat": "时有时无",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "近景巡检",
+    "简报"
+   ],
+   "mismatch_at_annotation": [
+    "开工率"
+   ],
+   "note": "4 台池子都转时吃满 120 惰性壤晶废液、满速（壤晶废液 150/150），池子切配方时空闲；程序 0.25（只算到 30）。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 壤晶废液 150/150（1108-225029、1109-001937、1110-174209；参考简报 150/150）",
+    "简报 惰性壤晶废液 当前 120、消耗 116–120（基本全进这台）",
+    "tests/faults/基线-武陵城-exe全扫-20261107：池子切配方时这台空闲是连带",
+    "巡检 20261107-095430、20261107-164347、20261110-153300、20261110-174225"
+   ],
+   "truth": "时有时无",
+   "user_confirmed": null,
+   "verdict_at_annotation": "不一致"
+  },
+  "灌装机@1069,1124": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 25 次有料 / 0 次没料；程序间歇 0.5，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-143952、20261104-144248、20261104-144556 等 25 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "灌装机@1070,986": {
+   "cat": "时有时无",
+   "confidence": 0.5,
+   "depends_on": "塑形机@1138,384",
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "有赤铜瓶（赤铜块满仓）时在转，平时等料；程序按 0.5 算，归「一致」但依赖上游备路判定，第 6 项改了备路后跟着变不算回归。",
+   "on_change": "依赖 塑形机@1138,384（赤铜瓶备路）：那台改了以后跟着变不算回归",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-04 阻塞多次、11-07 空闲 ×3",
+    "参考简报 赤铜瓶(锦草/芽针溶液) 理论 30、当前 0",
+    "简报 赤铜瓶 当前 11-07 0、11-10 起 60",
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-181911、20261104-182456、20261104-182932 等 16 份"
+   ],
+   "truth": "时有时无",
+   "user_confirmed": "tests/faults/基线-武陵城-恢复后-20261107 说明：做赤铜瓶的灌装机空闲是在等备路原料赤铜瓶（用户 2026-11-07 基线）",
+   "verdict_at_annotation": "一致"
+  },
+  "灌装机@1188,1104": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 24 次有料 / 0 次没料；程序间歇 0.5，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-144248、20261104-144556、20261104-151011 等 24 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "灌装机@990,947": {
+   "cat": "时有时无",
+   "confidence": 0.5,
+   "depends_on": "塑形机@1138,384",
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "有赤铜瓶（赤铜块满仓）时在转，平时等料；程序按 0.5 算，归「一致」但依赖上游备路判定，第 6 项改了备路后跟着变不算回归。",
+   "on_change": "依赖 塑形机@1138,384（赤铜瓶备路）：那台改了以后跟着变不算回归",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 11-04 阻塞多次、11-07 空闲 ×3",
+    "参考简报 赤铜瓶(锦草/芽针溶液) 理论 30、当前 0",
+    "简报 赤铜瓶 当前 11-07 0、11-10 起 60",
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-143952、20261104-144248、20261104-144556 等 22 份"
+   ],
+   "truth": "时有时无",
+   "user_confirmed": "tests/faults/基线-武陵城-恢复后-20261107 说明：做赤铜瓶的灌装机空闲是在等备路原料赤铜瓶（用户 2026-11-07 基线）",
+   "verdict_at_annotation": "一致"
+  },
+  "灌装机@991,729": {
+   "cat": "平时没料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检全是空闲，程序判没料，一致（也在待确认里）。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "data/皇帝产线-结构.json 第 435 行：11-03 当时空闲（输入为 0）",
+    "巡检 20261104-173925、20261104-174546、20261104-182456、20261104-182932、20261104-183414、20261104-184254 等 13 份"
+   ],
+   "truth": "平时没料",
+   "user_confirmed": "tests/faults/基线-武陵城-exe全扫-20261107：灌装机 赤铜耐压罐(惰气) 基准就是 0/30",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@1118,1391": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 锦草 当前=理论（1 台种植机 × 60）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 锦草 当前=理论 1 次（1107-175458 库89980 60/60）（1 台种植机 × 60）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+    "巡检 20261104-104412、20261104-132227、20261104-193037、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@1573,1391": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 芽针 当前=理论（7 台种植机 × 60 = 420，最高到过 406/420（0.967））；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针 最高 406/420（1107-175458），没有正好满的时刻（7 台种植机 × 60 = 420，最高到过 406/420（0.967））",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+    "巡检 20261104-132227、20261107-095430、20261107-114659"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@605,1154": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 8 次有料 / 0 次没料，简报 砂叶 当前=理论（6 台种植机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶 当前=理论 47 次（1104-090143 库89995 180/180；1110-174209 库89999 180/180；1110-174739 库89996 180/180）（6 台种植机 × 30 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-181911、20261104-182456、20261104-182932、20261104-183414、20261104-184254、20261104-190858 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@606,679": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 8 次有料 / 0 次没料，简报 砂叶 当前=理论（6 台种植机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶 当前=理论 47 次（1104-090143 库89995 180/180；1110-174209 库89999 180/180；1110-174739 库89996 180/180）（6 台种植机 × 30 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-104412、20261104-173925、20261104-174546、20261104-181911、20261104-190310、20261104-193037 等 8 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@624,996": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 4 次有料 / 0 次没料，简报 砂叶 当前=理论（6 台种植机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶 当前=理论 47 次（1104-090143 库89995 180/180；1110-174209 库89999 180/180；1110-174739 库89996 180/180）（6 台种植机 × 30 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-182456、20261104-190858、20261104-193037、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@625,778": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料，简报 砂叶 当前=理论（6 台种植机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶 当前=理论 47 次（1104-090143 库89995 180/180；1110-174209 库89999 180/180；1110-174739 库89996 180/180）（6 台种植机 × 30 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-190310、20261104-193037、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@742,877": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 10 次有料 / 0 次没料，简报 砂叶 当前=理论（6 台种植机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶 当前=理论 47 次（1104-090143 库89995 180/180；1110-174209 库89999 180/180；1110-174739 库89996 180/180）（6 台种植机 × 30 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-182456、20261104-183414、20261104-184254、20261104-190310、20261104-190858、20261104-191444 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "种植机@743,1075": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 9 次有料 / 0 次没料，简报 砂叶 当前=理论（6 台种植机 × 30 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶 当前=理论 47 次（1104-090143 库89995 180/180；1110-174209 库89999 180/180；1110-174739 库89996 180/180）（6 台种植机 × 30 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-173925、20261104-181911、20261104-182456、20261104-183414、20261104-184254、20261104-190858 等 9 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1199,1351": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-132227、20261104-193037、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1572,1292": {
+   "cat": "有料",
+   "confidence": 0.75,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-132227、20261104-133715、20261104-144248、20261104-144556、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1711,937": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料；程序间歇 0.5，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-151011、20261104-160712"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1809,877": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料；程序间歇 0.5，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-151011、20261104-160712、20261107-114659"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@1870,898": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 13 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-151011、20261104-160712、20261104-170909、20261104-171335、20261104-171729、20261104-173211 等 13 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "粉碎机@585,581": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 5 次有料 / 0 次没料，简报 砂叶粉末 当前=理论（3 台粉碎机（景玉谷 2 + 武陵城 1）× 90 = 270）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶粉末 当前=理论 47 次（1104-090143 库89992 270/270；1110-174209 库89991 270/270；1110-174739 库89997 270/270）（3 台粉碎机（景玉谷 2 + 武陵城 1）× 90 = 270）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-190310、20261104-193037、20261106-201417、20261107-095430、20261107-114659"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1060,502": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1120,463": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1178,502": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1178,759": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1238,720": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261107-114659"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1277,463": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1336,759": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1337,502": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1396,719": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检没对上，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：这些吃清水的设备游戏里都在转（tests/test_design.py 第 69–73 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1435,502": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261104-104412、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1455,443": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261104-103646、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1555,443": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261104-103646、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1574,502": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261104-103646、20261104-104412、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1674,444": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1693,503": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1791,720": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261107-095430、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1792,444": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1811,503": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 1 次有料 / 0 次没料，简报 赤铜块 当前=理论（17 台精炼炉 × 30 = 510）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 赤铜块 当前=理论 35 次（1104-090143 库89974 510/510；1108-232600 库89995 510/510；1109-001937 库89989 510/510）（17 台精炼炉 × 30 = 510）",
+    "巡检 20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1851,759": {
+   "cat": "有料",
+   "confidence": 0.65,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 3 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-160712、20261107-095430、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "精炼炉@1870,699": {
+   "cat": "未知",
+   "confidence": null,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "无"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检里没对上这台，简报也证明不了；不知道对不对。",
+   "on_change": "不知道（要人看）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [],
+   "truth": "没有实测",
+   "user_confirmed": null,
+   "verdict_at_annotation": "没有实测"
+  },
+  "精炼炉@962,463": {
+   "cat": "有料",
+   "confidence": 0.6,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261107-095430、20261107-164347"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "装备原件机@759,788": {
+   "cat": "有料",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "用户确认的 1/分（开工率 1/6），程序 0.167，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 0.167,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检阻塞 ×14",
+    "巡检 20261104-104412、20261104-181911、20261104-182456、20261104-182932、20261104-183414、20261104-184254 等 14 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "playbook.targets 灼铜装备原件 1/分：重息壤准入口限速 12 → 12/3/2 = 2 重息壤/分 → 1 原件/分（用户 2026-11-06）",
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@1158,878": {
+   "cat": "备路",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "备路配件机，巡检全是空闲，程序判溢流位，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "data/皇帝产线-结构.json 第 436 行",
+    "tests/test_design.py 第 59–63 行",
+    "巡检 20261104-181911、20261104-182456、20261104-183414、20261104-184254、20261104-190310、20261104-191444 等 9 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "同上（精炼炉正下方汇流器到配件机是备路）",
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@1215,878": {
+   "cat": "备路",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "备路配件机，巡检全是空闲，程序判溢流位，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "data/皇帝产线-结构.json 第 436 行",
+    "tests/test_design.py 第 59–63 行",
+    "巡检 20261104-181911、20261104-182456、20261104-182932、20261104-183414、20261104-184254、20261104-190310 等 11 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "同上（精炼炉正下方汇流器到配件机是备路）",
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@1335,878": {
+   "cat": "备路",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "备路配件机，巡检全是空闲，程序判溢流位，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "data/皇帝产线-结构.json 第 436 行",
+    "tests/test_design.py 第 59–63 行",
+    "巡检 20261104-173925、20261104-174546、20261104-182456、20261104-184254、20261104-190310、20261104-191444 等 9 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "同上（精炼炉正下方汇流器到配件机是备路）",
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@1394,878": {
+   "cat": "备路",
+   "confidence": 0.8,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "11-03 游戏内点开（结构.json）"
+   ],
+   "mismatch_at_annotation": [
+    "有没有料"
+   ],
+   "note": "备路配件机，巡检全是空闲；程序判满速（推断连线接成了有料），应和旁边 3 台一样是溢流位。",
+   "on_change": "可能是改对了（朝 truth 变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "备路",
+   "source": [
+    "data/皇帝产线-结构.json 第 436 行：11-03 游戏内 4 台赤铜零件配件机接精炼炉备路、均空闲（赤铜块缓存 0）",
+    "用户说明（2026-11-08 / 11-10）",
+    "巡检 20261104-173925、20261104-174546、20261104-181911、20261104-184254、20261104-190310、20261104-190858 等 11 份"
+   ],
+   "truth": "平时没料（备路 / 溢流位：主路爆仓或条件满足时才转）",
+   "user_confirmed": "用户 2026-11-03 / 11-10：每台精炼炉直供塑形机是主路，正下方汇流器到配件机是备路；错题本 #9.1「赤铜块不去配件机是正常」",
+   "verdict_at_annotation": "不一致"
+  },
+  "配件机@941,364": {
+   "cat": "有料",
+   "confidence": 0.85,
+   "depends_on": null,
+   "derived_from_program_recipe": false,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 29 次有料 / 1 次没料；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": null,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "巡检 20261104-103646、20261104-104412、20261104-132227、20261104-133715、20261104-143952、20261104-144248 等 30 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@978,1134": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 25 次有料 / 0 次没料，简报 铁制零件 当前=理论（2 台配件机 × 30 = 60）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 铁制零件 当前=理论 1 次（1107-175458 库90000 60/60）（2 台配件机 × 30 = 60）",
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-143952、20261104-144248、20261104-144556 等 25 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "配件机@979,1193": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 18 次有料 / 0 次没料，简报 铁制零件 当前=理论（2 台配件机 × 30 = 60）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 铁制零件 当前=理论 1 次（1107-175458 库90000 60/60）（2 台配件机 × 30 = 60）",
+    "巡检 20261104-104412、20261104-132227、20261104-133715、20261104-144248、20261104-151011、20261104-160712 等 18 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@1020,1391": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 锦草种子 当前=理论（1 台采种机 × 30）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 锦草种子 当前=理论 2 次（1107-175458 库1296 30/30；1107-183008 库1296 30/30）（1 台采种机 × 30）",
+    "巡检 20261104-132227、20261104-193037"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@1474,1391": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 6 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 芽针种子 当前=理论 1 次（1107-183008 库9140 210/210）（7 台采种机 × 30 = 210）",
+    "巡检 20261104-104412、20261104-132227、20261104-184254、20261104-190858、20261104-193037、20261106-201417"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": null,
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@604,897": {
+   "cat": "有料",
+   "confidence": 0.7,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 2 次有料 / 0 次没料，简报 砂叶种子 当前=理论（3 台采种机 × 60 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶种子 当前=理论 47 次（1104-090143 库7088 180/180；1110-174209 库7553 180/180；1110-174739 库7553 180/180）（3 台采种机 × 60 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-182456、20261106-201417、20261107-114659"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@723,1173": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 11 次有料 / 0 次没料，简报 砂叶种子 当前=理论（3 台采种机 × 60 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶种子 当前=理论 47 次（1104-090143 库7088 180/180；1110-174209 库7553 180/180；1110-174739 库7553 180/180）（3 台采种机 × 60 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-104412、20261104-181911、20261104-182456、20261104-183414、20261104-184254、20261104-190310 等 12 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  },
+  "采种机@743,976": {
+   "cat": "有料",
+   "confidence": 0.9,
+   "depends_on": null,
+   "derived_from_program_recipe": true,
+   "env_required": null,
+   "evidence": [
+    "用户确认",
+    "快速巡检（角标 / 面板）",
+    "简报"
+   ],
+   "mismatch_at_annotation": [],
+   "note": "巡检 10 次有料 / 0 次没料，简报 砂叶种子 当前=理论（3 台采种机 × 60 = 180）；程序满速 1.0，一致。",
+   "on_change": "回归（不许变）",
+   "rate": 1.0,
+   "recipe": null,
+   "recipe_dispute": false,
+   "recipe_source": null,
+   "role": "未知",
+   "source": [
+    "简报 砂叶种子 当前=理论 47 次（1104-090143 库7088 180/180；1110-174209 库7553 180/180；1110-174739 库7553 180/180）（3 台采种机 × 60 = 180）",
+    "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+    "巡检 20261104-173925、20261104-181911、20261104-182456、20261104-183414、20261104-184254、20261104-190858 等 10 份"
+   ],
+   "truth": "有料（在用：阻塞 / 生产中 / 近景无标记为主）",
+   "user_confirmed": "用户 2026-11-10：武陵城左列砂叶循环（6 台种植机 + 3 台采种机 + 粉碎机）游戏里理论满速（tests/test_design.py 第 64–68 行）",
+   "verdict_at_annotation": "一致"
+  }
+ }
+}

@@ -1,0 +1,1262 @@
+[
+ {
+  "type": "管道桥",
+  "p": [
+   1492,
+   644
+  ],
+  "score": 1.0,
+  "margin": 0.186,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   235,
+   1089
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1014,
+   65
+  ],
+  "score": 0.984,
+  "margin": 0.182,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   713,
+   1668
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1493,
+   746
+  ],
+  "score": 0.982,
+  "margin": 0.203,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   234,
+   987
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1697,
+   409
+  ],
+  "score": 0.979,
+  "margin": 0.267,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   30,
+   1324
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1355,
+   1703
+  ],
+  "score": 0.972,
+  "margin": 0.234,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   372,
+   30
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1287,
+   1498
+  ],
+  "score": 0.971,
+  "margin": 0.155,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   440,
+   235
+  ]
+ },
+ {
+  "type": "管道桥",
+  "p": [
+   1253,
+   1497
+  ],
+  "score": 0.963,
+  "margin": 0.2,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   474,
+   236
+  ]
+ },
+ {
+  "type": "汇流器",
+  "p": [
+   946,
+   679
+  ],
+  "score": 0.956,
+  "margin": 0.139,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   781,
+   1054
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1219,
+   132
+  ],
+  "score": 0.953,
+  "margin": 0.165,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   508,
+   1601
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1698,
+   1088
+  ],
+  "score": 0.953,
+  "margin": 0.153,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   29,
+   645
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1493,
+   1395
+  ],
+  "score": 0.95,
+  "margin": 0.219,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   234,
+   338
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1151,
+   812
+  ],
+  "score": 0.949,
+  "margin": 0.209,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   576,
+   921
+  ]
+ },
+ {
+  "type": "管道桥",
+  "p": [
+   1014,
+   132
+  ],
+  "score": 0.947,
+  "margin": 0.177,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   713,
+   1601
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1222,
+   951
+  ],
+  "score": 0.946,
+  "margin": 0.174,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   505,
+   782
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1185,
+   132
+  ],
+  "score": 0.93,
+  "margin": 0.207,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   542,
+   1601
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1425,
+   1703
+  ],
+  "score": 0.928,
+  "margin": 0.24,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   302,
+   30
+  ]
+ },
+ {
+  "type": "管道桥",
+  "p": [
+   1014,
+   815
+  ],
+  "score": 0.921,
+  "margin": 0.146,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   713,
+   918
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1321,
+   1703
+  ],
+  "score": 0.917,
+  "margin": 0.167,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   406,
+   30
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1253,
+   1463
+  ],
+  "score": 0.907,
+  "margin": 0.175,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   474,
+   270
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1287,
+   883
+  ],
+  "score": 0.89,
+  "margin": 0.154,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   440,
+   850
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1424,
+   303
+  ],
+  "score": 0.885,
+  "margin": 0.134,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   303,
+   1430
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1698,
+   848
+  ],
+  "score": 0.884,
+  "margin": 0.16,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   29,
+   885
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   1698,
+   1293
+  ],
+  "score": 0.861,
+  "margin": 0.119,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   29,
+   440
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1219,
+   644
+  ],
+  "score": 0.947,
+  "sides": ".Y.Y",
+  "kind_local": "物品",
+  "kind_basis": "接传送带",
+  "belt_touch": true,
+  "icon_group": 4,
+  "kind": "物品",
+  "kind_conflict": false,
+  "kind_how": "图标是固体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   508,
+   1089
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   980,
+   473
+  ],
+  "score": 0.938,
+  "sides": "Y...",
+  "kind_local": "物品",
+  "kind_basis": "接传送带",
+  "belt_touch": true,
+  "icon_group": 5,
+  "kind": "物品",
+  "kind_conflict": false,
+  "kind_how": "图标是固体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   747,
+   1260
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1084,
+   1056
+  ],
+  "score": 0.904,
+  "sides": "YY..",
+  "kind_local": "物品",
+  "kind_basis": "接传送带",
+  "belt_touch": true,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": true,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   643,
+   677
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1152,
+   851
+  ],
+  "score": 0.884,
+  "sides": "....",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器",
+  "belt_touch": false,
+  "icon_group": 7,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是液体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   575,
+   882
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1152,
+   1056
+  ],
+  "score": 0.88,
+  "sides": "YY..",
+  "kind_local": "物品",
+  "kind_basis": "接传送带",
+  "belt_touch": true,
+  "icon_group": 8,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": true,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   575,
+   677
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1390,
+   1702
+  ],
+  "score": 0.875,
+  "sides": ".P..",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器、相邻管道分流器、接管道",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   337,
+   31
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1254,
+   1431
+  ],
+  "score": 0.875,
+  "sides": "....",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   473,
+   302
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1287,
+   1463
+  ],
+  "score": 0.838,
+  "sides": ".P.P",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道汇流器、相邻管道分流器、接管道",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   440,
+   270
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1287,
+   1702
+  ],
+  "score": 0.831,
+  "sides": "P...",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器、接管道",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   440,
+   31
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   980,
+   610
+  ],
+  "score": 0.811,
+  "sides": "Y.PP",
+  "kind_local": "?",
+  "kind_basis": "接管道、接传送带",
+  "belt_touch": true,
+  "icon_group": 9,
+  "kind": "物品",
+  "kind_conflict": false,
+  "kind_how": "图标是固体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   747,
+   1123
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1016,
+   1056
+  ],
+  "score": 0.81,
+  "sides": ".Y..",
+  "kind_local": "物品",
+  "kind_basis": "接传送带",
+  "belt_touch": true,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": true,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   711,
+   677
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1288,
+   919
+  ],
+  "score": 0.693,
+  "sides": "....",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道汇流器",
+  "belt_touch": false,
+  "icon_group": 7,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是液体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关1号",
+  "p_bp": [
+   439,
+   814
+  ]
+ },
+ {
+  "type": "分流器",
+  "p": [
+   472,
+   1089
+  ],
+  "score": 1.0,
+  "margin": 0.239,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1225,
+   644
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   711,
+   1569
+  ],
+  "score": 0.999,
+  "margin": 0.282,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   986,
+   164
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   1018,
+   849
+  ],
+  "score": 0.997,
+  "margin": 0.186,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   679,
+   884
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   503,
+   440
+  ],
+  "score": 0.995,
+  "margin": 0.264,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1194,
+   1293
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   97,
+   610
+  ],
+  "score": 0.987,
+  "margin": 0.169,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1600,
+   1123
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   950,
+   1123
+  ],
+  "score": 0.975,
+  "margin": 0.126,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   747,
+   610
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   680,
+   850
+  ],
+  "score": 0.964,
+  "margin": 0.266,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1017,
+   883
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   780,
+   748
+  ],
+  "score": 0.962,
+  "margin": 0.164,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   917,
+   985
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   541,
+   748
+  ],
+  "score": 0.957,
+  "margin": 0.164,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1156,
+   985
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   264,
+   679
+  ],
+  "score": 0.953,
+  "margin": 0.231,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1433,
+   1054
+  ]
+ },
+ {
+  "type": "分流器",
+  "p": [
+   677,
+   1429
+  ],
+  "score": 0.949,
+  "margin": 0.132,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1020,
+   304
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   949,
+   1702
+  ],
+  "score": 0.948,
+  "margin": 0.157,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   748,
+   31
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   302,
+   645
+  ],
+  "score": 0.939,
+  "margin": 0.128,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1395,
+   1088
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   950,
+   1396
+  ],
+  "score": 0.934,
+  "margin": 0.165,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   747,
+   337
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   711,
+   577
+  ],
+  "score": 0.923,
+  "margin": 0.15,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   986,
+   1156
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   130,
+   987
+  ],
+  "score": 0.923,
+  "margin": 0.204,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1567,
+   746
+  ]
+ },
+ {
+  "type": "物流桥",
+  "p": [
+   745,
+   1089
+  ],
+  "score": 0.894,
+  "margin": 0.127,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   952,
+   644
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   267,
+   440
+  ],
+  "score": 0.868,
+  "margin": 0.113,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1430,
+   1293
+  ]
+ },
+ {
+  "type": "汇流器",
+  "p": [
+   643,
+   1498
+  ],
+  "score": 0.865,
+  "margin": 0.134,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1054,
+   235
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   28,
+   781
+  ],
+  "score": 1.0,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 10,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是液体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1669,
+   952
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   473,
+   1124
+  ],
+  "score": 0.984,
+  "sides": "...Y",
+  "kind_local": "物品",
+  "kind_basis": "相邻分流器、接传送带",
+  "belt_touch": true,
+  "icon_group": 4,
+  "kind": "物品",
+  "kind_conflict": false,
+  "kind_how": "图标是固体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1224,
+   609
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   28,
+   610
+  ],
+  "score": 0.98,
+  "sides": ".P..",
+  "kind_local": "管道",
+  "kind_basis": "接管道",
+  "belt_touch": false,
+  "icon_group": 2,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1669,
+   1123
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   28,
+   952
+  ],
+  "score": 0.911,
+  "sides": ".P.Y",
+  "kind_local": "?",
+  "kind_basis": "接管道、接传送带",
+  "belt_touch": true,
+  "icon_group": 1,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是液体",
+  "maybe_item_below": true,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1669,
+   781
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1052,
+   849
+  ],
+  "score": 0.882,
+  "sides": "....",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器",
+  "belt_touch": false,
+  "icon_group": 10,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是液体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   645,
+   884
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   847,
+   235
+  ],
+  "score": 0.863,
+  "sides": "P...",
+  "kind_local": "管道",
+  "kind_basis": "接管道",
+  "belt_touch": false,
+  "icon_group": 8,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   850,
+   1498
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   28,
+   883
+  ],
+  "score": 0.832,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 1,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是液体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1669,
+   850
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   1018,
+   1600
+  ],
+  "score": 0.803,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   679,
+   133
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   437,
+   1088
+  ],
+  "score": 0.738,
+  "sides": "..PP",
+  "kind_local": "?",
+  "kind_basis": "接管道、相邻分流器",
+  "belt_touch": true,
+  "icon_group": 9,
+  "kind": "物品",
+  "kind_conflict": false,
+  "kind_how": "图标是固体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关2号",
+  "p_bp": [
+   1260,
+   645
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   432,
+   1602
+  ],
+  "score": 0.967,
+  "margin": 0.19,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   715,
+   133
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   93,
+   1601
+  ],
+  "score": 0.938,
+  "margin": 0.125,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   1054,
+   134
+  ]
+ },
+ {
+  "type": "管道汇流器",
+  "p": [
+   333,
+   1603
+  ],
+  "score": 0.933,
+  "margin": 0.118,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   814,
+   132
+  ]
+ },
+ {
+  "type": "管道分流器",
+  "p": [
+   367,
+   1603
+  ],
+  "score": 0.927,
+  "margin": 0.188,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   780,
+   132
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   25,
+   372
+  ],
+  "score": 0.985,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   1122,
+   1363
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   265,
+   1604
+  ],
+  "score": 0.86,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   882,
+   131
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   25,
+   440
+  ],
+  "score": 0.841,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   1122,
+   1295
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   436,
+   1570
+  ],
+  "score": 0.816,
+  "sides": "..P.",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器、接管道",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   711,
+   165
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   469,
+   1602
+  ],
+  "score": 0.779,
+  "sides": "....",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   678,
+   133
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   368,
+   1570
+  ],
+  "score": 0.738,
+  "sides": "....",
+  "kind_local": "管道",
+  "kind_basis": "相邻管道分流器",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   779,
+   165
+  ]
+ },
+ {
+  "type": "准入口",
+  "p": [
+   60,
+   1570
+  ],
+  "score": 0.717,
+  "sides": "....",
+  "kind_local": "?",
+  "kind_basis": "",
+  "belt_touch": false,
+  "icon_group": 6,
+  "kind": "管道",
+  "kind_conflict": false,
+  "kind_how": "图标是气体",
+  "maybe_item_below": false,
+  "bp": "1.6应龙关3号",
+  "p_bp": [
+   1087,
+   165
+  ]
+ }
+]

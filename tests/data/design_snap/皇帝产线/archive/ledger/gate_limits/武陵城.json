@@ -1,0 +1,757 @@
+{
+ "area": "武陵城",
+ "time": "20261109-011253",
+ "shots": "debug\\shots\\20261109-011253_武陵城_限速",
+ "rows": [
+  {
+   "p": [
+    339,
+    30
+   ],
+   "far": [
+    730.5,
+    343.5
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城2号",
+   "gate_no": 4,
+   "item": "惰气",
+   "rate": null,
+   "view": 1,
+   "u": [
+    748,
+    320
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_339_30.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    271,
+    30
+   ],
+   "far": [
+    691.2,
+    343.5
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城2号",
+   "gate_no": 3,
+   "item": "惰气",
+   "rate": null,
+   "view": 1,
+   "u": [
+    678,
+    322
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_271_30.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    237,
+    30
+   ],
+   "far": [
+    671.5,
+    343.5
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城2号",
+   "gate_no": 2,
+   "item": "惰气",
+   "rate": null,
+   "view": 1,
+   "u": [
+    644,
+    318
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_237_30.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    203,
+    30
+   ],
+   "far": [
+    651.8,
+    343.5
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城2号",
+   "gate_no": 1,
+   "item": "惰气",
+   "rate": null,
+   "view": 1,
+   "u": [
+    610,
+    322
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_203_30.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    341,
+    643
+   ],
+   "far": [
+    731.7,
+    698.2
+   ],
+   "kind": "物品",
+   "bp": "1.6武陵城2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    406,
+    260
+   ],
+   "title": "物品准入口",
+   "speed": 0.0,
+   "limit": 12.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_341_643.png",
+   "speed_line": "当前速度O单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    853,
+    780
+   ],
+   "far": [
+    1028.0,
+    777.5
+   ],
+   "kind": "物品",
+   "bp": "1.6武陵城2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    918,
+    396
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": true,
+   "status": "运行中",
+   "shot": "gate_853_780.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": 1.0,
+   "passed": 1.0
+  },
+  {
+   "p": [
+    887,
+    712
+   ],
+   "far": [
+    1047.6,
+    738.1
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    958,
+    328
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_887_712.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    34,
+    1565
+   ],
+   "far": [
+    554.0,
+    1231.8
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城2号",
+   "gate_no": 19,
+   "item": "壤晶废液",
+   "rate": 60,
+   "view": 3,
+   "u": [
+    346,
+    258
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_34_1565.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    679,
+    1667
+   ],
+   "far": [
+    927.3,
+    1290.8
+   ],
+   "kind": "物品",
+   "bp": "1.6武陵城3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 3,
+   "u": [
+    998,
+    362
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": true,
+   "status": "运行中",
+   "shot": "gate_679_1667.png",
+   "speed_line": "一速度未限制XXX",
+   "count_limit": 20.0,
+   "passed": 20.0
+  },
+  {
+   "p": [
+    575,
+    1702
+   ],
+   "far": [
+    867.1,
+    1311.0
+   ],
+   "kind": "物品",
+   "bp": "1.6武陵城3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 3,
+   "u": [
+    896,
+    396
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": true,
+   "status": "运行中",
+   "shot": "gate_575_1702.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": 20.0,
+   "passed": 20.0
+  },
+  {
+   "p": [
+    2326,
+    1771
+   ],
+   "far": [
+    1880.4,
+    1351.0
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": 17,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    690,
+    374
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2326_1771.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2326,
+    1805
+   ],
+   "far": [
+    1880.4,
+    1370.7
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": 18,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    690,
+    410
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_2326_1805.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2326,
+    1737
+   ],
+   "far": [
+    1880.4,
+    1331.3
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": 16,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    690,
+    340
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2326_1737.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2326,
+    1703
+   ],
+   "far": [
+    1880.4,
+    1311.6
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": 15,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    686,
+    306
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_2326_1703.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2326,
+    1669
+   ],
+   "far": [
+    1880.4,
+    1291.9
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": 14,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    688,
+    270
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2326_1669.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2326,
+    1634
+   ],
+   "far": [
+    1880.4,
+    1271.7
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": 13,
+   "item": "清水",
+   "rate": 60,
+   "view": 4,
+   "u": [
+    690,
+    236
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_2326_1634.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2053,
+    1225
+   ],
+   "far": [
+    1722.4,
+    1035.0
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城4号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 5,
+   "u": [
+    664,
+    320
+   ],
+   "title": "管道准入口",
+   "speed": 30.0,
+   "limit": 30.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2053_1225.png",
+   "speed_line": "当前速度30单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    337
+   ],
+   "far": [
+    1878.6,
+    521.1
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 10,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    682,
+    370
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2323_337.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    303
+   ],
+   "far": [
+    1878.6,
+    501.4
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 9,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    682,
+    336
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2323_303.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    371
+   ],
+   "far": [
+    1878.6,
+    540.8
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 11,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    682,
+    406
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_2323_371.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    269
+   ],
+   "far": [
+    1878.6,
+    481.8
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 8,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    682,
+    302
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_2323_269.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    405
+   ],
+   "far": [
+    1878.6,
+    560.5
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 12,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    682,
+    440
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2323_405.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    166
+   ],
+   "far": [
+    1878.6,
+    422.2
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 5,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    684,
+    198
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2323_166.png",
+   "speed_line": "-速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    235
+   ],
+   "far": [
+    1878.6,
+    462.1
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 7,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    682,
+    266
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2323_235.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    2323,
+    201
+   ],
+   "far": [
+    1878.6,
+    442.4
+   ],
+   "kind": "管道",
+   "bp": "1.6武陵城1号",
+   "gate_no": 6,
+   "item": "清水",
+   "rate": 60,
+   "view": 6,
+   "u": [
+    686,
+    230
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_2323_201.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  }
+ ]
+}

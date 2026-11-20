@@ -6,6 +6,8 @@ tests/run_all.py 按「跳过 」开头的行统计跳过数。
 
 还有一个：设计分析、物流连接的 run_base 会写 design.json / flow.json，测试不能对 debug/bpa/ 下的真实项目直接跑
 （2026-11-19 审计：test_design 一直在改写界面显示的那份 design.json）。copy_project 把项目复制到临时目录再跑。
+
+known_defect(tag, check)：已知缺陷用「严格预期失败」锁住现状（现在不挂，修好以后自动报失败，提醒改成正式断言）。
 """
 import atexit
 import shutil
@@ -37,6 +39,20 @@ def run(tests) -> int:
     n = len(tests) - skipped
     print(f"{ok}/{n} 通过" + (f"（跳过 {skipped} 条）" if skipped else ""))
     return 0 if ok == n else 1
+
+
+def known_defect(tag: str, check) -> None:
+    """已知缺陷（严格预期失败，2026-11-20 审计第 5 项）：check() 写的是「修好以后应该成立」的断言。
+    - check() 抛 AssertionError：缺陷还在，打印「已知缺陷 <tag>：仍在（原因前 80 字）」，不算失败；
+    - check() 不抛错：缺陷已经不在了，报失败，提醒把它改成正式断言、去掉 known_defect（免得修好了还一直挂着「已知」）。
+    别的异常照常往外抛（测试本身写错了）。打印的行不以 FAIL 开头；tests/run_all.py 按「已知缺陷 」开头的行计数。"""
+    try:
+        check()
+    except AssertionError as e:
+        why = " ".join(str(e).split())[:80] or "断言不成立"
+        print(f"已知缺陷 {tag}：仍在（{why}）")
+        return
+    raise AssertionError(f"已知缺陷 {tag} 已不再出现：改成正式断言、去掉 known_defect")
 
 
 _COPIES: dict[str, Path] = {}

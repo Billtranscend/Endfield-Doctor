@@ -1,0 +1,1 @@
+{"code": "c462357+dirty", "devices": {"应龙关": {"reflow": 42, "stored": 42}, "景玉谷": {"reflow": 56, "stored": 56}, "武陵城": {"reflow": 77, "stored": 77}}, "fixture_sha256": "3f79d61d5b8236db10cee12ff837254d2e12c05ba5601bf5a61cd654d0180f46", "kind": "init", "n": 175, "reason": "初始基线：0.10.11 代码在样本上重算，等于 item3f", "time": "2026-11-20T04:14:33"}

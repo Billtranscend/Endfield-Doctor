@@ -1,0 +1,847 @@
+{
+ "area": "应龙关",
+ "time": "20261109-010724",
+ "shots": "debug\\shots\\20261109-010724_应龙关_限速",
+ "rows": [
+  {
+   "p": [
+    847,
+    235
+   ],
+   "far": [
+    794.3,
+    462.1
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 1,
+   "u": [
+    670,
+    328
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_847_235.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1219,
+    644
+   ],
+   "far": [
+    1009.6,
+    698.8
+   ],
+   "kind": "物品",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    792,
+    414
+   ],
+   "title": "物品准入口",
+   "speed": 12.0,
+   "limit": 12.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1219_644.png",
+   "speed_line": "当前速度12单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    980,
+    473
+   ],
+   "far": [
+    871.2,
+    599.8
+   ],
+   "kind": "物品",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    554,
+    242
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_980_473.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    980,
+    610
+   ],
+   "far": [
+    871.2,
+    679.1
+   ],
+   "kind": "物品",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 2,
+   "u": [
+    554,
+    378
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": true,
+   "status": "运行中",
+   "shot": "gate_980_610.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": 30.0,
+   "passed": 30.0
+  },
+  {
+   "p": [
+    1288,
+    919
+   ],
+   "far": [
+    1049.5,
+    857.9
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 3,
+   "u": [
+    676,
+    320
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1288_919.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1084,
+    1056
+   ],
+   "far": [
+    931.4,
+    937.2
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    962,
+    398
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1084_1056.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1152,
+    851
+   ],
+   "far": [
+    970.8,
+    818.6
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    1032,
+    190
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1152_851.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1152,
+    1056
+   ],
+   "far": [
+    970.8,
+    937.2
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    1030,
+    394
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1152_1056.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1016,
+    1056
+   ],
+   "far": [
+    892.1,
+    937.2
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    894,
+    398
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1016_1056.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    473,
+    1124
+   ],
+   "far": [
+    577.8,
+    976.6
+   ],
+   "kind": "物品",
+   "bp": "1.6应龙关2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    346,
+    464
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_473_1124.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1052,
+    849
+   ],
+   "far": [
+    912.9,
+    817.4
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    928,
+    190
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1052_849.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    437,
+    1088
+   ],
+   "far": [
+    557.0,
+    955.7
+   ],
+   "kind": "物品",
+   "bp": "1.6应龙关2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 4,
+   "u": [
+    310,
+    430
+   ],
+   "title": "物品准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_437_1088.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    28,
+    781
+   ],
+   "far": [
+    320.3,
+    778.1
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": 3,
+   "item": "沉积酸",
+   "rate": 60,
+   "view": 5,
+   "u": [
+    596,
+    322
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_28_781.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    28,
+    610
+   ],
+   "far": [
+    320.3,
+    679.1
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": 4,
+   "item": "惰气",
+   "rate": null,
+   "view": 5,
+   "u": [
+    596,
+    148
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_28_610.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    28,
+    952
+   ],
+   "far": [
+    320.3,
+    877.0
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": 1,
+   "item": "清水",
+   "rate": 60,
+   "view": 5,
+   "u": [
+    598,
+    494
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_28_952.png",
+   "speed_line": "速度未限制XXX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    28,
+    883
+   ],
+   "far": [
+    320.3,
+    837.1
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": 2,
+   "item": "清水",
+   "rate": 60,
+   "view": 5,
+   "u": [
+    596,
+    424
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_28_883.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    25,
+    372
+   ],
+   "far": [
+    318.6,
+    541.4
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": 6,
+   "item": "息壤气",
+   "rate": null,
+   "view": 6,
+   "u": [
+    592,
+    286
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_25_372.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    25,
+    440
+   ],
+   "far": [
+    318.6,
+    580.7
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": 5,
+   "item": "息壤气",
+   "rate": null,
+   "view": 6,
+   "u": [
+    598,
+    352
+   ],
+   "title": "管道准入口",
+   "speed": null,
+   "limit": null,
+   "limit_on": false,
+   "count_on": false,
+   "status": "阻塞",
+   "shot": "gate_25_440.png",
+   "speed_line": "速度未限制×XX",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    265,
+    1604
+   ],
+   "far": [
+    457.5,
+    1254.3
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 7,
+   "u": [
+    674,
+    346
+   ],
+   "title": "管道准入口",
+   "speed": 30.0,
+   "limit": 60.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_265_1604.png",
+   "speed_line": "当前速度30单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    436,
+    1570
+   ],
+   "far": [
+    556.4,
+    1234.7
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 7,
+   "u": [
+    846,
+    310
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_436_1570.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    469,
+    1602
+   ],
+   "far": [
+    575.5,
+    1253.2
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 7,
+   "u": [
+    882,
+    346
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_469_1602.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    368,
+    1570
+   ],
+   "far": [
+    517.1,
+    1234.7
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 7,
+   "u": [
+    778,
+    310
+   ],
+   "title": "管道准入口",
+   "speed": 18.0,
+   "limit": 18.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_368_1570.png",
+   "speed_line": "当前速度18单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    60,
+    1570
+   ],
+   "far": [
+    338.8,
+    1234.7
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关3号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 7,
+   "u": [
+    468,
+    310
+   ],
+   "title": "管道准入口",
+   "speed": 30.0,
+   "limit": 30.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_60_1570.png",
+   "speed_line": "当前速度30单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1390,
+    1702
+   ],
+   "far": [
+    1108.5,
+    1311.1
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 8,
+   "u": [
+    870,
+    448
+   ],
+   "title": "管道准入口",
+   "speed": 36.0,
+   "limit": 36.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1390_1702.png",
+   "speed_line": "当前速度36单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1254,
+    1431
+   ],
+   "far": [
+    1029.8,
+    1154.2
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 8,
+   "u": [
+    732,
+    172
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1254_1431.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1287,
+    1463
+   ],
+   "far": [
+    1048.9,
+    1172.7
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 8,
+   "u": [
+    766,
+    206
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1287_1463.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1287,
+    1702
+   ],
+   "far": [
+    1048.9,
+    1311.1
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关1号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 8,
+   "u": [
+    766,
+    448
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1287_1702.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  },
+  {
+   "p": [
+    1018,
+    1600
+   ],
+   "far": [
+    893.2,
+    1252.0
+   ],
+   "kind": "管道",
+   "bp": "1.6应龙关2号",
+   "gate_no": null,
+   "item": "",
+   "rate": null,
+   "view": 8,
+   "u": [
+    492,
+    346
+   ],
+   "title": "管道准入口",
+   "speed": 6.0,
+   "limit": 6.0,
+   "limit_on": true,
+   "count_on": false,
+   "status": "运行中",
+   "shot": "gate_1018_1600.png",
+   "speed_line": "当前速度6单位/分",
+   "count_limit": null,
+   "passed": null
+  }
+ ]
+}

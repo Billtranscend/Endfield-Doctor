@@ -1,0 +1,2 @@
+# 设计分析快照的样本按字节存（manifest 里记了 sha256）：不做换行转换，别人克隆下来 sha 才对得上
+tests/data/design_snap/** -text

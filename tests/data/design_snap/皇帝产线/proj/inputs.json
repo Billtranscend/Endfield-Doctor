@@ -1,0 +1,420 @@
+{
+ "应龙关": {
+  "marks": [
+   {
+    "p": [
+     28,
+     952
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6应龙关2号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 1,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     28,
+     883
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6应龙关2号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 2,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     28,
+     781
+    ],
+    "item": "沉积酸",
+    "icon_group": 10,
+    "kind": "管道",
+    "bp": "1.6应龙关2号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 3,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     28,
+     610
+    ],
+    "item": "惰气",
+    "icon_group": 2,
+    "kind": "管道",
+    "bp": "1.6应龙关2号",
+    "rate": 20,
+    "via": "",
+    "no": 4,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：惰气 20/分"
+   },
+   {
+    "p": [
+     25,
+     440
+    ],
+    "item": "息壤气",
+    "icon_group": 6,
+    "kind": "管道",
+    "bp": "1.6应龙关3号",
+    "rate": null,
+    "via": "多口暗管",
+    "no": 5,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：5、6 号两口合计 150/分，各进多少不限",
+    "pool": {
+     "name": "息壤气5+6",
+     "total": 150
+    }
+   },
+   {
+    "p": [
+     25,
+     372
+    ],
+    "item": "息壤气",
+    "icon_group": 6,
+    "kind": "管道",
+    "bp": "1.6应龙关3号",
+    "rate": null,
+    "via": "多口暗管",
+    "no": 6,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：5、6 号两口合计 150/分，各进多少不限",
+    "pool": {
+     "name": "息壤气5+6",
+     "total": 150
+    }
+   }
+  ],
+  "saved": "2026-11-09 17:42:14"
+ },
+ "武陵城": {
+  "marks": [
+   {
+    "p": [
+     203,
+     30
+    ],
+    "item": "惰气",
+    "icon_group": 2,
+    "kind": "管道",
+    "bp": "1.6武陵城2号",
+    "rate": 20,
+    "via": "",
+    "no": 1,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：每口 20/分，4 口合计 80"
+   },
+   {
+    "p": [
+     237,
+     30
+    ],
+    "item": "惰气",
+    "icon_group": 2,
+    "kind": "管道",
+    "bp": "1.6武陵城2号",
+    "rate": 20,
+    "via": "",
+    "no": 2,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：每口 20/分，4 口合计 80"
+   },
+   {
+    "p": [
+     271,
+     30
+    ],
+    "item": "惰气",
+    "icon_group": 2,
+    "kind": "管道",
+    "bp": "1.6武陵城2号",
+    "rate": 20,
+    "via": "",
+    "no": 3,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：每口 20/分，4 口合计 80"
+   },
+   {
+    "p": [
+     339,
+     30
+    ],
+    "item": "惰气",
+    "icon_group": 2,
+    "kind": "管道",
+    "bp": "1.6武陵城2号",
+    "rate": 20,
+    "via": "",
+    "no": 4,
+    "source": "author",
+    "merged": false,
+    "note": "作者 2026-11-09：每口 20/分，4 口合计 80"
+   },
+   {
+    "p": [
+     2323,
+     166
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 5,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     201
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 6,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     235
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 7,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     269
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 8,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     303
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 9,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     337
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 10,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     371
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 11,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2323,
+     405
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城1号",
+    "rate": 60,
+    "via": "水泵",
+    "no": 12,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2326,
+     1634
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城4号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 13,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2326,
+     1669
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城4号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 14,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2326,
+     1703
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城4号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 15,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2326,
+     1737
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城4号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 16,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2326,
+     1771
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城4号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 17,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     2326,
+     1805
+    ],
+    "item": "清水",
+    "icon_group": 1,
+    "kind": "管道",
+    "bp": "1.6武陵城4号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 18,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   },
+   {
+    "p": [
+     34,
+     1565
+    ],
+    "item": "壤晶废液",
+    "icon_group": 11,
+    "kind": "管道",
+    "bp": "1.6武陵城2号",
+    "rate": 60,
+    "via": "暗管",
+    "no": 19,
+    "source": "auto",
+    "merged": false,
+    "note": ""
+   }
+  ],
+  "saved": "2026-11-09 19:54:31"
+ }
+}

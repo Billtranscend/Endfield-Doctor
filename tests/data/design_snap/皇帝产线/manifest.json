@@ -1,0 +1,578 @@
+{
+ "ake_icons": {
+  "dir": ".cache/icons",
+  "files": [
+   "item_Ingredient_flour_1.png",
+   "item_Ingredient_oil_1.png",
+   "item_Ingredient_paprika_1.png",
+   "item_Ingredient_starch_1.png",
+   "item_Ingredient_sugar_1.png",
+   "item_activity_copper_poly.png",
+   "item_activity_copper_poly_cmpt.png",
+   "item_activity_copper_poly_gas.png",
+   "item_activity_copper_poly_tool.png",
+   "item_activity_copper_xiranite_tool.png",
+   "item_activity_xiranite_bottle.png",
+   "item_activity_xiranite_box.png",
+   "item_activity_xiranite_cmpt.png",
+   "item_activity_xiranite_enr_bottle.png",
+   "item_activity_xiranite_enr_box.png",
+   "item_activity_xiranite_enr_cmpt.png",
+   "item_activity_xiranite_enr_hulu.png",
+   "item_activity_xiranite_enr_lung.png",
+   "item_activity_xiranite_enr_nugget.png",
+   "item_activity_xiranite_enr_tool.png",
+   "item_activity_xiranite_hulu.png",
+   "item_activity_xiranite_lung.png",
+   "item_activity_xiranite_nugget.png",
+   "item_bottled_food_1.png",
+   "item_bottled_food_2.png",
+   "item_bottled_food_3.png",
+   "item_bottled_food_4.png",
+   "item_bottled_food_5.png",
+   "item_bottled_rec_hp_1.png",
+   "item_bottled_rec_hp_2.png",
+   "item_bottled_rec_hp_3.png",
+   "item_bottled_rec_hp_4.png",
+   "item_bottled_rec_hp_5.png",
+   "item_byproduct_bean_1.png",
+   "item_byproduct_bean_moss_1.png",
+   "item_byproduct_potato_1.png",
+   "item_byproduct_potato_moss_1.png",
+   "item_carbon_enr.png",
+   "item_carbon_enr_powder.png",
+   "item_carbon_mtl.png",
+   "item_carbon_powder.png",
+   "item_copper_bottle.png",
+   "item_copper_bottle_liquid.png",
+   "item_copper_cmpt.png",
+   "item_copper_enr.png",
+   "item_copper_enr2.png",
+   "item_copper_enr2_cmpt.png",
+   "item_copper_enr_bottle.png",
+   "item_copper_enr_bottle_liquid.png",
+   "item_copper_enr_cmpt.png",
+   "item_copper_jar.png",
+   "item_copper_jar_gas.png",
+   "item_copper_nugget.png",
+   "item_copper_ore.png",
+   "item_copper_powder.png",
+   "item_corp_bean_1.png",
+   "item_corp_bean_seed_1.png",
+   "item_corp_cabbage_1.png",
+   "item_corp_cabbage_seed_1.png",
+   "item_corp_canolaflower_1.png",
+   "item_corp_canolaflower_seed_1.png",
+   "item_corp_mushroom_1.png",
+   "item_corp_mushroom_seed_1.png",
+   "item_corp_potato_1.png",
+   "item_corp_potato_seed_1.png",
+   "item_corp_strawberry_1.png",
+   "item_corp_strawberry_seed_1.png",
+   "item_corp_sugarcane_1.png",
+   "item_corp_sugarcane_seed_1.png",
+   "item_corp_tomato_1.png",
+   "item_corp_tomato_seed_1.png",
+   "item_corp_whitegourd_1.png",
+   "item_corp_whitegourd_seed_1.png",
+   "item_crystal_enr.png",
+   "item_crystal_enr_powder.png",
+   "item_crystal_powder.png",
+   "item_crystal_shell.png",
+   "item_equip_script_1.png",
+   "item_equip_script_2.png",
+   "item_equip_script_3.png",
+   "item_equip_script_4.png",
+   "item_equip_script_4_1.png",
+   "item_equip_script_4_2.png",
+   "item_equip_script_4_3.png",
+   "item_filter_core.png",
+   "item_galss_enr_bottle_liquid.png",
+   "item_gas_acid.png",
+   "item_gas_copper.png",
+   "item_gas_copper_enr.png",
+   "item_gas_copper_enr2.png",
+   "item_gas_inert.png",
+   "item_gas_water.png",
+   "item_gas_xiranite.png",
+   "item_gas_xiranite_enr.png",
+   "item_glass_bottle.png",
+   "item_glass_bottle_liquid.png",
+   "item_glass_cmpt.png",
+   "item_glass_enr_bottle.png",
+   "item_glass_enr_cmpt.png",
+   "item_inn_drink_10.png",
+   "item_inn_drink_2.png",
+   "item_inn_drink_4.png",
+   "item_inn_drink_7.png",
+   "item_iron_bottle.png",
+   "item_iron_bottle_liquid.png",
+   "item_iron_cmpt.png",
+   "item_iron_enr.png",
+   "item_iron_enr_bottle.png",
+   "item_iron_enr_bottle_liquid.png",
+   "item_iron_enr_cmpt.png",
+   "item_iron_enr_powder.png",
+   "item_iron_nugget.png",
+   "item_iron_ore.png",
+   "item_iron_powder.png",
+   "item_liquid_acid.png",
+   "item_liquid_copper.png",
+   "item_liquid_copper_enr.png",
+   "item_liquid_plant_grass_1.png",
+   "item_liquid_plant_grass_2.png",
+   "item_liquid_sewage.png",
+   "item_liquid_water.png",
+   "item_liquid_xiranite.png",
+   "item_liquid_xiranite_enr.png",
+   "item_liquid_xiranite_lowpoly.png",
+   "item_liquid_xiranite_poly.png",
+   "item_muck_feces_1.png",
+   "item_muck_xiranite_1.png",
+   "item_originium_enr_powder.png",
+   "item_originium_ore.png",
+   "item_originium_powder.png",
+   "item_plant_bbflower_1.png",
+   "item_plant_bbflower_powder_1.png",
+   "item_plant_bbflower_seed_1.png",
+   "item_plant_grass_1.png",
+   "item_plant_grass_2.png",
+   "item_plant_grass_powder_1.png",
+   "item_plant_grass_powder_2.png",
+   "item_plant_grass_seed_1.png",
+   "item_plant_grass_seed_2.png",
+   "item_plant_moss_1.png",
+   "item_plant_moss_2.png",
+   "item_plant_moss_3.png",
+   "item_plant_moss_enr_powder_1.png",
+   "item_plant_moss_enr_powder_2.png",
+   "item_plant_moss_powder_1.png",
+   "item_plant_moss_powder_2.png",
+   "item_plant_moss_powder_3.png",
+   "item_plant_moss_seed_1.png",
+   "item_plant_moss_seed_2.png",
+   "item_plant_moss_seed_3.png",
+   "item_plant_sp_1.png",
+   "item_plant_sp_2.png",
+   "item_plant_sp_3.png",
+   "item_plant_sp_4.png",
+   "item_plant_sp_seed_1.png",
+   "item_plant_sp_seed_2.png",
+   "item_plant_sp_seed_3.png",
+   "item_plant_sp_seed_4.png",
+   "item_plant_tundra_wood.png",
+   "item_proc_battery_1.png",
+   "item_proc_battery_2.png",
+   "item_proc_battery_3.png",
+   "item_proc_battery_4.png",
+   "item_proc_battery_5.png",
+   "item_proc_bomb_1.png",
+   "item_quartz_enr.png",
+   "item_quartz_enr_powder.png",
+   "item_quartz_glass.png",
+   "item_quartz_powder.png",
+   "item_quartz_sand.png",
+   "item_ranch_fodder_1.png",
+   "item_ranch_fodder_2.png",
+   "item_ranch_milk_1.png",
+   "item_ranch_milk_2.png",
+   "item_xiranite_enr_powder.png",
+   "item_xiranite_poly.png",
+   "item_xiranite_powder.png"
+  ],
+  "note": "图标比对模板 = 配方里出现过的物品 + resource/icons/fluid；现算（录缓存、--no-memo、抽查）时这些都要在",
+  "template_ids": 245
+ },
+ "archive": "archive",
+ "bases": {
+  "应龙关": {
+   "blueprints": [
+    "1.6应龙关1号",
+    "1.6应龙关2号",
+    "1.6应龙关3号"
+   ],
+   "inputs": "inputs.json 里作者填的",
+   "ledger": "archive/ledger/应龙关.json",
+   "ledger_src": "debug/bpa/实测-皇帝产线/ledger/应龙关.json"
+  },
+  "景玉谷": {
+   "blueprints": [
+    "1.6景玉谷1号",
+    "1.6景玉谷2号"
+   ],
+   "inputs": "inputs_auto.json（自动候选）",
+   "ledger": "archive/ledger/景玉谷.json",
+   "ledger_src": "debug/bpa/实测-皇帝产线/ledger/景玉谷.json"
+  },
+  "武陵城": {
+   "blueprints": [
+    "1.6武陵城1号",
+    "1.6武陵城2号",
+    "1.6武陵城3号",
+    "1.6武陵城4号"
+   ],
+   "inputs": "inputs.json 里作者填的",
+   "ledger": "archive/ledger/武陵城.json",
+   "ledger_src": "data/blueprints/1.6皇帝产线/ledger/武陵城.json"
+  }
+ },
+ "covers": [
+  "proj",
+  "archive"
+ ],
+ "doc": "设计分析整份快照的样本输入（审计改进第 5 项）。manifest 只覆盖 proj/、archive/；expect/、truth.json、changelog.jsonl、ake_memo.json.gz 不在范围内（memo 由指纹单独校验）。冻结了 11-13 存的 flow.json、当时界面选中的底账、档案配方表和准入口限速，档案以后更新不会带动快照。拼合图按 PNG 压缩级 9 无损重存；有 links.json 的蓝图 mosaic.png 是同尺寸纯白占位图（代码只读 shape）。重做样本：python tests/_designsnap.py build-fixture <名字> --reason …（要有 debug/）。",
+ "env": {
+  "PIL": "13.0.0",
+  "cv2": "5.0.0",
+  "numpy": "2.5.4",
+  "python": "3.12.12"
+ },
+ "files": {
+  "archive/ledger/gate_limits/应龙关.json": {
+   "bytes": 14496,
+   "how": "冻结档案里的那份",
+   "sha256": "b1cdaa08342ef02fb0ba01accf69f71fb6beb48231abb336a53ba1b61d1c457e",
+   "src": "data/blueprints/1.6皇帝产线/ledger/gate_limits/应龙关.json"
+  },
+  "archive/ledger/gate_limits/景玉谷.json": {
+   "bytes": 5269,
+   "how": "冻结档案里的那份",
+   "sha256": "be9b2b3f2bbd93182bbc58ad6b78008d9f07917871edb182b96b7a8815fb899e",
+   "src": "data/blueprints/1.6皇帝产线/ledger/gate_limits/景玉谷.json"
+  },
+  "archive/ledger/gate_limits/武陵城.json": {
+   "bytes": 12970,
+   "how": "冻结档案里的那份",
+   "sha256": "bb3d3834e0d10cb58ac27dbf7220ca16644a2d175c4e65143def6fbba34deadc",
+   "src": "data/blueprints/1.6皇帝产线/ledger/gate_limits/武陵城.json"
+  },
+  "archive/ledger/应龙关.json": {
+   "bytes": 24867,
+   "how": "冻结当时界面选中的那份（项目自己扫的优先，没有用档案的）",
+   "sha256": "7789bb8d27feee9882719b5fd7f490b85b5596207e469e6ac14d41849ff73888",
+   "src": "debug/bpa/实测-皇帝产线/ledger/应龙关.json"
+  },
+  "archive/ledger/应龙关_recipes.json": {
+   "bytes": 8727,
+   "how": "冻结档案里的那份",
+   "sha256": "48da2a0fad983e4d09b2578bc483a9c63b9b0edd7715b7b5119e11b196686c98",
+   "src": "data/blueprints/1.6皇帝产线/ledger/应龙关_recipes.json"
+  },
+  "archive/ledger/景玉谷.json": {
+   "bytes": 25517,
+   "how": "冻结当时界面选中的那份（项目自己扫的优先，没有用档案的）",
+   "sha256": "89992fba2fabf97b159ead4e39af46860f1a576bb8b7b18a4970d6a8adeac0a1",
+   "src": "debug/bpa/实测-皇帝产线/ledger/景玉谷.json"
+  },
+  "archive/ledger/景玉谷_recipes.json": {
+   "bytes": 7766,
+   "how": "冻结档案里的那份",
+   "sha256": "c25e8eb4b73d6728e518c42653dbbace6c71dfc484fd89f9a09deb01f22f30a6",
+   "src": "data/blueprints/1.6皇帝产线/ledger/景玉谷_recipes.json"
+  },
+  "archive/ledger/武陵城.json": {
+   "bytes": 35264,
+   "how": "冻结当时界面选中的那份（项目自己扫的优先，没有用档案的）",
+   "sha256": "722de847321eba73ff1823aff8a4dfde1e9007b969876464c6d7cef065cef800",
+   "src": "data/blueprints/1.6皇帝产线/ledger/武陵城.json"
+  },
+  "archive/ledger/武陵城_recipes.json": {
+   "bytes": 12931,
+   "how": "冻结档案里的那份",
+   "sha256": "576e89d2d8eb0486aaa13f1e74b9484156249b9d0bece061ad6c2229b09709d7",
+   "src": "data/blueprints/1.6皇帝产线/ledger/武陵城_recipes.json"
+  },
+  "proj/base/应龙关/composite.png": {
+   "bytes": 1621740,
+   "how": "PNG 压缩级 9 无损重存，生成时解码逐像素核对过",
+   "pixels_sha256": "3676f65d5e72d1adf6d8105c07a2cc9084e808035e574950d4b33fdcf09fa309",
+   "sha256": "96368c64796c6ef55913ceaf89530a73a3b54a7906d450aa91969f0f07bccc56",
+   "shape": [
+    1736,
+    1728,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/base/应龙关/composite.png",
+   "src_sha256": "6217096f4f80391a388fab0fb29b86c7503d2ccf92b408f694e29ebd9ef644a3"
+  },
+  "proj/base/应龙关/flow.json": {
+   "bytes": 83081,
+   "how": "去缩进",
+   "sha256": "ddbab1349bc37460b9dad6d25dee56f406d1db6029102337c9c786ee1bb0c7c2",
+   "src": "debug/bpa/实测-皇帝产线/base/应龙关/flow.json",
+   "src_sha256": "e7f6ba90e61660f32b22c0784635ca345c1e9332f554e5f9a144b08a5a884f57"
+  },
+  "proj/base/应龙关/logistics.json": {
+   "bytes": 18945,
+   "how": "原样复制",
+   "sha256": "dde60d3aba488b87f30c7824bc2bb4a342cf03d96956d889173fc8951ae39b08",
+   "src": "debug/bpa/实测-皇帝产线/base/应龙关/logistics.json"
+  },
+  "proj/base/应龙关/transform.json": {
+   "bytes": 1003,
+   "how": "原样复制",
+   "sha256": "86341a1e77021cfc27e7fbae28456e2cc3d381cbb35e3a9074c2d5c2818f4d95",
+   "src": "debug/bpa/实测-皇帝产线/base/应龙关/transform.json"
+  },
+  "proj/base/景玉谷/composite.png": {
+   "bytes": 1418856,
+   "how": "PNG 压缩级 9 无损重存，生成时解码逐像素核对过",
+   "pixels_sha256": "b3d395fd9fcc5cbd40a09dcb65ab08d2a25c293a060a2528bfdc01b39d3aa741",
+   "sha256": "9be32c1464f0211d49b6f7ed643a0e78e201bfee1abc61cb094d54e1cc87af9c",
+   "shape": [
+    1734,
+    1732,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/base/景玉谷/composite.png",
+   "src_sha256": "c3c6247ece9bb5a48d3703084bb38071bc422854f944958d3da4cd575a1626d5"
+  },
+  "proj/base/景玉谷/flow.json": {
+   "bytes": 81999,
+   "how": "去缩进",
+   "sha256": "e538ae8eb777b11ce6b9a8871689bf37dd193b2f152e8b7d11aded035a8fefe7",
+   "src": "debug/bpa/实测-皇帝产线/base/景玉谷/flow.json",
+   "src_sha256": "0579c378a99c6231f9a16557099615ad5f842603bba6610bc2ffb3d9c797918c"
+  },
+  "proj/base/景玉谷/inputs_auto.json": {
+   "bytes": 1651,
+   "how": "原样复制（inputs.json 里没有这个据点，输入端用自动候选）",
+   "sha256": "38883e64eb129ec5c47f417e8dd5b088c7ac43ed10fdc5e99df880e8be32e8ea",
+   "src": "debug/bpa/实测-皇帝产线/base/景玉谷/inputs_auto.json"
+  },
+  "proj/base/景玉谷/logistics.json": {
+   "bytes": 9253,
+   "how": "原样复制",
+   "sha256": "75b7af3ed6ff7e221951c2864ca518b5f08ec675d0ed0937c0bc4dcfe6f4b8bc",
+   "src": "debug/bpa/实测-皇帝产线/base/景玉谷/logistics.json"
+  },
+  "proj/base/景玉谷/transform.json": {
+   "bytes": 685,
+   "how": "原样复制",
+   "sha256": "3740ca918753e706435a71f6f4771eabb70f617fdb9eae1ef22d8d9b02cb2045",
+   "src": "debug/bpa/实测-皇帝产线/base/景玉谷/transform.json"
+  },
+  "proj/base/武陵城/composite.png": {
+   "bytes": 2481385,
+   "how": "PNG 压缩级 9 无损重存，生成时解码逐像素核对过",
+   "pixels_sha256": "0328a114d20bed414a704e2d901f2344568c1f390dd8155631d6ce20d6492e55",
+   "sha256": "c33a4b82a622428deee301204bdea5ff8af73006d3dd7e85678178d85892f7fa",
+   "shape": [
+    1968,
+    2356,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/base/武陵城/composite.png",
+   "src_sha256": "a114fd8383c8c93cf24496a7c39dbad32a85ed169afde3b4224c6aa9edd7ba3f"
+  },
+  "proj/base/武陵城/flow.json": {
+   "bytes": 159307,
+   "how": "去缩进",
+   "sha256": "fcbd51224ca89a2dd95365827148d330bdbd0d28addbc7cc82ad3f1f7b16f624",
+   "src": "debug/bpa/实测-皇帝产线/base/武陵城/flow.json",
+   "src_sha256": "bc48b437f42ee5e97a9929e70aae880a1fdab3ccaa1866d454af5a9f9a2aad78"
+  },
+  "proj/base/武陵城/logistics.json": {
+   "bytes": 25649,
+   "how": "原样复制",
+   "sha256": "9cf7faf935875f625eaa1e51a726e7aa76cb766eedb9a1bcfd583818167cef77",
+   "src": "debug/bpa/实测-皇帝产线/base/武陵城/logistics.json"
+  },
+  "proj/base/武陵城/transform.json": {
+   "bytes": 1275,
+   "how": "原样复制",
+   "sha256": "613e2f7945775135753578a0e16c17a15922652a8ed9db515bcbbeffa2a5c04f",
+   "src": "debug/bpa/实测-皇帝产线/base/武陵城/transform.json"
+  },
+  "proj/bp/1.6应龙关1号/anchors.json": {
+   "bytes": 1136,
+   "how": "原样复制",
+   "sha256": "3a6e056ef5e59c02e4f2a9d6e4a50bd67332ebf9c5717687420f760bc5f18eb5",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关1号/anchors.json"
+  },
+  "proj/bp/1.6应龙关2号/anchors.json": {
+   "bytes": 3365,
+   "how": "原样复制",
+   "sha256": "8d0d87d6f09911f800f01511a20ec5e42554b6db5ceb03a0d66acaa7c4947286",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关2号/anchors.json"
+  },
+  "proj/bp/1.6应龙关2号/links.json": {
+   "bytes": 3584,
+   "how": "原样复制",
+   "sha256": "a71a6a748c34186521fb0af875555452c8c34c640e8009f0fced6a00908a7e70",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关2号/links.json"
+  },
+  "proj/bp/1.6应龙关2号/mosaic.png": {
+   "bytes": 12576,
+   "how": "同尺寸纯白占位图：代码只读 shape（vision.py:581-584 的 preview_to_canvas 不用 mos_shape）；不能删，删了等于没有暗管配对",
+   "sha256": "ce545d816c7106b4d93205043c93a3abdec69b13456bb6dbb92f7b5239a8b7f7",
+   "shape": [
+    1733,
+    1695,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关2号/mosaic.png",
+   "src_sha256": "0c04c241b12ecfac86594f23774d7f5cd8fc071cc2e28b43cfffe0c7efe6cba2"
+  },
+  "proj/bp/1.6应龙关3号/anchors.json": {
+   "bytes": 1614,
+   "how": "原样复制",
+   "sha256": "1d151b52d280fb808df522e4a1935e4a521ecb3fe2976d24152edeb6c9bda941",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关3号/anchors.json"
+  },
+  "proj/bp/1.6应龙关3号/links.json": {
+   "bytes": 2192,
+   "how": "原样复制",
+   "sha256": "1843846537499d1a0e09659e8484e4b2bef3700ec21ffb44835e2965f53c871d",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关3号/links.json"
+  },
+  "proj/bp/1.6应龙关3号/mosaic.png": {
+   "bytes": 8296,
+   "how": "同尺寸纯白占位图：代码只读 shape（vision.py:581-584 的 preview_to_canvas 不用 mos_shape）；不能删，删了等于没有暗管配对",
+   "sha256": "cf1f7c8d1c617917f31b3e015e1c600605858f7872f903704c402cb0992eb586",
+   "shape": [
+    1735,
+    1148,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6应龙关3号/mosaic.png",
+   "src_sha256": "e35abb94adacf54d3e403bcb3d39b05a03edc2919cefba20d4ca5f85411865d2"
+  },
+  "proj/bp/1.6景玉谷1号/anchors.json": {
+   "bytes": 1338,
+   "how": "原样复制",
+   "sha256": "534a20c1f769ccec7353c7ad1ef769fd2a9e8dd8ce8686e350f725963d93a788",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6景玉谷1号/anchors.json"
+  },
+  "proj/bp/1.6景玉谷2号/anchors.json": {
+   "bytes": 1609,
+   "how": "原样复制",
+   "sha256": "ad1cdc0f04a5b88f5c998c0d8431468e6556d6e3a8d21af48114a9f45877f00a",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6景玉谷2号/anchors.json"
+  },
+  "proj/bp/1.6景玉谷2号/links.json": {
+   "bytes": 760,
+   "how": "原样复制",
+   "sha256": "4c8dd68f32e77134498925ee923b48ed9b2342b28e917dc2d9aa860784f6a73b",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6景玉谷2号/links.json"
+  },
+  "proj/bp/1.6景玉谷2号/mosaic.png": {
+   "bytes": 7782,
+   "how": "同尺寸纯白占位图：代码只读 shape（vision.py:581-584 的 preview_to_canvas 不用 mos_shape）；不能删，删了等于没有暗管配对",
+   "sha256": "81e2c96b2f67ae289a5b0ddc098ba5633ae0c9e6521052cffea30f694f10c7bf",
+   "shape": [
+    1563,
+    1216,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6景玉谷2号/mosaic.png",
+   "src_sha256": "4fba84aee5383f6efbf3ef533ab17fb8cef91eb2dc4b977d34cb2832b2617096"
+  },
+  "proj/bp/1.6武陵城1号/anchors.json": {
+   "bytes": 1030,
+   "how": "原样复制",
+   "sha256": "97e043fd26b06b57a6a1870d3dfd9440abfb7db11d7a827a7c09f928802a97a2",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城1号/anchors.json"
+  },
+  "proj/bp/1.6武陵城1号/links.json": {
+   "bytes": 434,
+   "how": "原样复制",
+   "sha256": "ee9bd27956bccebc412d13ae725444f8da4bd4ebc3f20a7cfb29b859ce4e6946",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城1号/links.json"
+  },
+  "proj/bp/1.6武陵城1号/mosaic.png": {
+   "bytes": 8643,
+   "how": "同尺寸纯白占位图：代码只读 shape（vision.py:581-584 的 preview_to_canvas 不用 mos_shape）；不能删，删了等于没有暗管配对",
+   "sha256": "6c82e1ba4efaeea0ef2e536b941f3f884ecb38d1af8e6fa3e864a257f99c9a38",
+   "shape": [
+    1699,
+    1251,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城1号/mosaic.png",
+   "src_sha256": "905049c87ccac6bcca7a6d1838cfb20baa793c00e7289a78e84d65403a8c0faf"
+  },
+  "proj/bp/1.6武陵城2号/anchors.json": {
+   "bytes": 1629,
+   "how": "原样复制",
+   "sha256": "06e187aed17e4622a31d02e9eb00f0ee6c2640742f7299361f43e4b60fa6104a",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城2号/anchors.json"
+  },
+  "proj/bp/1.6武陵城2号/links.json": {
+   "bytes": 1143,
+   "how": "原样复制",
+   "sha256": "116955d9041ee2c83d63d5a75f93828d718c6190f4755ceb44e209978165a4a2",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城2号/links.json"
+  },
+  "proj/bp/1.6武陵城2号/mosaic.png": {
+   "bytes": 12370,
+   "how": "同尺寸纯白占位图：代码只读 shape（vision.py:581-584 的 preview_to_canvas 不用 mos_shape）；不能删，删了等于没有暗管配对",
+   "sha256": "52e1fba413c1d85e23d229134f55169717d6e938a5eb5aaa07b9dcf602343bec",
+   "shape": [
+    1735,
+    1729,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城2号/mosaic.png",
+   "src_sha256": "a23be4c82fe8ede3b61b2728b044da0bb1f46074ef699a5107251cfa3fc95bbe"
+  },
+  "proj/bp/1.6武陵城3号/anchors.json": {
+   "bytes": 1140,
+   "how": "原样复制",
+   "sha256": "4bf02fd51938cfc59a3c8a1c45754d58a7745100fb770a41d3d771d590c04d37",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城3号/anchors.json"
+  },
+  "proj/bp/1.6武陵城4号/anchors.json": {
+   "bytes": 2380,
+   "how": "原样复制",
+   "sha256": "299861e1d210109e6564384d5f73c419d15bb4c5f8731e87640d1cf3141707d1",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城4号/anchors.json"
+  },
+  "proj/bp/1.6武陵城4号/links.json": {
+   "bytes": 2534,
+   "how": "原样复制",
+   "sha256": "4a190a4b5643df9804925ab39ac0b3953ab3ca24dc2d0d9c78e7460f99bd549b",
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城4号/links.json"
+  },
+  "proj/bp/1.6武陵城4号/mosaic.png": {
+   "bytes": 9760,
+   "how": "同尺寸纯白占位图：代码只读 shape（vision.py:581-584 的 preview_to_canvas 不用 mos_shape）；不能删，删了等于没有暗管配对",
+   "sha256": "08d35269b11b4dfed238d639bcddd3249475adcc1fd93dd8b9bb24238b481ec6",
+   "shape": [
+    1495,
+    1456,
+    3
+   ],
+   "src": "debug/bpa/实测-皇帝产线/bp/1.6武陵城4号/mosaic.png",
+   "src_sha256": "e01ba8c783b50fd0b24b79a006dc3c70c8af6c95baa42b0343f80654b604cc2f"
+  },
+  "proj/inputs.json": {
+   "bytes": 7382,
+   "how": "原样复制（作者在输入端页填的；没填的据点用 inputs_auto.json）",
+   "sha256": "c5d5709a61d9736f6e78dc2113d112134e30386e22738800cebb6727a4c12f33",
+   "src": "debug/bpa/实测-皇帝产线/inputs.json"
+  }
+ },
+ "format": 1,
+ "made": {
+  "date": "2026-11-20 02:59",
+  "git": "c462357+dirty",
+  "reason": "审计改进第 5 项：首个样本，0.10.11 代码，11-13 的结果冻结"
+ },
+ "name": "皇帝产线",
+ "repo_data_sha1": {
+  "data/building_ports.json": "fd55b8583e5cee54bac39d8ded779ff5c5f76dd9",
+  "data/item_icons.json": "5539682a58d743030e390107524e515234de8b75",
+  "data/item_id_names.json": "bdb0a35029d4bfec00dee9a2848362d064001039",
+  "data/item_names_cn.json": "6b513818e1b14326291117909837506a1385d4a9",
+  "data/recipes.json": "24e0825ccdba5ae689f2dc50ad911d78337197f5",
+  "resource/bpa/items": "0571aa0db14b54b9ae7dfd591f10e9194110fe1b",
+  "resource/bpa/lg": "a5a60bb3709918369f119cc460c2d22849f5e0fe",
+  "resource/bpa/storage_line_base.png": "817545fc148936d3829abddde20d3d3967333c64",
+  "resource/icons/fluid": "a5c530d901dd7a288a9389d825e4d75b9eb7c234"
+ },
+ "source": {
+  "archive": "data/blueprints/1.6皇帝产线",
+  "project": "debug/bpa/实测-皇帝产线"
+ }
+}

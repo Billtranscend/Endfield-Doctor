@@ -1,0 +1,534 @@
+{
+ "area": "武陵城",
+ "from": "历史巡检面板（patrol_*.json），按同名最近配对、偏移校正后横纵各 ±30 px",
+ "devices": [
+  {
+   "name": "配件机",
+   "x": 941,
+   "y": 364,
+   "recipe": "赤铜块×1 → 赤铜零件×1（2秒）",
+   "output": "item_copper_cmpt",
+   "votes": "3/4"
+  },
+  {
+   "name": "多口暗管入口",
+   "x": 1472,
+   "y": 364,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "塑形机",
+   "x": 1138,
+   "y": 384,
+   "recipe": "赤铜块×2 → 赤铜瓶×1（2秒）",
+   "output": "item_copper_bottle",
+   "votes": "4/4"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1455,
+   "y": 443,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1555,
+   "y": 443,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1674,
+   "y": 444,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1792,
+   "y": 444,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 962,
+   "y": 463,
+   "recipe": "蓝铁矿×1 → 蓝铁块×1（2秒）",
+   "output": "item_iron_nugget",
+   "votes": "2/2"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1435,
+   "y": 502,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1574,
+   "y": 502,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1693,
+   "y": 503,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1811,
+   "y": 503,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "封装机",
+   "x": 753,
+   "y": 512,
+   "recipe": "赤铜耐压罐×1 + 息壤×1 → 分离芯×2（2秒）",
+   "output": "item_filter_core",
+   "votes": "3/3"
+  },
+  {
+   "name": "粉碎机",
+   "x": 585,
+   "y": 581,
+   "recipe": "砂叶×1 → 砂叶粉末×3（2秒）",
+   "output": "item_plant_moss_powder_3",
+   "votes": "2/2"
+  },
+  {
+   "name": "种植机",
+   "x": 606,
+   "y": 679,
+   "recipe": "砂叶种子×1 → 砂叶×1（2秒）",
+   "output": "item_plant_moss_3",
+   "votes": "2/2"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1238,
+   "y": 720,
+   "recipe": "赤铜矿×1 + 清水×1 → 赤铜块×1 + 污水×1（2秒）",
+   "output": "item_copper_nugget",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1791,
+   "y": 720,
+   "recipe": "蓝铁矿×1 → 蓝铁块×1（2秒）",
+   "output": "item_iron_nugget",
+   "votes": "2/2"
+  },
+  {
+   "name": "灌装机",
+   "x": 991,
+   "y": 729,
+   "recipe": "赤铜耐压罐×1 + 惰气×1 → 赤铜耐压罐(惰气)×1（2秒）",
+   "output": "item_gasjar_copper_gas_inert",
+   "votes": "2/2"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 1526,
+   "y": 739,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 1644,
+   "y": 739,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "精炼炉",
+   "x": 1851,
+   "y": 759,
+   "recipe": "蓝铁矿×1 → 蓝铁块×1（2秒）",
+   "output": "item_iron_nugget",
+   "votes": "2/2"
+  },
+  {
+   "name": "种植机",
+   "x": 625,
+   "y": 778,
+   "recipe": "砂叶种子×1 → 砂叶×1（2秒）",
+   "output": "item_plant_moss_3",
+   "votes": "1/1"
+  },
+  {
+   "name": "装备原件机",
+   "x": 759,
+   "y": 788,
+   "recipe": "灼铜零件×1 + 重息壤×2 → 灼铜装备原件×1（10秒）",
+   "output": "item_equip_script_4_3",
+   "votes": "5/5"
+  },
+  {
+   "name": "塑形机",
+   "x": 1256,
+   "y": 798,
+   "recipe": "赤铜块×2 + 惰气×1 → 赤铜耐压罐×1（2秒）",
+   "output": "item_copper_jar",
+   "votes": "2/2"
+  },
+  {
+   "name": "塑形机",
+   "x": 1097,
+   "y": 818,
+   "recipe": "赤铜块×2 + 惰气×1 → 赤铜耐压罐×1（2秒）",
+   "output": "item_copper_jar",
+   "votes": "2/2"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 1506,
+   "y": 858,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "天有洪炉",
+   "x": 1665,
+   "y": 858,
+   "recipe": "碳块×1 + 清水×1 → 息壤×1（2秒）",
+   "output": "item_xiranite_powder",
+   "votes": "1/1"
+  },
+  {
+   "name": "种植机",
+   "x": 742,
+   "y": 877,
+   "recipe": "砂叶种子×1 → 砂叶×1（2秒）",
+   "output": "item_plant_moss_3",
+   "votes": "3/3"
+  },
+  {
+   "name": "配件机",
+   "x": 1158,
+   "y": 878,
+   "recipe": "赤铜块×1 → 赤铜零件×1（2秒）",
+   "output": "item_copper_cmpt",
+   "votes": "8/9"
+  },
+  {
+   "name": "配件机",
+   "x": 1215,
+   "y": 878,
+   "recipe": "赤铜块×1 → 赤铜零件×1（2秒）",
+   "output": "item_copper_cmpt",
+   "votes": "9/10"
+  },
+  {
+   "name": "配件机",
+   "x": 1335,
+   "y": 878,
+   "recipe": "赤铜块×1 → 赤铜零件×1（2秒）",
+   "output": "item_copper_cmpt",
+   "votes": "4/5"
+  },
+  {
+   "name": "配件机",
+   "x": 1394,
+   "y": 878,
+   "recipe": "赤铜块×1 → 赤铜零件×1（2秒）",
+   "output": "item_copper_cmpt",
+   "votes": "7/8"
+  },
+  {
+   "name": "采种机",
+   "x": 604,
+   "y": 897,
+   "recipe": "砂叶×1 → 砂叶种子×2（2秒）",
+   "output": "item_plant_moss_seed_3",
+   "votes": "2/2"
+  },
+  {
+   "name": "粉碎机",
+   "x": 1870,
+   "y": 898,
+   "recipe": "蓝铁块×1 → 蓝铁粉末×1（2秒）",
+   "output": "item_iron_powder",
+   "votes": "5/5"
+  },
+  {
+   "name": "灌装机",
+   "x": 990,
+   "y": 947,
+   "recipe": "赤铜瓶×1 + 锦草溶液×1 → 赤铜瓶(锦草溶液)×1（2秒）",
+   "output": "item_fbottle_copper_grass_1",
+   "votes": "3/3"
+  },
+  {
+   "name": "封装机",
+   "x": 1187,
+   "y": 966,
+   "recipe": "赤铜零件×10 + 赤铜瓶(锦草溶液)×5 → 优质锦草软饮×1（10秒）",
+   "output": "item_bottled_food_5",
+   "votes": "13/14"
+  },
+  {
+   "name": "封装机",
+   "x": 1325,
+   "y": 966,
+   "recipe": "赤铜零件×10 + 赤铜瓶(芽针溶液)×5 → 优质芽针针剂×1（10秒）",
+   "output": "item_bottled_rec_hp_5",
+   "votes": "7/8"
+  },
+  {
+   "name": "采种机",
+   "x": 743,
+   "y": 976,
+   "recipe": "砂叶×1 → 砂叶种子×2（2秒）",
+   "output": "item_plant_moss_seed_3",
+   "votes": "1/1"
+  },
+  {
+   "name": "灌装机",
+   "x": 1070,
+   "y": 986,
+   "recipe": "赤铜瓶×1 + 芽针溶液×1 → 赤铜瓶(芽针溶液)×1（2秒）",
+   "output": "item_fbottle_copper_grass_2",
+   "votes": "5/5"
+  },
+  {
+   "name": "扩容反应池",
+   "x": 1489,
+   "y": 1055,
+   "recipe": "池产物：惰性壤晶废液(0)/息壤(50)/壤晶废液(50)；池内：息壤(50)/污水(50，原料)/壤晶废液(50)/惰性壤晶废液(50)",
+   "output": "item_liquid_xiranite_lowpoly|item_xiranite_powder|item_liquid_xiranite_poly",
+   "votes": "1/3"
+  },
+  {
+   "name": "扩容反应池",
+   "x": 1647,
+   "y": 1055,
+   "recipe": "池产物：壤晶废液(50)/壤晶(50)/惰性壤晶废液(0)；池内：壤晶(50)/蓝铁粉末(49，原料)/壤晶废液(49)/惰性壤晶废液(50)",
+   "output": "item_liquid_xiranite_poly|item_xiranite_poly|item_liquid_xiranite_lowpoly",
+   "votes": "1/4"
+  },
+  {
+   "name": "反应池",
+   "x": 1830,
+   "y": 1055,
+   "recipe": "池产物：污水(0)/壤晶(50)/惰性壤晶废液(0)；池内：惰性壤晶废液(48)/惰性壤晶废液(50)",
+   "output": "item_xiranite_poly",
+   "votes": "1/4"
+  },
+  {
+   "name": "种植机",
+   "x": 743,
+   "y": 1075,
+   "recipe": "砂叶种子×1 → 砂叶×1（2秒）",
+   "output": "item_plant_moss_3",
+   "votes": "1/1"
+  },
+  {
+   "name": "灌装机",
+   "x": 1188,
+   "y": 1104,
+   "recipe": "蓝铁瓶×1 + 锦草溶液×1 → 蓝铁瓶(锦草溶液)×1（2秒）",
+   "output": "item_fbottle_iron_grass_1",
+   "votes": "4/4"
+  },
+  {
+   "name": "灌装机",
+   "x": 1069,
+   "y": 1124,
+   "recipe": "蓝铁瓶×1 + 芽针溶液×1 → 蓝铁瓶(芽针溶液)×1（2秒）",
+   "output": "item_fbottle_iron_grass_2",
+   "votes": "5/5"
+  },
+  {
+   "name": "配件机",
+   "x": 978,
+   "y": 1134,
+   "recipe": "蓝铁块×1 → 铁制零件×1（2秒）",
+   "output": "item_iron_cmpt",
+   "votes": "5/5"
+  },
+  {
+   "name": "种植机",
+   "x": 605,
+   "y": 1154,
+   "recipe": "砂叶种子×1 → 砂叶×1（2秒）",
+   "output": "item_plant_moss_3",
+   "votes": "3/3"
+  },
+  {
+   "name": "采种机",
+   "x": 723,
+   "y": 1173,
+   "recipe": "砂叶×1 → 砂叶种子×2（2秒）",
+   "output": "item_plant_moss_seed_3",
+   "votes": "2/2"
+  },
+  {
+   "name": "提纯机",
+   "x": 1650,
+   "y": 1173,
+   "recipe": "惰性壤晶废液×4 → 清水×1 + 壤晶废液×1（2秒）",
+   "output": "item_liquid_water",
+   "votes": "2/2"
+  },
+  {
+   "name": "扩容反应池",
+   "x": 1490,
+   "y": 1174,
+   "recipe": "池产物：壤晶废液(49)/惰性壤晶废液(0)；池内：惰性壤晶废液(50)/污水(50，原料)/惰性壤晶废液(50)/液化息壤(50，原料)",
+   "output": "item_liquid_xiranite_poly|item_liquid_xiranite_lowpoly",
+   "votes": "1/3"
+  },
+  {
+   "name": "配件机",
+   "x": 979,
+   "y": 1193,
+   "recipe": "蓝铁块×1 → 铁制零件×1（2秒）",
+   "output": "item_iron_cmpt",
+   "votes": "3/3"
+  },
+  {
+   "name": "封装机",
+   "x": 1070,
+   "y": 1243,
+   "recipe": "蓝铁瓶(芽针溶液)×5 + 铁制零件×10 → 芽针针剂×1（10秒）",
+   "output": "item_bottled_rec_hp_4",
+   "votes": "1/1"
+  },
+  {
+   "name": "封装机",
+   "x": 1185,
+   "y": 1243,
+   "recipe": "蓝铁瓶(锦草溶液)×5 + 铁制零件×10 → 锦草软饮×1（10秒）",
+   "output": "item_bottled_food_4",
+   "votes": "2/2"
+  },
+  {
+   "name": "废水处理机",
+   "x": 1661,
+   "y": 1292,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "3/3"
+  },
+  {
+   "name": "反应池",
+   "x": 1357,
+   "y": 1332,
+   "recipe": "池产物：芽针溶液(50)/芽针(0)/锦草溶液(50)；池内：?(50)/?(50)",
+   "output": "item_liquid_plant_grass_2|item_plant_grass_2|item_liquid_plant_grass_1",
+   "votes": "3/5"
+  },
+  {
+   "name": "废水处理机",
+   "x": 575,
+   "y": 1371,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "废水处理机",
+   "x": 654,
+   "y": 1371,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "废水处理机",
+   "x": 710,
+   "y": 1371,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "废水处理机",
+   "x": 792,
+   "y": 1371,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "采种机",
+   "x": 1020,
+   "y": 1391,
+   "recipe": "锦草×1 → 锦草种子×1（2秒）",
+   "output": "item_plant_grass_seed_1",
+   "votes": "1/1"
+  },
+  {
+   "name": "种植机",
+   "x": 1118,
+   "y": 1391,
+   "recipe": "清水×1 + 锦草种子×1 → 锦草×2（2秒）",
+   "output": "item_plant_grass_1",
+   "votes": "1/1"
+  },
+  {
+   "name": "采种机",
+   "x": 1474,
+   "y": 1391,
+   "recipe": "芽针×1 → 芽针种子×1（2秒）",
+   "output": "item_plant_grass_seed_2",
+   "votes": "1/1"
+  },
+  {
+   "name": "种植机",
+   "x": 1573,
+   "y": 1391,
+   "recipe": "清水×1 + 芽针种子×1 → 芽针×2（2秒）",
+   "output": "item_plant_grass_2",
+   "votes": "3/3"
+  },
+  {
+   "name": "废水处理机",
+   "x": 653,
+   "y": 1430,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "废水处理机",
+   "x": 792,
+   "y": 1430,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  },
+  {
+   "name": "暗管出口",
+   "x": 1645,
+   "y": 1905,
+   "recipe": "配方：?",
+   "output": null,
+   "votes": "1/1"
+  }
+ ]
+}

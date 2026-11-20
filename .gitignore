@@ -20,3 +20,6 @@ build/*.spec
 
 # 程序启动时生成的带版本戳的入口页
 src/app/ui/_index_*.html
+
+# 测试者的数据：没得到本人同意前不进仓库（设计分析快照的私有样本）
+tests/data/private/
