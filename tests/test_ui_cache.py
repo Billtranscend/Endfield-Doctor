@@ -8,21 +8,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src" / "app"), str(ROOT / "src"), str(ROOT / "src" / "tools")]
 
+from _testkit import run, skip  # noqa: E402
+
 
 def _main():
     try:
         import webview  # noqa: F401
         import main as M
     except Exception as e:  # noqa: BLE001
-        print("跳过（这个环境加载不了程序入口）：", type(e).__name__, str(e)[:80])
-        return None
+        skip(f"这个环境加载不了程序入口：{type(e).__name__} {str(e)[:80]}")
     return M
 
 
 def test_static_files_are_not_cacheable_and_old_cache_is_cleared():
     M = _main()
-    if M is None:
-        return
     from webview import http
     with tempfile.TemporaryDirectory() as td:
         old = os.environ.get("APPDATA")
@@ -51,8 +50,6 @@ def test_static_files_are_not_cacheable_and_old_cache_is_cleared():
 def test_each_version_opens_a_page_address_never_seen_before():
     """清缓存不一定清得干净，所以每一版换一个页面地址：界面文件一变，入口文件名和脚本的 ?v= 都跟着变。"""
     M = _main()
-    if M is None:
-        return
     import shutil
     with tempfile.TemporaryDirectory() as td:
         old = M.HERE
@@ -78,12 +75,4 @@ def test_each_version_opens_a_page_address_never_seen_before():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    ok = 0
-    for f in tests:
-        try:
-            f(); ok += 1
-        except AssertionError as e:
-            print("FAIL", f.__name__, str(e)[:300])
-    print(f"{ok}/{len(tests)} 通过")
-    sys.exit(0 if ok == len(tests) else 1)
+    sys.exit(run([v for k, v in sorted(globals().items()) if k.startswith("test_")]))

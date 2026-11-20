@@ -395,6 +395,7 @@ function setRunningUI(running, kind) {
   if ($('#gateLimitStart')) $('#gateLimitStart').disabled = running;
   if ($('#coreStart')) $('#coreStart').disabled = running;
   $('#bpaRead').disabled = running; $('#bpaFit').disabled = running; bpaLedgerState(); $('#bpaCancel').disabled = !(running && kind === 'bpa');
+  bpaWriteState(running, kind);
 }
 async function pollJob() {
   const j = await api('job_status');
@@ -419,7 +420,13 @@ async function pollJob() {
     if (j.kind === 'survey' && j.state === 'done' && j.result) renderWizardConfirm(j.result);
     if (j.kind === 'survey' && j.state !== 'done' && $('#wizActions')) $('#wizActions').innerHTML = `<button class="btn" onclick="renderWizardStart()">返回重试</button>`;
     if (j.kind === 'reference' && j.state === 'done') { await loadBlueprints(); toast('基准已更新'); }
-    if (j.kind === 'bpa') { await bpaRefresh(); }
+    if (j.kind === 'bpa') {
+      // 待确认开的任务（bpaFix 打的标记）只刷新设计分析，不整页 bpaRefresh（2026-11-19）：_bpa_fix 只重写 design.json，
+      // 整页刷新会重载输入端表和准入口分组表，作者改了几行流速还没存、就去待确认里点了一项，跑完这些修改就没了。
+      // 中途刷新过页面时标记是空的，退回整页刷新，和原来一样
+      const only = bpa.afterJob === 'design'; bpa.afterJob = null;
+      if (only) { await bpaDesign(); if ($('#bpaWhich').value === 'design') bpaShowImage(); } else await bpaRefresh();
+    }
     if (j.kind === 'gates' && j.result) $('#patrolResult').innerHTML = renderGateLimits(j.result);
     if (j.kind === 'cores' && j.result) $('#patrolResult').innerHTML = renderCorePorts(j.result);
     if (j.state !== 'idle') toast(j.state === 'done' ? '任务完成' : j.state === 'cancelled' ? '已取消' : '任务出错');
@@ -810,7 +817,8 @@ async function bpaRefresh() {
   bpaShowImage(); bpaInputs(); bpaGates(); bpaDesign();
 }
 // 设计分析（任务计划第 3 项）：每台设备的设计开工率；推断出来的连线/配方单独标出来
-const DS_COLORS = { '满速': '#1a8a3a', '间歇': '#d98200', '溢流位': '#888', '没接上': '#b000b0', '没料': '#c22' };
+// 配方未知、没在用（2026-11-19）要排在没料前面：dsKey 按前缀找，找不到才归没料
+const DS_COLORS = { '满速': '#1a8a3a', '间歇': '#d98200', '溢流位': '#888', '没接上': '#b000b0', '配方未知': '#5a78aa', '没在用': '#bbb', '没料': '#c22' };
 const dsKey = st => Object.keys(DS_COLORS).find(k => (st || '').startsWith(k)) || '没料';
 async function bpaDesign() {
   const base = $('#bpaDsBase').value; if (!bpa.name || !base) return;
@@ -818,10 +826,15 @@ async function bpaDesign() {
   if (!r.ok) { bpa.ds = null; $('#bpaDsSummary').innerHTML = `<div class="empty">${esc(r.error)}</div>`; $('#bpaDsTable').innerHTML = ''; $('#bpaDsInf').innerHTML = ''; return; }
   bpa.ds = r;
   const sm = r.summary || {}, st = sm.states || {};
+  // 池子两项（审计第 3 项，2026-11-19）：summary 里没有，按行数——几条配方同时跑的池子；配方是邻居推断或照抄同类、没核实的池子
+  const nPar = r.devices.filter(d => (d.channels || []).length).length, nGuess = r.devices.filter(d => (POOL_SRC[d.pool_src] || [])[1]).length;
   $('#bpaDsSummary').innerHTML = `<div class="bpa-dssum">${Object.keys(DS_COLORS).map(k => `<span style="color:${DS_COLORS[k]}">● ${k} ${st[k] || 0}</span>`).join('')}
-    <span class="muted">共 ${sm.devices || 0} 台 · 推断连线 ${sm.inferred_links || 0} 条 · 来料经过推断连线 ${sm.via_inferred || 0} 台 · 推断配方 ${sm.recipe_inferred || 0} 台 · 要稳定环境 ${sm.env_required || 0} 台</span></div>`;
+    <span class="muted">共 ${sm.devices || 0} 台 · 推断连线 ${sm.inferred_links || 0} 条 · 来料经过推断连线 ${sm.via_inferred || 0} 台 · 推断配方 ${sm.recipe_inferred || 0} 台 · 要稳定环境 ${sm.env_required || 0} 台
+      · 并行池子 ${nPar} 台 · 池子配方没核实 ${nGuess} 台</span></div>
+    ${(sm.warnings || []).map(w => `<div class="hint" style="color:var(--warn)">${esc(w)}</div>`).join('')}`;
   $('#bpaDsInfN').textContent = (r.inferred_links || []).length;
   bpaPending();
+  bpaRowCardClose();  // 重算过：行上打开的改配方卡是旧数据
   bpaLinksTable();
   bpaDesignTable();
   bpaProgress(r.progress);
@@ -833,15 +846,20 @@ function bpaPending() {
   const r = bpa.ds, box = $('#bpaDsPending'); if (!r || !box) return;
   const items = r.pending || [], auto = r.reread || [];
   if (!items.length && !auto.length) { box.innerHTML = ''; return; }
-  const open = items.filter(p => !p.answer).length;
+  // 「待确认 N 处」只数没回答的：池子卡的回答可以是 []（这台没在用），按 null 判断；进料卡照旧（2026-11-19）
+  const open = items.filter(p => p.kind === '池子配方' ? p.answer == null : !p.answer).length;
   const autoHtml = auto.length ? `<div class="pend-auto">程序按设备口格的箭头自己改过 ${auto.length} 处（已标成推断，在下面「推断出来的连线」里可以说对不对）：
     <ul>${auto.map(a => `<li>${esc(a.device)}：${esc(a.basis || a.kind)}</li>`).join('')}</ul></div>` : '';
   box.innerHTML = `<div class="pend-head">${open ? `<b>待确认 ${open} 处</b>：这些地方程序定不下来，需要你看一眼` : (items.length ? '待确认的都答过了' : '')}</div>${autoHtml}
     ${items.map((p, i) => {
-      const ans = p.answer || '';
+      if (p.kind === '池子配方') return bpaPoolCard(p, i);
+      const ans = typeof p.answer === 'string' ? p.answer : '';
       const btn = (val, label) => `<button class="btn sm${ans === val ? '' : ' ghost'}" onclick="bpaFix('feeds',${i},'${val}')">${label}</button>`;
       const links = (p.links || []).map((l, k) => btn('to:' + l.key, `${k + 1} 号带子是进料（另一头是${esc(l.to)}）`)).join('');
-      const rsel = (p.recipes || []).length > 1 ? `<div class="pend-rec">配方不是「${esc((p.recipe || '').split('（')[0])}」的话改成：
+      // 池子不出单条配方下拉（2026-11-19）：选一条会把同时跑的几条清成一条，和池子配方卡两个入口还会互相盖；改成去池子配方卡
+      const rsel = /^(扩容)?反应池$/.test((p.device || '').split('[')[0]) ? `<div class="pend-rec">池子同时跑几条配方，去池子配方卡里选：
+        <button class="btn sm ghost" onclick="bpaPendPoolCard(${i})">打开池子配方卡</button></div>`
+        : (p.recipes || []).length > 1 ? `<div class="pend-rec">配方不是「${esc((p.recipe || '').split('（')[0])}」的话改成：
         <select onchange="bpaFix('recipes',${i},this.value)"><option value="">（不改）</option>${p.recipes.map(x => `<option${x === p.recipe_fix ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></div>` : '';
       return `<div class="pend-item${ans ? ' done' : ''}">${p.image ? `<img src="${p.image}" alt="">` : ''}
         <div class="pend-body"><div class="pend-msg">${esc(p.msg)}</div>
@@ -849,18 +867,105 @@ function bpaPending() {
             ${ans ? `<a class="undo" onclick="bpaFix('feeds',${i},'')">撤销</a>` : ''}</div>${rsel}
           ${ans ? `<div class="muted">已选：${esc(ans.startsWith('to:') ? '指定了进料带' : FEED_WORDS[ans] || ans)}${p.applied ? '' : '（这一项还会留在这里）'}</div>` : ''}</div></div>`;
     }).join('')}`;
+  items.forEach((p, i) => { if (p.kind === '池子配方') bpaPoolCount(i); });
 }
+// 池子配方卡（审计第 3 项，2026-11-19）：池子机身没有产物图标，作者勾这台同时在跑的几条配方。
+// 配方文字一律 esc 后才写进页面；按钮只带卡片序号，勾了哪几条由 bpaPoolFix 从页面上读（不把配方文字拼进 onclick）。
+// 卡片序号 i：待确认里的卡是 pending 下标；设计分析表池子行「改配方」打开的那张是 'row'（bpa.rowCard，不算进待确认 N 处）
+const bpaPoolItem = i => i === 'row' ? bpa.rowCard : ((bpa.ds || {}).pending || [])[i];
+function bpaPoolCard(p, i) {
+  const ans = Array.isArray(p.answer) ? p.answer : null;
+  const ticked = ans || p.current || [];  // 没回答过：先勾上这台现在按哪几条算（行上打开的卡）
+  const short = rc => (rc || '').split('（')[0];
+  const ends = (lst, dir) => (lst || []).map(l => `<li>${esc((l.items || []).join('、') || '?')}${l.unclear ? '（物品不明）' : ''}
+      <span class="muted">${l.layer === 'pipe' ? '管' : '带'} · ${dir === 'in' ? '来自' : '去'}${esc(dir === 'in' ? l.from : l.to)}</span></li>`).join('');
+  const nIn = (p.ins || []).length, nOut = (p.outs || []).length;
+  // 行上打开的卡没有进出连线清单（design.json 没存），不写「没有」免得当成真没接
+  const io = p.from_row && !nIn && !nOut ? '<div class="pend-io muted">进出的连线这里没列，看图上红圈这台的带子和管子</div>' : `<div class="pend-io"><div>进来${nIn ? `（图上 1–${nIn} 号）` : ''}：<ol>${ends(p.ins, 'in') || '<li class="muted">没有</li>'}</ol></div>
+    <div>出去${nOut ? `（图上 ${nIn + 1}–${nIn + nOut} 号）` : ''}：<ol start="${nIn + 1}">${ends(p.outs, 'out') || '<li class="muted">没有</li>'}</ol></div></div>`;
+  // 得分 = 这组配方和池子进出的连线对得上的程度，越高越像（推断）；悬停看哪几根连线对不上
+  const combos = (p.combos || []).map((c, k) => `<button class="btn sm ghost" title="${esc('分数是按进出的连线对得上的程度打的，越高越像。' + ((c.why || []).join('；') || '进出的连线都对得上'))}"
+      onclick="bpaPoolPick('${i}',${k})">${esc(c.label)}（${c.items}/${p.slots} 格，${c.score} 分）</button>`).join('');
+  const boxes = (p.options || []).map((o, k) => `<label class="pend-pool-opt"><input type="checkbox" data-k="${k}"${ticked.includes(o.recipe) ? ' checked' : ''}
+      onchange="bpaPoolCount('${i}')"> ${esc(short(o.recipe))}</label>`).join('');
+  const said = ans == null ? '' : `<div class="muted">已选：${ans.length ? esc(ans.map(short).join('；')) : '这台没在用'}${p.applied ? '' : '（没用上，看上面的说明）'}</div>`;
+  return `<div class="pend-item${ans != null ? ' done' : ''}" id="pendPool${i}">${p.image ? `<img src="${p.image}" alt="">` : ''}
+    <div class="pend-body"><div class="pend-msg">${esc(p.msg)}</div>${io}
+      ${combos ? `<div class="pend-rec">按连线猜的（推断，点一下勾上，再点「按这几条算」）：</div><div class="pend-opts">${combos}</div>` : ''}
+      <div class="pend-pool-list">${boxes}</div>
+      <div class="pend-rec pend-pool-count"></div>
+      <div class="pend-opts"><button class="btn sm pend-pool-go" onclick="bpaPoolFix('${i}','set')">按这几条算</button>
+        <button class="btn sm${ans && !ans.length ? '' : ' ghost'}" onclick="bpaPoolFix('${i}','unused')">这台没在用</button>
+        ${ans != null ? `<a class="undo" onclick="bpaPoolFix('${i}','undo')">撤销</a>` : ''}${p.from_row ? ` <a class="undo" onclick="bpaRowCardClose()">关上</a>` : ''}</div>${said}</div></div>`;
+}
+function bpaPoolChecked(i) {
+  const p = bpaPoolItem(i), el = $(`#pendPool${i}`);
+  if (!p || !el) return null;
+  return [...el.querySelectorAll('.pend-pool-list input:checked')].map(b => p.options[+b.dataset.k]).filter(Boolean);
+}
+// 勾选时现算：物品种类（中间产物也占一格）对格数；要送出去的液体 / 固体、要从外面进的流体对出口和管入口（推断，只提示不挡）
+function bpaPoolCount(i) {
+  const p = bpaPoolItem(i), el = $(`#pendPool${i}`), sel = bpaPoolChecked(i);
+  if (!p || !el || !sel) return;
+  const ins = new Set(sel.flatMap(o => o.ins)), outs = new Set(sel.flatMap(o => o.outs));
+  const n = new Set([...ins, ...outs]).size, fluid = new Set(p.fluid || []);
+  const term = [...outs].filter(k => !ins.has(k)), ext = [...ins].filter(k => !outs.has(k));
+  const warn = [];
+  if (term.filter(k => fluid.has(k)).length > 2) warn.push('要送出去的液体超过 2 种，管出口只有 2 个');
+  if (term.filter(k => !fluid.has(k)).length > 1) warn.push('要送出去的固体超过 1 种，带出口只能选 1 种');
+  if (ext.filter(k => fluid.has(k)).length > 2) warn.push('要从外面进的流体超过 2 种，管入口只有 2 个');
+  const over = n > p.slots;
+  el.querySelector('.pend-pool-count').innerHTML = sel.length ? `已勾 ${sel.length} 条，物品 <b${over ? ' style="color:#c22"' : ''}>${n}/${p.slots}</b> 格`
+    + (over ? '：超格了，放不下' : '') + (warn.length ? `<div class="muted">${esc(warn.join('；'))}（推断，只提示）</div>` : '') : '一条都没勾';
+  const go = el.querySelector('.pend-pool-go');
+  go.disabled = over || !sel.length;
+  go.title = over ? '物品种类超过格数，放不下' : (!sel.length ? '先勾上这台在跑的配方' : '');
+}
+function bpaPoolPick(i, k) {
+  const p = bpaPoolItem(i), el = $(`#pendPool${i}`);
+  const c = p && (p.combos || [])[k]; if (!c || !el) return;
+  el.querySelectorAll('.pend-pool-list input').forEach(b => { b.checked = c.recipes.includes((p.options[+b.dataset.k] || {}).recipe); });
+  bpaPoolCount(i);
+}
+// mode：set = 按勾的这几条算；unused = 这台没在用（存 []）；undo = 撤销（存 null）
+function bpaPoolFix(i, mode) {
+  const p = bpaPoolItem(i); if (!p) return;
+  let value = null;
+  if (mode === 'set') {
+    const sel = bpaPoolChecked(i) || [];
+    if (!sel.length) return toast('先勾上这台在跑的配方');
+    value = sel.map(o => o.recipe);
+  } else if (mode === 'unused') value = [];
+  bpaSendFix('pool_recipes', p.key, value);
+}
+// 待确认里选了以后走任务（2026-11-19）：进度在上面的任务日志里，跑完 pollJob 只刷新设计分析（bpa.afterJob 标记）。
+// 原来同步等结果，和据点拼合任务、「保存并重算」能同时跑，两边一起写 design.json
 async function bpaFix(kind, i, value) {
   const r = bpa.ds; if (!r) return;
   const p = (r.pending || [])[i]; if (!p) return;
-  const box = $('#bpaDsPending');
-  box.classList.add('busy');
-  toast('已记下，正在按你的选择重算这个据点（大据点要一两分钟）…');
-  const res = await api('bpa_fix', bpa.name, $('#bpaDsBase').value, kind, p.key, value || null);
-  box.classList.remove('busy');
-  if (!res.ok) return toast(res.error);
-  toast('重算好了');
-  bpaDesign();
+  bpaSendFix(kind, p.key, value || null);
+}
+async function bpaSendFix(kind, key, value) {
+  if (bpaJobBusy()) return;
+  const boxes = [$('#bpaDsPending'), $('#bpaDsRowCard')].filter(Boolean);
+  boxes.forEach(b => b.classList.add('busy'));
+  const res = await api('bpa_fix', bpa.name, $('#bpaDsBase').value, kind, key, value);
+  if (!res.ok) { boxes.forEach(b => b.classList.remove('busy')); return toast(res.error); }
+  toast('已记下，正在按你的选择重算这个据点（进度看上面的任务日志；程序启动后第一次算较慢）');
+  bpa.afterJob = 'design';
+  $('#bpaLog').style.display = ''; startPolling('bpa');
+}
+// 任务在跑时，蓝图分析页会写数据的操作（待确认的选项、保存并重算、保存输入端）先挡住：拼合任务也在写这些文件（2026-11-19）
+function bpaWriteState(running, kind) {
+  const box = $('#bpaDsPending'); if (box) box.classList.toggle('busy', running);
+  const rc = $('#bpaDsRowCard'); if (rc) rc.classList.toggle('busy', running);
+  const sg = $('#bpaSaveGates'); if (sg) { sg.disabled = running; sg.title = running ? '有任务在跑，跑完再保存' : ''; }
+  const si = $('#bpaSaveIn'); if (si) { const b = running && kind === 'bpa'; si.disabled = b; si.title = b ? '蓝图分析任务在跑，跑完再保存' : ''; }
+}
+function bpaJobBusy(onlyBpa) {
+  const j = state.job;
+  if (j && j.state === 'running' && (!onlyBpa || j.kind === 'bpa')) { toast('有任务在跑，稍后再试'); return true; }
+  return false;
 }
 function bpaProgress(p) {
   if (!p) return;
@@ -898,7 +1003,7 @@ async function bpaConfirmOne(kind, i, verdict) {
   kind === 'devices' ? bpaDesignTable() : bpaLinksTable();
 }
 async function bpaConfirmPage() {
-  const rows = (bpa.dsRows || []).filter(d => !d.confirm);
+  const rows = (bpa.dsRows || []).filter(d => !d.confirm && !d.recipe_unknown);  // 配方未知的行没有可确认的结果（2026-11-19）
   if (!rows.length) return toast('这一页没有未确认的设备');
   if (!(await uiConfirm(`把这一页 ${rows.length} 台还没确认的设备都确认为「对」？请先对着游戏核对过。`, { ok: '全部确认' }))) return;
   const entries = {}; rows.forEach(d => { entries[d.key] = { verdict: 'ok', actual: '', note: '' }; });
@@ -907,20 +1012,75 @@ async function bpaConfirmPage() {
   rows.forEach(d => { d.confirm = entries[d.key]; });
   bpaProgress(res.progress); bpaDesignTable();
 }
+// 池子配方从哪来（行上的 pool_src）→ [标签文字, 醒目不醒目]：推断、照抄同类没核实，标醒目。不明 = 配方未知，那一行另写
+const POOL_SRC = { '面板': ['面板', false], '作者': ['作者指定', false], '邻居推断': ['推断', true], '照抄同类': ['照抄同类', true] };
+// 配方列（审计第 3 项，2026-11-19）：并行池子每条一行带开工率；几条首尾相接并成的净配方悬停看组成；配方未知的行指向待确认。
+// 配方、物品文字都 esc；按钮只带行号
+function dsRecipeCell(d, i) {
+  const pct = v => `${Math.round(v * 100)}%`;
+  const made = m => (m || []).length > 1 ? { attr: ` title="${esc('由这几条首尾相接并成：' + m.join('；'))}"`, note: ` <span class="muted">（${m.length} 条并成）</span>` } : { attr: '', note: '' };
+  if (d.recipe_unknown) {
+    const go = 'pool_src' in d ? ` <a class="undo" onclick="bpaGoPending(${i})">去待确认选</a>` : '';
+    return `<b style="color:${DS_COLORS['配方未知']}">配方未知</b>${go}`;  // 这种机器能做什么写在依据第二条，这里不重复
+  }
+  const body = (d.channels || []).length ? d.channels.map(c => { const m = made(c.members);
+    return `<div class="ds-ch"${m.attr}>${esc(c.recipe)} · <b>${pct(c.rate)}</b>${m.note}</div>`; }).join('')
+    : (m => `<span${m.attr}>${esc(d.recipe || '')}</span>${m.note}`)(made(d.members));
+  const ps = POOL_SRC[d.pool_src];
+  const src = ps ? `<span class="tag${ps[1] ? ' guess' : ''}" title="池子配方从哪来">${ps[0]}</span>` : '';
+  const fix = 'pool_src' in d ? ` <button class="btn sm ghost" onclick="bpaRowCard(${i})">改配方</button>` : '';
+  return body + src + fix;
+}
+// 行上的「改配方」：打开和待确认同样的池子卡（bpa_pool_card），不进待确认列表、不算进「待确认 N 处」
+async function bpaRowCard(i) {
+  const d = (bpa.dsRows || [])[i]; if (!d) return;
+  bpaKeyCard(d.key, d.device, d.c, '从表格行打开');
+}
+// 「没有进料」卡上的池子：待确认里已有这台的池子卡就滚过去，没有就在表格上方打开同一张卡
+function bpaPendPoolCard(i) {
+  const p = ((bpa.ds || {}).pending || [])[i]; if (!p) return;
+  const k = bpa.ds.pending.findIndex(q => q.kind === '池子配方' && q.key === p.key);
+  const el = k >= 0 ? $(`#pendPool${k}`) : null;
+  if (el) return el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  bpaKeyCard(p.key, p.device.split('[')[0], p.c, '从进料卡打开');
+}
+async function bpaKeyCard(key, device, c, from) {
+  const r = await api('bpa_pool_card', bpa.name, $('#bpaDsBase').value, key);
+  if (!r.ok) return toast(r.error);
+  bpa.rowCard = r.card;
+  const box = $('#bpaDsRowCard');
+  box.innerHTML = `<div class="pend-head"><b>改配方</b>：${esc(device)} (${c[0]},${c[1]})<span class="muted">（${from}，不算进待确认）</span></div>${bpaPoolCard(r.card, 'row')}`;
+  bpaPoolCount('row');
+  box.scrollIntoView({ block: 'nearest' });
+}
+function bpaRowCardClose() {
+  bpa.rowCard = null;
+  const box = $('#bpaDsRowCard'); if (box) box.innerHTML = '';
+}
+function bpaGoPending(i) {
+  const d = (bpa.dsRows || [])[i]; if (!d) return;
+  const k = ((bpa.ds || {}).pending || []).findIndex(p => p.kind === '池子配方' && p.key === d.key);
+  const el = k >= 0 ? $(`#pendPool${k}`) : null;
+  if (!el) return toast('待确认里没有这台的卡片（重算一下再看）');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 function bpaDesignTable() {
   const r = bpa.ds; if (!r) return;
   const f = $('#bpaDsFilter').value;
   const rows = r.devices.filter(d => f === 'all' || (f === 'bad' && d.rate < 0.995) || (f === 'inferred' && (d.via_inferred || d.recipe_inferred)) || (f === 'env' && d.env_required)
-      || (f === 'unconfirmed' && !d.confirm) || (f === 'wrong' && d.confirm && d.confirm.verdict === 'wrong'))
+      || (f === 'unknown' && d.recipe_unknown)
+      || (f === 'unconfirmed' && !d.confirm && !d.recipe_unknown) || (f === 'wrong' && d.confirm && d.confirm.verdict === 'wrong'))
     .sort((a, b) => a.rate - b.rate || a.device.localeCompare(b.device));
   bpa.dsRows = rows;
   const pct = v => `${Math.round(v * 100)}%`;
   $('#bpaDsTable').innerHTML = `<table class="bpa-table"><tr><th>设备</th><th>位置</th><th>配方</th><th>开工率</th><th>状态</th><th>依据</th><th>作者确认</th></tr>${rows.map((d, i) => {
     const tags = [d.recipe_inferred ? '<span class="tag">推断配方</span>' : '', d.env_required ? '<span class="tag">稳定环境</span>' : '', d.via_inferred ? '<span class="tag inf">经推断连线</span>' : ''].join('');
     const basis = (d.basis || []).map(b => esc(b).replace(/〔推断连线〕/g, '<b class="inf">〔推断连线〕</b>')).join('<br>');
-    return `<tr><td>${esc(d.device)}</td><td class="muted">(${d.c[0]},${d.c[1]})</td><td>${esc(d.recipe || '')}${tags}</td>
-      <td style="color:${DS_COLORS[dsKey(d.state)]};font-weight:700">${pct(d.rate)}</td><td style="color:${DS_COLORS[dsKey(d.state)]}">${esc(d.state)}</td>
-      <td class="muted ds-basis">${basis}</td><td class="ds-conf">${confirmCell('devices', i, d.confirm, r.actuals)}</td></tr>`; }).join('')}</table>`;
+    const noRate = d.recipe_unknown || dsKey(d.state) === '没在用';  // 开工率没算（rate 记 0.0），写「?」不写 0%，和设计分析图一样
+    const conf = d.recipe_unknown ? '<span class="muted">配方定了再确认</span>' : confirmCell('devices', i, d.confirm, r.actuals);
+    return `<tr><td>${esc(d.device)}</td><td class="muted">(${d.c[0]},${d.c[1]})</td><td>${dsRecipeCell(d, i)}${tags}</td>
+      <td style="color:${DS_COLORS[dsKey(d.state)]};font-weight:700">${noRate ? '?' : pct(d.rate)}</td><td style="color:${DS_COLORS[dsKey(d.state)]}">${esc(d.state)}</td>
+      <td class="muted ds-basis">${basis}</td><td class="ds-conf">${conf}</td></tr>`; }).join('')}</table>`;
 }
 async function bpaGates() {
   if (!bpa.name) return;
@@ -939,14 +1099,18 @@ function bpaPickCand(el, name, state) {
   const tr = el.closest('tr'); tr.querySelector('.gnm').value = name; tr.querySelector('.gst').value = state;
 }
 async function bpaSaveGates() {
+  if (bpaJobBusy()) return;
+  const btn = $('#bpaSaveGates');
+  if (btn) { if (btn.disabled) return; btn.disabled = true; }  // 防连点：任务开起来以后由 setRunningUI 管，开不起来再放开
   const labels = {};
   document.querySelectorAll('#bpaGateTable tr[data-k]').forEach(tr => {
     const v = tr.querySelector('.gst').value;
     if (v) labels[tr.dataset.k] = { state: v, item: tr.querySelector('.gnm').value };
   });
   const r = await api('bpa_label_gates', bpa.name, labels);
-  if (!r.ok) return toast(r.error);
-  toast('已保存'); bpaRefresh();
+  if (!r.ok) { if (btn) btn.disabled = false; return toast(r.error); }
+  toast('已保存，正在重新拼合（进度看上面的任务日志）');
+  $('#bpaLog').style.display = ''; startPolling('bpa');
 }
 async function bpaCreate() {
   const r = await api('bpa_create', $('#bpaName').value, $('#bpaGroups').value, $('#bpaArchive').value);
@@ -1085,6 +1249,7 @@ function bpaBatch() {
   bpaRenderTable();
 }
 async function bpaSaveInputs(reload) {
+  if (bpaJobBusy(true)) return;  // 拼合任务会按新拼合图改写 inputs.json，这时存会互相盖掉
   const marks = bpa.marks.map(m => Object.assign({}, m, { rate: (m.rate === '' || m.rate === null || m.rate === undefined) ? null : Number(m.rate) }));
   const r = await api('bpa_save_inputs', bpa.name, bpa.base, marks, bpa.stale || []);
   if (!r.ok) return toast(r.error);

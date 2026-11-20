@@ -1,4 +1,4 @@
-"""物流件方向和连接（src/bpa/flow.py，任务计划第 4 项）：用皇帝产线实测拼合图跑（有数据才跑）。
+"""物流件方向和连接（src/bpa/flow.py，任务计划第 4 项）：用皇帝产线实测拼合图跑（本机没有就报跳过）。
 运行：.venv/Scripts/python.exe tests/test_flow.py"""
 import json
 import sys
@@ -9,16 +9,21 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from bpa import flow as F  # noqa: E402
 from bpa import vision as V  # noqa: E402
+from _testkit import copy_project, project_ledger, run, skip  # noqa: E402
 
-BASE = ROOT / "debug/bpa/实测-皇帝产线/base"
-LED = ROOT / "data/blueprints/1.6皇帝产线/ledger"
+
+def _base(area):
+    """项目副本里的据点目录和底账。2026-11-19：原来直接读 debug/bpa/实测-皇帝产线，底账固定用档案里的；
+    拼合（transform.json）是按项目自己的底账拟合的（project.fit_bases → ledger_path），这里和界面取同一份。"""
+    proj = copy_project("实测-皇帝产线")
+    bd = proj / "base" / area
+    if not (bd / "composite.png").exists():
+        skip(f"实测项目里没有{area}的拼合图")
+    return bd, json.loads(project_ledger(proj, area).read_text(encoding="utf-8"))
 
 
 def _run(area):
-    bd = BASE / area
-    if not (bd / "composite.png").exists():
-        return None
-    led = json.loads((LED / f"{area}.json").read_text(encoding="utf-8"))
+    bd, led = _base(area)
     tf = json.loads((bd / "transform.json").read_text(encoding="utf-8"))
     pts = [{"name": d["name"], "c": list(V.far_to_canvas(tf, d["x"], d["y"]))} for d in led["devices"]]
     return F.build(V.rd(bd / "composite.png"), json.loads((bd / "logistics.json").read_text(encoding="utf-8")), pts)
@@ -41,8 +46,6 @@ def _agree(res):
 
 def test_jingyugu():
     res = _run("景玉谷")
-    if res is None:
-        return
     # 2026-11-09：34 条连接，物流件之间 17 条两头都追回，没有分叉/单向/冲突。
     # 2026-11-10 端口布局：研磨机 (205,355) 右边那条是两条带子被追成了一条（往上流的竖带 + 底下往左流进研磨机的一格），
     # 端口布局和小三角说法相反 → 记「端口布局存疑」、不定方向；只允许这一条
@@ -76,8 +79,6 @@ def _free_between(res, a, b):
 def test_short_belts_and_under_pipe_gates():
     """2026-11-10：一格弯带按端口格补（格子模型）；带子从管道准入口底下穿过去；带子头不认成只有管口的暗管。"""
     res = _run("武陵城")
-    if res is None:
-        return
     lk = _free_between(res, ("种植机", 155, 1158), ("采种机", 120, 987))
     assert lk and lk[0].get("bridge") and lk[0]["dir"] == "a->b" and lk[0]["a_dev"]["name"] == "种植机", lk
     lk = _free_between(res, ("采种机", 326, 1463), ("种植机", 122, 1431))
@@ -91,10 +92,7 @@ def test_short_belts_and_under_pipe_gates():
 def test_port_layout_orientation():
     """端口布局：游戏数据里的端口格 + 口格折角定朝向（2026-11-10，看图核对过的几台）。"""
     from bpa import ports as PT
-    bd = BASE / "武陵城"
-    if not (bd / "composite.png").exists():
-        return
-    led = json.loads((LED / "武陵城.json").read_text(encoding="utf-8"))
+    bd, led = _base("武陵城")
     tf = json.loads((bd / "transform.json").read_text(encoding="utf-8"))
     pts = [{"name": d["name"], "c": list(V.far_to_canvas(tf, d["x"], d["y"]))} for d in led["devices"]]
     res = PT.all_ports(V.rd(bd / "composite.png"), pts)
@@ -119,8 +117,6 @@ def test_port_layout_orientation():
 
 def test_wulingcheng_loop_and_covered():
     res = _run("武陵城")
-    if res is None:
-        return
     ok, bad = _agree(res)
     assert bad == 0 and ok >= 60, (ok, bad)
     # 重息壤准入口（限速 12）外面的分流回环（4.7：装备原件机 12÷3÷2）
@@ -137,7 +133,4 @@ def test_wulingcheng_loop_and_covered():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过")
+    sys.exit(run([v for k, v in dict(globals()).items() if k.startswith("test_")]))

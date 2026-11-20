@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "src" / "tools")]
 
 import combine as C  # noqa: E402
+from _testkit import run, skip  # noqa: E402
 
 BRIEF = ROOT / "debug" / "gray_景玉谷_brief_20261110-192713.json"
 PATROL = ROOT / "debug" / "gray_景玉谷_patrol_20261110-192542.json"
@@ -17,7 +18,7 @@ PATROL = ROOT / "debug" / "gray_景玉谷_patrol_20261110-192542.json"
 
 def test_design_limited_not_starved():
     if not BRIEF.exists():
-        return
+        skip(f"本机没有 debug/{BRIEF.name}（2026-11-10 灰度包实测的简报）")
     _, d = C.run(BRIEF, PATROL, "1.6皇帝产线", merge=False)
     assert not d["verdicts"].get("问题"), [v.get("title") for v in d["verdicts"]["问题"]]
     ok = [v for v in d["verdicts"].get("正常", []) if v["device"]["name"] == "封装机" and v["device"]["x"] == 752]
@@ -25,5 +26,4 @@ def test_design_limited_not_starved():
 
 
 if __name__ == "__main__":
-    test_design_limited_not_starved()
-    print("1/1 通过")
+    sys.exit(run([test_design_limited_not_starved]))

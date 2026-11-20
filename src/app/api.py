@@ -31,6 +31,18 @@ from diagnose import DEBUG, DATA  # noqa: E402
 REPORT_PREFIX = "app_report_"
 REPORT_KIND = {"quick": "快速", "patrol": "深度"}  # 报告文件名里的类型（定向巡检也是 patrol → 深度）
 LOG_PREFIX = "app_log_"  # 任务进度日志：app_log_<类型>_<开始时间>.log，边跑边写（2026-11-12：群友反馈时界面右边的进度栏只能截图）
+FIX_LOG_KIND = "bpa-fix"  # 待确认里每选一项开的重算任务，日志名单独一类（见 feedback_logs）
+
+
+def feedback_logs(debug: Path, n: int = 8, n_fix: int = 4) -> list:
+    """反馈包带哪些任务日志：待确认的修正日志（app_log_bpa-fix_*）和其它日志分开各取最近几个，再按时间排。
+    2026-11-19：bpa_fix 改走任务以后，作者在待确认里每选一项都写一个只有几行的日志；原来不分类型取最近 8 个，
+    连答 8 条以上再导出，据点拼合日志（「设计分析出错」「暗管配对缺失」那几行在里面）、读蓝图日志就全被挤掉了。日志都只有几 KB，多带几个不碍事。"""
+    fix_pre = f"{LOG_PREFIX}{FIX_LOG_KIND}_"
+    allp = sorted(debug.glob(f"{LOG_PREFIX}*.log"), key=lambda p: p.stat().st_mtime)
+    fix = [p for p in allp if p.name.startswith(fix_pre)][-n_fix:]
+    other = [p for p in allp if not p.name.startswith(fix_pre)][-n:]
+    return sorted(other + fix, key=lambda p: p.stat().st_mtime)
 
 
 @dataclass
@@ -139,7 +151,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.10", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.11", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []
@@ -501,16 +513,24 @@ class Api:
 
     def bpa_design(self, name: str, base: str) -> dict:
         """设计分析计算器的结果（base/<据点>/design.json）：每台设备的配方、开工率、状态、卡在哪、依据；推断连线清单；汇总。"""
-        from bpa import project as P
+        from bpa import atomic, pool_model as PM, project as P
         f = P.pdir(name) / "base" / base / "design.json"
         if not f.exists():
             return {"ok": False, "error": "还没算（先跑「据点拼合」）"}
-        d = json.loads(f.read_text(encoding="utf-8"))
+        d = atomic.read_json(f)  # 设计分析任务可能正在换这个文件（原子写），撞上那一下短等再读
         conf = P.load_confirm(name).get(base, {})
         rows = []
         for r in d.get("devices", []):
             row = {k: r.get(k) for k in ("device", "c", "recipe", "recipe_inferred", "env_required", "via_inferred", "rate", "state",
                                          "limit_by", "got", "need", "basis", "if_main_blocked")}
+            # 审计第 3 项（2026-11-19）的新字段：有才带，没有的行不多出 null（界面按「有没有这个键」分池子行、配方未知行）
+            row.update({k: r[k] for k in ("channels", "need_capped", "pool_src", "recipe_unknown", "can_make", "candidates",
+                                          "blocked_by_unknown") if k in r})
+            if "pool_src" in r and not r.get("channels") and r.get("recipe"):
+                # 单条池子的净配方由几条并成（界面悬停显示组成）；design.json 里没存，按配方现查（只给界面，不写回 design.json）
+                mem = PM.members_of(r["device"], r["recipe"])
+                if len(mem) > 1:
+                    row["members"] = list(mem)
             row["key"] = P.device_key(r)
             row["confirm"] = conf.get("devices", {}).get(row["key"])
             rows.append(row)
@@ -531,16 +551,26 @@ class Api:
         fixes = P.load_fixes(name).get(base, {})
         out = []
         for it in items:
-            row = dict(it, recipes=DS._machine_recipes(it["device"].split("[")[0]), recipe_fix=(fixes.get("recipes") or {}).get(it.get("key")))
+            machine = it["device"].split("[")[0]
+            row = dict(it, recipes=DS._machine_recipes(machine), recipe_fix=(fixes.get("recipes") or {}).get(it.get("key")))
+            ends = it.get("links", [])
+            if it.get("kind") == "池子配方":
+                # 池子卡（审计第 3 项，2026-11-19）：这种池子的全部配方各自的原料、产物，界面勾选时现算「物品 n/格数」和出口提示，
+                # 不用每勾一下问一次后端；存的时候 project.save_fix 再校验一遍
+                from bpa import pool_model as PM
+                opts = [{"recipe": r, "ins": sorted(DS.inputs_of(r)), "outs": sorted(DS.outputs_of(r))} for r in PM.recipes(machine)]
+                row.update(options=opts, pool_fix=(fixes.get("pool_recipes") or {}).get(it.get("key")),
+                           fluid=sorted({k for o in opts for k in o["ins"] + o["outs"] if PM.is_fluid(k)}))
+                ends = it.get("ins", []) + it.get("outs", [])
             if img is not None:
                 cx, cy = it["c"]
-                pts = [cx, cy] + [t for l in it.get("links", []) for t in l["at"]]
+                pts = [cx, cy] + [t for l in ends for t in l["at"]]
                 x0, x1 = max(0, min(pts[0::2]) - 150), min(img.shape[1], max(pts[0::2]) + 150)
                 y0, y1 = max(0, min(pts[1::2]) - 150), min(img.shape[0], max(pts[1::2]) + 150)
                 s = min(1.6, 560 / max(x1 - x0, y1 - y0))
                 c = cv2.resize(img[y0:y1, x0:x1], None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC)
                 cv2.circle(c, (int((cx - x0) * s), int((cy - y0) * s)), int(60 * s), (30, 30, 230), 3)
-                for k, l in enumerate(it.get("links", []), 1):
+                for k, l in enumerate(ends, 1):  # 池子卡按「进来」「出去」的顺序标号，和卡片上的编号对得上
                     p = (int((l["at"][0] - x0) * s), int((l["at"][1] - y0) * s))
                     cv2.circle(c, p, 13, (30, 30, 230), -1)
                     cv2.putText(c, str(k), (p[0] - 6, p[1] + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -550,16 +580,59 @@ class Api:
             out.append(row)
         return out
 
-    def bpa_fix(self, name: str, base: str, kind: str, key: str, value: str | None = None) -> dict:
-        """作者修正（待确认里选的）：kind = feeds（哪条带子是进料 / none / unused）或 recipes（配方）；value 为空 = 撤销。
-        存进项目 fixes.json 后只重算这个据点的设计分析，返回新的结果。"""
+    # 池子行「改配方」卡片的说明：按配方从哪来分（design.pool_src_of 的取值）
+    _POOL_SRC_MSG = {"面板": "配方是从机身面板「池产物」读的。读错了的话勾上这台实际在跑的几条",
+                     "邻居推断": "配方是按相邻设备推断的，没核实。对着游戏看一眼，不对就勾上这台实际在跑的几条",
+                     "照抄同类": "配方表里没有这台，配方是照同类池子最常见的抄的，没核实。对着游戏看一眼，不对就勾上这台实际在跑的几条",
+                     "作者": "配方是你指定的；要改可以重新勾，或者撤销"}
+
+    def bpa_pool_card(self, name: str, base: str, key: str) -> dict:
+        """设计分析表池子行的「改配方」（审计第 3 项，2026-11-19）：按设备键返回和「池子配方」待确认同样的卡片数据（候选、11 条配方、
+        格数、裁图），但不进 pending，不算进「待确认 N 处」。这台已经有待确认卡（配方未知、作者答过）就用那张；没有的按行上的数据现拼：
+        皇帝产线武陵城扩容反应池 (1313,1114) 的两条配方是邻居推断的、(1768,1174) 是照抄同类的，作者要能从行上改，
+        又不能让皇帝武陵城的待确认数变。现拼的卡没有进出连线清单（design.json 没存），候选是行上的 candidates，进出看裁图。
+        current = 这台现在按哪几条原始配方算（复选框先勾上它们）。"""
+        from bpa import atomic, pool_model as PM, project as P
+        f = P.pdir(name) / "base" / base / "design.json"
+        if not f.exists():
+            return {"ok": False, "error": "还没算（先跑「据点拼合」）"}
+        d = atomic.read_json(f)
+        row = next((r for r in d.get("devices", []) if P.device_key(r) == key), None)
+        if row is None or row.get("device") not in PM.SLOTS:
+            return {"ok": False, "error": f"设计分析结果里没有这台池子：{key}（重算过的话刷新一下）"}
+        src = row.get("pool_src") or ""
+        it = next((p for p in d.get("pending") or [] if p.get("kind") == "池子配方" and p.get("key") == key), None)
+        if it is None:
+            fix = (P.load_fixes(name).get(base, {}).get("pool_recipes") or {}).get(key)
+            it = {"kind": "池子配方", "key": key, "device": f"{row['device']}[{row['c'][0]}, {row['c'][1]}]", "c": row["c"],
+                  "recipe": row.get("recipe") or "", "slots": PM.SLOTS[row["device"]],
+                  "msg": f"{row['device']}的{self._POOL_SRC_MSG.get(src, '配方来源不明，勾上这台实际在跑的几条')}。池子能同时跑几条（官方），"
+                         f"物品种类不超过 {PM.SLOTS[row['device']]} 格。",
+                  "ins": [], "outs": [], "combos": row.get("candidates") or [], "answer": fix, "applied": False}
+        if row.get("channels"):
+            current = [m for c in row["channels"] for m in (c.get("members") or [c["recipe"]])]
+        else:
+            current = list(PM.members_of(row["device"], row["recipe"])) if row.get("recipe") else []
+        card = self._pending_view(name, base, {"pending": [it]})[0]
+        card.update(current=current, src=src, from_row=True)
+        return {"ok": True, "card": card}
+
+    def bpa_fix(self, name: str, base: str, kind: str, key: str, value: str | list | None = None) -> dict:
+        """作者修正（待确认里选的）：kind = feeds（哪条带子是进料 / none / unused）或 recipes（配方），value 为空 = 撤销；
+        pool_recipes（池子同时跑的几条配方，2026-11-19）：value 是配方列表，[] = 这台没在用，只有 None 是撤销。
+        存进项目 fixes.json 后只重算这个据点的设计分析。走任务（2026-11-19）：返回 {ok}，进度在蓝图分析页的任务日志里，跑完界面自己刷新。
+        原来是同步接口，绕过了任务锁：和「据点拼合」任务、「保存并重算」同时跑时两边一起算设计分析、一起写 design.json（审计第 10 项）。"""
         from bpa import project as P
-        try:
-            P.save_fix(name, base, kind, key, value)
-            P.rerun_design(name, base)
-        except Exception as e:
-            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-        return self.bpa_design(name, base)
+        if kind not in ("feeds", "recipes", "pool_recipes"):  # 明显不对的参数当场报，不开任务
+            return {"ok": False, "error": f"不认识的修正类别：{kind}"}
+        if kind == "pool_recipes" and value is not None:
+            try:  # 放不下、不是这种池子的配方：当场报，不开任务（任务里 save_fix 还会再查一遍）
+                P._check_pool_fix(key, value)
+            except ValueError as e:
+                return {"ok": False, "error": str(e)}
+        if not (P.pdir(name) / "base" / base).exists():
+            return {"ok": False, "error": f"没有据点「{base}」的拼合结果（先跑「据点拼合」）"}
+        return self._start("bpa", self._bpa_fix, name, base, kind, key, value, log_kind=FIX_LOG_KIND)
 
     def bpa_confirm(self, name: str, base: str, kind: str, entries: dict) -> dict:
         """作者确认（任务计划第 1 项）：kind = devices / links；entries = {键: {verdict: ok/wrong, actual, note} 或 None 撤销}。"""
@@ -592,13 +665,9 @@ class Api:
         return {"ok": True, "groups": rows}
 
     def bpa_label_gates(self, name: str, labels: dict) -> dict:
-        """作者标图标组的形态/名字：{组号: {state: 液/气/固, item: 名字}}。存进项目图标库，重算据点拼合的图。"""
-        from bpa import project as P
-        try:
-            P.label_gate_groups(name, labels)
-            return {"ok": True}
-        except Exception as e:
-            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        """作者标图标组的形态/名字：{组号: {state: 液/气/固, item: 名字}}。存进项目图标库，重新跑据点拼合。
+        走任务（2026-11-19）：重新拼合要几十秒到一两分钟，原来同步跑、没有进度，双击「保存并重算」会两次一起算（审计第 10 项）。"""
+        return self._start("bpa", self._bpa_label_gates, name, labels)
 
     def bpa_inputs(self, name: str, base: str) -> dict:
         from bpa import project as P
@@ -609,6 +678,9 @@ class Api:
 
     def bpa_save_inputs(self, name: str, base: str, marks: list[dict], stale: list[dict] | None = None) -> dict:
         from bpa import project as P
+        if self._job.state == "running" and self._job.kind == "bpa":
+            # 拼合任务会按新拼合图改写 inputs.json（_rebase_inputs），这时再存会互相盖掉（2026-11-19）；界面也会挡，这里是保险
+            return {"ok": False, "error": "有蓝图分析任务在跑，等它跑完再保存"}
         try:
             return {"ok": True, "bad_items": P.save_inputs(name, base, marks, stale)}
         except Exception as e:
@@ -671,6 +743,31 @@ class Api:
         P.fit_bases(name, log=print)
         job.result = P.status(name)
 
+    def _bpa_fix(self, job: Job, name: str, base: str, kind: str, key: str, value: str | list | None) -> None:
+        from bpa import project as P
+        job.step = "记下修正"
+        P.save_fix(name, base, kind, key, value)
+        if isinstance(value, list):  # 池子配方：[] 是「这台没在用」，不是撤销（2026-11-19）
+            what = f"{len(value)} 条配方同时跑：" + "；".join(value) if value else "这台没在用"
+        else:
+            what = value or "撤销"
+        print(f"已记下：{base} {key} → {what}")
+        if job.cancel:  # 设计分析一旦开始算就停不下来（纯计算，中间没有取消点），只能在开始前停
+            print("已取消：修正已经存下，设计分析还没按它重算（下次据点拼合或再选一次时会按它算）")
+            return
+        job.step = f"重算设计分析：{base}"
+        print(f"== 按修正重算「{base}」的设计分析（程序启动后第一次算要比图标，大据点一两分钟）")
+        sm = P.rerun_design(name, base)
+        print(f"   设计分析：{sm['devices']} 台，" + "、".join(f"{k} {v}" for k, v in sm["states"].items() if v))
+        job.result = {"base": base, "summary": sm}
+
+    def _bpa_label_gates(self, job: Job, name: str, labels: dict) -> None:
+        from bpa import project as P
+        job.step = "保存图标组并重新拼合"
+        print(f"== 准入口图标组：标了 {len(labels)} 组，存进项目图标库后重新跑据点拼合")
+        P.label_gate_groups(name, labels, log=print)
+        job.result = P.status(name)
+
     def _survey(self, job: Job, name: str, regions: list[str] | None) -> None:
         import blueprint_tools as bt
         import navigate
@@ -711,7 +808,8 @@ class Api:
         job.result = {"name": name, "brief": str(brief_path), "rows": n, "merge": merge}
         print(f"已把 {brief_path.name} {'合并进' if merge else '存为'}「{name}」的参考简报（{n} 行）")
 
-    def _start(self, kind, fn, *args) -> dict:
+    def _start(self, kind, fn, *args, log_kind=None) -> dict:
+        """log_kind 只改日志文件名里的类型（bpa_fix 用 FIX_LOG_KIND）；job.kind 不变，界面和 bpa_save_inputs 都按 job.kind 判断。"""
         with self._lock:
             if self._job.state == "running":
                 return {"ok": False, "error": "已有任务在跑"}
@@ -728,10 +826,11 @@ class Api:
         def run():
             orig = sys.stdout
             stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(job.started))
-            log_path = DEBUG / f"{LOG_PREFIX}{REPORT_KIND.get(kind, kind)}_{stamp}.log"
+            lk = log_kind or REPORT_KIND.get(kind, kind)
+            log_path = DEBUG / f"{LOG_PREFIX}{lk}_{stamp}.log"
             n = 2
             while log_path.exists():  # 同一秒开了两个任务：别覆盖
-                log_path = DEBUG / f"{LOG_PREFIX}{REPORT_KIND.get(kind, kind)}_{stamp}_{n}.log"
+                log_path = DEBUG / f"{LOG_PREFIX}{lk}_{stamp}_{n}.log"
                 n += 1
             try:
                 DEBUG.mkdir(parents=True, exist_ok=True)
@@ -1015,7 +1114,7 @@ class Api:
         from bpa import project as P
         try:
             out = DEBUG / "反馈包" / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
-            logs = sorted(DEBUG.glob(f"{LOG_PREFIX}*.log"), key=lambda p: p.stat().st_mtime)[-8:]
+            logs = feedback_logs(DEBUG)
             files = P.export_feedback(name, out, raw=bool(raw), logs=logs, version=self.version()["version"], log=lambda *_: None)
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
@@ -1181,6 +1280,8 @@ def attach_near(report: dict, near_rows: dict[str, list], plan: bp.Blueprint) ->
                         a["counts"]["正常"] = a["counts"].get("正常", 0) + 1
                     else:
                         ex = near_patrol.design_expect(plan.playbook, a["area"], dv.get("name", ""), (dv.get("x", 0), dv.get("y", 0)))                             if dv.get("near") and not v.get("title") else None
+                        if ex is not None and str(ex.get("state", "")).startswith("配方未知"):
+                            ex = None  # 配方未知的行开工率没算（0.0 不是算出来的）：不当参考（2026-11-19；importer 导入时已经跳过，这里再挡一次）
                         if ex is not None and float(ex.get("rate", 1)) < 0.995:  # 导入的蓝图分析算出它设计上就跑不满，但作者没确认：只加说明、不改判
                             v["reason"] = f"{v['reason']}（蓝图分析算的设计开工率 {float(ex['rate']):.0%}「{ex.get('state', '')[:12]}」，作者没确认，供参考）"
                         keep.append(v)

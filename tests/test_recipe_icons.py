@@ -21,6 +21,8 @@ sys.path[:0] = [str(ROOT / "src"), str(ROOT / "src" / "tools")]
 from bpa import pipenet as PN  # noqa: E402
 from bpa import recipe_icons as RI  # noqa: E402
 
+from _testkit import run, skip  # noqa: E402
+
 DATA = ROOT / "tests" / "data" / "recipe_icons"
 
 
@@ -118,7 +120,7 @@ def products(machine: str) -> set:
 
 def test_upright_icon_is_recognised():
     if not has_icons():
-        return
+        skip("没有 AKEData 物品图标缓存（.cache）")
     top = RI.rank_products(icon("rot0_天有洪炉_息壤.png"), products("天有洪炉"), [0])
     assert top[0][0] == "息壤" and top[0][1] >= RI.SURE_SCORE and top[0][1] - top[1][1] >= RI.SURE_MARGIN, top[:2]
 
@@ -126,7 +128,7 @@ def test_upright_icon_is_recognised():
 def test_rotated_icons_need_turning_back():
     """应龙关转了 180°、武陵城转了 90°：按蓝图的旋转角转回来才认得对；不转回来两张都认成别的。"""
     if not has_icons():
-        return
+        skip("没有 AKEData 物品图标缓存（.cache）")
     for fn, machine, rot, want, wrong in (("rot180_固气转化机_气态赤铜.png", "固气转化机", 180, "气态赤铜", "气态灼铜"),
                                          ("rot90_配件机_赤铜零件.png", "配件机", 90, "赤铜零件", "灼铜零件")):
         ic = icon(fn)
@@ -138,7 +140,7 @@ def test_rotated_icons_need_turning_back():
 def test_lookalike_pair_is_not_called_sure():
     """反例：景玉谷那台封装机做的是低容武陵电池，图标认成中容（0.81 对 0.63）。两种电池长得像，这种差距不能算认准。"""
     if not has_icons():
-        return
+        skip("没有 AKEData 物品图标缓存（.cache）")
     top = RI.rank_products(icon("rot0_封装机_低容武陵电池.png"), products("封装机"), [0])
     assert {top[0][0], top[1][0]} == {"中容武陵电池", "低容武陵电池"}, top[:2]
     assert top[0][1] - top[1][1] < RI.SURE_MARGIN, top[:2]
@@ -150,7 +152,7 @@ def test_derive_on_emperor_line():
     arch = ROOT / "data" / "blueprints" / "1.6皇帝产线" / "ledger"
     bd = ROOT / "debug" / "bpa" / "实测-皇帝产线" / "base" / "景玉谷"
     if not has_icons() or not (bd / "composite.png").exists() or not (arch / "景玉谷_recipes.json").exists():
-        return
+        skip("没有 AKEData 物品图标缓存，或者本机没有实测项目景玉谷")
     from bpa import design as D
     truth = {(d["name"], d["x"], d["y"]): d.get("recipe") or "" for d in json.loads((arch / "景玉谷_recipes.json").read_text(encoding="utf-8"))["devices"]}
     led = json.loads((arch / "景玉谷.json").read_text(encoding="utf-8"))
@@ -164,7 +166,4 @@ def test_derive_on_emperor_line():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过" + ("" if has_icons() else "（没有物品图标缓存，认图标的几条跳过了）"))
+    sys.exit(run([v for k, v in list(globals().items()) if k.startswith("test_")]))

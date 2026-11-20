@@ -281,7 +281,12 @@ ul.plain { margin: 0; padding-left: 18px; color: #c9d0d6; line-height: 1.8; font
 .pend-msg { margin-bottom: 6px; }
 .pend-opts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pend-rec { margin-top: 8px; font-size: 12px; }
-#bpaDsPending.busy { opacity: .5; pointer-events: none; }
+/* 池子配方卡（2026-11-19）：进来 / 出去两列，配方复选框一行几个 */
+.pend-io { display: flex; flex-wrap: wrap; gap: 4px 24px; font-size: 12px; }
+.pend-io ol { margin: 2px 0 4px 18px; padding: 0; }
+.pend-pool-list { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 8px; font-size: 12px; }
+.pend-pool-opt { white-space: nowrap; }
+#bpaDsPending.busy, #bpaDsRowCard.busy { opacity: .5; pointer-events: none; }
 .main .bpa-table input.bad { border-color: var(--bad); color: var(--bad); }
 .bpa-table .bad { color: var(--warn); }
 .bpa-table input:not([type=checkbox]) { padding: 3px 6px; }
@@ -301,6 +306,9 @@ ul.plain { margin: 0; padding-left: 18px; color: #c9d0d6; line-height: 1.8; font
 .bpa-dstable { max-height: 520px; overflow: auto; }
 .bpa-table .tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 11px; background: #eef1f6; color: #556; }
 .bpa-table .tag.inf, .bpa-table b.inf { color: #2459d6; }
+/* 池子（2026-11-19）：配方是推断 / 照抄同类的标签醒目；并行池子每条配方一行 */
+.bpa-table .tag.guess { background: #fff1d6; color: #b25e00; font-weight: 700; }
+.bpa-table .ds-ch { white-space: nowrap; }
 .bpa-table .ds-basis { font-size: 11.5px; line-height: 1.45; max-width: 520px; }
 
 .ds-conf { white-space: nowrap; font-size: 12px; }

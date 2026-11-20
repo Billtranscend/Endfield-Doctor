@@ -1,5 +1,6 @@
 """蓝图分析模式的离线单元测试（不需要游戏、不需要截图数据）。
-运行：.venv\\Scripts\\python.exe -m pytest tests/test_bpa.py -q
+运行：.venv\\Scripts\\python.exe tests/test_bpa.py（环境里没装 pytest；2026-11-19 以前这里写的是 pytest，
+文件又没有运行入口，直接运行什么都不做、退出码 0，20 条一直空跑）
 """
 
 import sys
@@ -90,8 +91,22 @@ def test_pick_partner_inlet_line_fades_before_outlet():
     # 武陵城2号 实测：入口的线在出口端渐隐，端点比出口早停 137 px，仍应配上
     r = V.pick_partner([1567, 1632], [463, 1207], "暗管入口", [{"name": "暗管出口", "p": [336, 1156]}])
     assert r is not None and r[1] == 0
-    # 反方向（出口点出去）不放宽：伙伴在端点外 137 px 不配
-    assert V.pick_partner([336, 1156], [1440, 1581], "暗管出口", [{"name": "暗管入口", "p": [1567, 1632]}]) is None
+    # 反方向（出口点出去）：原来不放宽、这里断言配不上。0.10.8 起（issue #1 第二轮 F，武陵城左下对角那对出口端读到 1610/1816）
+    # 改成出口这边先按原窗口找、一个都没有再按距离放宽，所以端点外 137 px 的伙伴现在也配上。这条断言 0.10.8 没跟着改，
+    # 文件又没有运行入口，一直空跑到 2026-11-19 才发现
+    r = V.pick_partner([336, 1156], [1440, 1581], "暗管出口", [{"name": "暗管入口", "p": [1567, 1632]}])
+    assert r is not None and r[1] == 0
+    # 原意还在：出口这边「先按原窗口」——端点外 50 px 和 150 px 各有一个入口时取近的（原窗口里只有它）；
+    # 同样的位置从入口点出去，窗口本来就放宽，取远的
+    s, e = [336, 1156], [1440, 1581]
+    near, far = [1487, 1599], [1580, 1635]  # 沿线在端点外 50、150 px
+    r = V.pick_partner(s, e, "暗管出口", [{"name": "暗管入口", "p": near}, {"name": "暗管入口", "p": far}])
+    assert r is not None and r[1] == 0, r
+    r = V.pick_partner(s, e, "暗管入口", [{"name": "暗管出口", "p": near}, {"name": "暗管出口", "p": far}])
+    assert r is not None and r[1] == 1, r
+    # 反例：端点外 300 px 超过按距离放宽的余量（0.16×1483+20 ≈ 257），两个方向都不配
+    assert V.pick_partner(s, e, "暗管出口", [{"name": "暗管入口", "p": [1720, 1689]}]) is None
+    assert V.pick_partner(s, e, "暗管入口", [{"name": "暗管出口", "p": [1720, 1689]}]) is None
 
 
 def test_ray_end_skips_highlight_box_gap():
@@ -319,3 +334,15 @@ def test_placement_drops_generic_port_duplicates():
     # 只剩分不清的「仓库口」（具体口被删）：它补上缺口，不报缺
     r = PL.check_base(bps, tf, {"devices": devs + [dup]}, canvas)
     assert not r["bps"]["bp"]["diff"], r["bps"]["bp"]["diff"]
+
+
+if __name__ == "__main__":
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    ok = 0
+    for f in tests:
+        try:
+            f(); ok += 1
+        except AssertionError as e:
+            print("FAIL", f.__name__, str(e)[:300])
+    print(f"{ok}/{len(tests)} 通过")
+    sys.exit(0 if ok == len(tests) else 1)

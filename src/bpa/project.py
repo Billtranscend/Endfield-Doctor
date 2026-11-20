@@ -33,6 +33,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from paths import ROOT
+from . import atomic
 from . import inputs as INP
 from . import logistics as LG
 from . import vision as V
@@ -46,12 +47,13 @@ def pdir(name: str) -> Path:
 
 
 def _jload(p: Path, default=None):
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else default
+    return atomic.read_json(p) if p.exists() else default  # 撞上别的线程正在换文件时短等再读（见 atomic.read_text）
 
 
 def _jsave(p: Path, obj) -> None:
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
+    # 原子写（2026-11-19）：拼合任务写 inputs.json、gates.json、logistics.json 时界面别的线程照样在读，
+    # 原来先清空再写，读到一半会拿到空文件（见 atomic.py）
+    atomic.write_json(p, obj, mkdir=True)
 
 
 # ------------------------------------------------------------------ 项目
@@ -362,8 +364,9 @@ def group_gates(name: str, log=print) -> list[dict]:
     return gates
 
 
-def label_gate_groups(name: str, labels: dict) -> None:
-    """作者按图标组标形态/名字：{组号: {state: 液/气/固, item: 名字}}。存进项目图标库后重算。"""
+def label_gate_groups(name: str, labels: dict, log=lambda *_: None) -> None:
+    """作者按图标组标形态/名字：{组号: {state: 液/气/固, item: 名字}}。存进项目图标库后重算。
+    log：重新拼合的进度（界面里走任务时接到任务日志；默认不打印，和原来一样）。"""
     d = pdir(name)
     for k, v in labels.items():
         st = v.get("state")
@@ -375,7 +378,7 @@ def label_gate_groups(name: str, labels: dict) -> None:
         LG.forget_item(ic, d / "items")
         if LG.lookup_item(ic)[0:2] != (st, nm):  # 和全局图标库一样的不用存进项目库（免得以后全局库补了名字，项目库还压着旧的）
             LG.save_item(ic, st, nm, d / "items")
-    fit_bases(name, log=lambda *_: None)
+    fit_bases(name, log=log)
 
 
 def _gate_sheet(gates, icons, meta) -> Image.Image:
@@ -470,6 +473,8 @@ def fit_bases(name: str, log=print) -> None:
                 sm = dr["summary"]
                 log(f"   设计分析：{sm['devices']} 台，" + "、".join(f"{k} {v}" for k, v in sm["states"].items() if v)
                     + f"；推断连线 {sm['inferred_links']} 条，来料经过推断连线的 {sm['via_inferred']} 台")
+                for w in sm.get("warnings", []):
+                    log(f"   注意：{w}")
             except Exception as e:
                 log(f"   设计分析出错：{type(e).__name__}: {e}")
         log(f"== {base}：拼合 {len(items)} 张，画布 {canvas.shape[1] / V.CELL:.0f}×{canvas.shape[0] / V.CELL:.0f} 格；"
@@ -746,20 +751,74 @@ def load_fixes(name: str) -> dict:
     return _jload(pdir(name) / "fixes.json", {}) or {}
 
 
-def save_fix(name: str, base: str, kind: str, key: str, value: str | None) -> None:
-    """kind = feeds / recipes；value 为空 = 撤销。"""
-    if kind not in ("feeds", "recipes"):
+def save_fix(name: str, base: str, kind: str, key: str, value: str | list | None) -> None:
+    """kind = feeds / recipes（value 是字符串，空串或 None = 撤销）；pool_recipes（池子同时跑的几条原始配方，2026-11-19 审计第 3 项）：
+    value 是配方列表，[] = 这台没在用（合法值，不是撤销），只有 None 才撤销。
+    池子的两段互斥、后存的为准：给池子存 recipes 一律转存成 pool_recipes=[这一条]，存 pool_recipes 时删掉同一台老的 recipes[键]，
+    撤销时两段一起删（一台池子只认一种说法）。
+    配方（recipes / pool_recipes）和原来存的不一样时，这台的作者确认作废：原来的「对」针对的是旧配方算出的结果。"""
+    if kind not in ("feeds", "recipes", "pool_recipes"):
         raise ValueError(f"不认识的修正类别：{kind}")
+    from . import pool_model as PM
+    pool = key.split("@")[0] in PM.SLOTS
+    if kind == "recipes" and pool:
+        # 2026-11-19：「没有进料」卡的单条下拉以前存进 recipes[键]，而 design 只要有 pool_recipes 就跳过它——作者选了、卡上显示已选，
+        # 结果一点不变；反过来存 recipes 时也不删 pool_recipes。转存成 pool_recipes 后两段只剩一段，后存的说了算
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{kind} 修正只能是字符串：{value!r}")
+        kind, value = "pool_recipes", ([value] if value else None)
+    if kind == "pool_recipes":
+        undo = value is None
+        if not undo:
+            _check_pool_fix(key, value)
+    else:
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{kind} 修正只能是字符串：{value!r}")
+        undo = not value
     if kind == "feeds" and value and not (value in ("none", "unused") or value.startswith("to:")):
         raise ValueError(f"进料修正只能是 to:<设备键> / none / unused：{value}")
     allf = load_fixes(name)
+
+    def recipe_of():  # 这台现在按作者说的是哪几条配方（池子：pool_recipes 优先，再看老的 recipes）
+        bf = allf.get(base) or {}
+        if pool and key in (bf.get("pool_recipes") or {}):
+            return bf["pool_recipes"][key]
+        old = (bf.get("recipes") or {}).get(key)
+        return ([old] if pool else old) if old else None
+    before = recipe_of()
     sect = allf.setdefault(base, {}).setdefault(kind, {})
-    if value:
-        sect[key] = value
+    if not undo:
+        sect[key] = list(value) if kind == "pool_recipes" else value
+        if kind == "pool_recipes":
+            (allf[base].get("recipes") or {}).pop(key, None)
     else:
         sect.pop(key, None)
+        if kind == "pool_recipes":
+            (allf[base].get("recipes") or {}).pop(key, None)
     allf["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     _jsave(pdir(name) / "fixes.json", allf)
+    if kind != "feeds" and recipe_of() != before:
+        # 2026-11-19：表格上「改配方」就在「✓ 对」旁边。皇帝武陵城扩容反应池 (1346,1362) 先点「对」、再改配方，重算成没料 0%，
+        # 「对」还留着的话导入会把这个作者没看过的新结果当成设计如此写进 device_designs，巡检就不报了。只作废这一台
+        allc = load_confirm(name)
+        if (allc.get(base) or {}).get("devices", {}).pop(key, None) is not None:
+            allc["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _jsave(pdir(name) / "confirm.json", allc)
+
+
+def _check_pool_fix(key: str, value) -> None:
+    """池子配方的服务端校验（界面上也挡了一遍，这里再挡：手改的请求、旧界面）。设备键「扩容反应池@x,y」里 @ 前面是机器名，
+    必须是反应池 / 扩容反应池；每条都得是这种池子的配方、不重复、物品种类不超格（pool_model.check）。"""
+    from . import pool_model as PM
+    machine = key.split("@")[0]
+    if machine not in PM.SLOTS:
+        raise ValueError(f"只有反应池、扩容反应池能多选配方：{key}")
+    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+        raise ValueError(f"池子配方要是配方列表：{value!r}")
+    if value:
+        ck = PM.check(machine, value)
+        if not ck["ok"]:
+            raise ValueError("；".join(ck["why"]))
 
 
 def rerun_design(name: str, base: str) -> dict:
@@ -776,7 +835,7 @@ def confirm_progress(name: str, base: str) -> dict:
     """这个据点设计分析里多少台设备、多少条推断连线确认过（只数现在 design.json 里还有的）。"""
     dj = _jload(pdir(name) / "base" / base / "design.json", {}) or {}
     c = load_confirm(name).get(base, {})
-    dkeys = [device_key(r) for r in dj.get("devices", [])]
+    dkeys = [device_key(r) for r in dj.get("devices", []) if not r.get("recipe_unknown")]  # 配方未知的行没有可确认的结果（2026-11-19），不算进分母
     lkeys = [link_key(lk) for lk in dj.get("inferred_links", [])]
     dv, lv = c.get("devices", {}), c.get("links", {})
     return {"devices": [sum(1 for k in dkeys if k in dv), len(dkeys)], "links": [sum(1 for k in lkeys if k in lv), len(lkeys)],
@@ -786,14 +845,21 @@ def confirm_progress(name: str, base: str) -> dict:
 # ------------------------------------------------------------------ 反馈包
 FEEDBACK_LIMIT = 24 * 1024 * 1024  # GitHub issue 附件单个 25 MB：留 1 MB 余量
 _FB_IMAGES = (".png", ".jpg", ".jpeg")
+# 每张蓝图读出来的结构文件（bp/<蓝图>/ 下）：设备一览、尺寸、暗管和供电桩、暗管配对、物流件。据点拼合、设计分析、管网都要读，
+# 导出 .bpa.zip 和反馈包共用这一份清单。mosaic.png（拼好的预览）另算：它是图，只有蓝图格子，没有游戏界面
+BP_JSON = ("devices.json", "size.json", "anchors.json", "links.json", "logistics.json")
 
 
 def feedback_groups(name: str, raw: bool = False, logs: list[Path] | None = None) -> list[tuple[str, list[tuple[Path, str]]]]:
     """反馈包里放什么：[(组名, [(源文件, 包内路径)])]。
-    默认只放重算要用的：项目级的 json（输入端、修正、确认、准入口分组）、每个据点的底账、拼合图和全部 json、最近的任务日志。
-    标注图（*.jpg）都能从这些重新生成，不放。**不放游戏原始截图**：读蓝图的帧、扫底账的逐屏图很大（皇帝产线 1.1 GB），
+    默认只放重算要用的：项目级的 json（输入端、修正、确认、准入口分组）、每个据点的底账、拼合图和全部 json、
+    每张蓝图的结构文件（BP_JSON）和拼好的预览 mosaic.png、最近的任务日志。
+    标注图（*.jpg）都能从这些重新生成，不放。**不放游戏原始截图**：读蓝图的帧、点暗管的截图、扫底账的逐屏图很大（皇帝产线 1.1 GB），
     而且截图里可能带 UID；raw=True 才放（排查读图 / 拼接问题时用）。
-    2026-11-14 issue #1：来回四轮里三轮是在跟作者要文件；用户定：做成设置里一键导出。"""
+    2026-11-14 issue #1：来回四轮里三轮是在跟作者要文件；用户定：做成设置里一键导出。
+    2026-11-19：原来 bp/ 整个算「原始截图」不放，可设计分析和管网的暗管配对要读 bp/<蓝图>/links.json——别人的武陵城反馈包里没有，
+    本地重算时暗管配对是 0 对，作者机器上有没有也看不出来。结构文件很小（皇帝产线 9 张蓝图共 0.1 MB），mosaic 共 13 MB，默认带上；
+    frames/、link_shots/ 这些游戏截图仍然只在 raw 时带。"""
     proj = load(name)
     d = pdir(name)
     g0 = [(d / f, f) for f in ("project.json", "inputs.json", "fixes.json", "confirm.json", "gates.json", "gate_icons.png") if (d / f).exists()]
@@ -810,12 +876,18 @@ def feedback_groups(name: str, raw: bool = False, logs: list[Path] | None = None
             fs = [(f, f"base/{base}/{f.name}") for f in sorted(bd.iterdir()) if f.suffix == ".json" or f.name == "composite.png"]
             if fs:
                 groups.append((base, fs))
+    bpd = d / "bp"
+    fs = [(one / f, f"bp/{one.name}/{f}") for one in (sorted(p for p in bpd.iterdir() if p.is_dir()) if bpd.is_dir() else [])
+          for f in (*BP_JSON, "mosaic.png") if (one / f).is_file()]
+    if fs:
+        groups.append(("蓝图", fs))
+    took = {f for _, g in groups for f, _ in g}
     if raw:
         for sub, label in (("bp", "读蓝图原图"), ("ledger_scan", "扫底账原图")):
             root = d / sub
             if root.is_dir():
                 for one in sorted(p for p in root.iterdir() if p.is_dir()):
-                    fs = [(f, f"{sub}/{one.name}/{f.relative_to(one).as_posix()}") for f in sorted(one.rglob("*")) if f.is_file()]
+                    fs = [(f, f"{sub}/{one.name}/{f.relative_to(one).as_posix()}") for f in sorted(one.rglob("*")) if f.is_file() and f not in took]
                     if fs:
                         groups.append((f"{label}-{one.name}", fs))
     return groups
@@ -880,7 +952,7 @@ def export_feedback(name: str, out_dir: str | Path, raw: bool = False, logs: lis
         dest = out_dir / f"反馈包_{name}_{stamp}_{k}of{n}_{it['group']}.zip"
         readme = "\n".join([f"终末地基建诊断 反馈包（第 {k} 个，共 {n} 个；每个都能单独解压）", f"项目：{name}", f"程序版本：{version or '未知'}",
                             f"导出时间：{time.strftime('%Y-%m-%d %H:%M:%S')}", f"这一包：{it['group']}，{len(it['files'])} 个文件",
-                            "内容：" + ("含游戏原始截图（可能带 UID，发之前请自己看一眼）" if raw else "不含游戏原始截图，只有拼合图和分析数据"),
+                            "内容：" + ("含游戏原始截图（可能带 UID，发之前请自己看一眼）" if raw else "不含游戏原始截图，只有拼合图、蓝图预览拼图（mosaic.png）和分析数据"),
                             "", *it["files"]])
         with zipfile.ZipFile(it["tmp"], "a", zipfile.ZIP_DEFLATED) as z:
             z.writestr("说明.txt", readme)
@@ -969,7 +1041,7 @@ def export(name: str, dest: str | Path, raw_quality: int = 92, log=print, lite: 
                     z.write(bd / f, f"{base}/annotated/{f}" if f.endswith(".jpg") else f"{base}/{f}")
             for bp in names:
                 b = d / "bp" / bp
-                for f in ("devices.json", "size.json", "anchors.json", "links.json", "logistics.json"):
+                for f in BP_JSON:
                     if (b / f).exists():
                         z.write(b / f, f"{base}/blueprints/{bp}/{f}")
                 if (b / "mosaic.png").exists():

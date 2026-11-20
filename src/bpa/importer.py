@@ -32,8 +32,8 @@ def _j(z: zipfile.ZipFile, name: str, default=None):
 
 
 def _dump(p: Path, obj) -> None:
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
+    from . import atomic  # 和 project._jsave 一样原子写（2026-11-19）：导入时巡检页可能正在读同一个档案的 ledger/、playbook.json
+    atomic.write_json(p, obj, mkdir=True)
 
 
 def is_bpa_zip(path: str | Path) -> bool:
@@ -57,9 +57,20 @@ def expectations(design: dict, confirm: dict, area: str) -> dict:
     dev_c = (confirm or {}).get("devices", {})
     out = {"device_designs": [], "overflow": {}, "limits": {}, "unconfirmed": [], "wrong": []}
     for r in design.get("devices", []):
+        if r.get("state", "").startswith("配方未知"):
+            continue  # 2026-11-19：配方未知的行开工率没算（记 0.0），作者点了「对」也不能拿它压巡检，也不当参考（不然近景巡检写「设计开工率 0%」）
         c = dev_c.get(device_key(r))
         rate, state = float(r.get("rate") or 0), r.get("state", "")
         base = {"area": area, "name": r["device"], "x": r["x"], "y": r["y"]}
+        if state.startswith("没在用"):
+            # 作者在池子配方卡上说「这台没在用」（2026-11-19）：开工率 0.0 不是算出来的。作者再点「对」才当设计内空闲压巡检；
+            # 没点的不进 unconfirmed（不然近景巡检写「设计开工率 0%」当参考）
+            if c is None:
+                continue
+            if c["verdict"] == "ok":
+                out["device_designs"].append(dict(base, kinds=["idle"], note="作者说没在用" + (f"：{c['note']}" if c.get("note") else ""),
+                                                  rate=0.0, source="bpa"))
+                continue
         if c is None:
             out["unconfirmed"].append(dict(base, rate=rate, state=state, recipe=r.get("recipe", "")))
             continue

@@ -110,8 +110,83 @@ def test_fixes_file_round_trip():
             P.BPA = old
 
 
+def test_pool_recipes_fix():
+    """池子配方（fixes.json 的 pool_recipes，2026-11-19 审计第 3 项）：值是原始配方列表；[] = 这台没在用（合法值，不是撤销），
+    只有 None 才撤销；存的时候删掉同一台老的 recipes[键]；不是这种池子的配方、重复、超格、写到非池子上都拒绝。
+    feeds / recipes 两类仍用空串撤销；只有 recipes 的老文件照常读。
+    2026-11-19：配方变了，这一台的作者确认作废（别的设备的确认留着；存的和原来一样就不动）；给池子存 recipes 转存成
+    pool_recipes=[那一条]（两段互斥、后存的为准），撤销 pool_recipes 时老的 recipes 一起删。"""
+    yz, jc = "清水×1 + 芽针粉末×1 → 芽针溶液×1（2秒）", "清水×1 + 锦草粉末×1 → 锦草溶液×1（2秒）"
+    key = "扩容反应池@1570,1196"
+    with tempfile.TemporaryDirectory() as td:
+        old = P.BPA
+        P.BPA = Path(td) / "bpa"
+        try:
+            bd = P.pdir("项目") / "base" / "某据点"
+            bd.mkdir(parents=True)
+            (P.pdir("项目") / "fixes.json").write_text(json.dumps({"某据点": {"recipes": {key: yz}}}, ensure_ascii=False), encoding="utf-8")
+            assert D.load_fixes(bd) == {"recipes": {key: yz}}  # 只有 recipes 的老文件
+            def devs_confirmed():
+                return set(json.loads((P.pdir("项目") / "confirm.json").read_text(encoding="utf-8"))["某据点"]["devices"])
+
+            def confirm_both():
+                conf = {"某据点": {"devices": {key: {"verdict": "ok"}, "精炼炉@1,1": {"verdict": "ok"}}}}
+                (P.pdir("项目") / "confirm.json").write_text(json.dumps(conf, ensure_ascii=False), encoding="utf-8")
+            confirm_both()
+            P.save_fix("项目", "某据点", "pool_recipes", key, [yz])  # 和老的 recipes[键] 是同一条：配方没变，确认不动
+            assert devs_confirmed() == {key, "精炼炉@1,1"}
+            P.save_fix("项目", "某据点", "pool_recipes", key, [yz, jc])
+            fx = D.load_fixes(bd)
+            assert fx["pool_recipes"] == {key: [yz, jc]} and fx["recipes"] == {}, fx  # 老的 recipes[键] 删掉
+            assert devs_confirmed() == {"精炼炉@1,1"}  # 配方变了：这台的「对」作废，别的留着
+            confirm_both()
+            P.save_fix("项目", "某据点", "pool_recipes", key, [])
+            assert D.load_fixes(bd)["pool_recipes"] == {key: []}  # 没在用：存成 []，不是撤销
+            assert devs_confirmed() == {"精炼炉@1,1"}
+            P.save_fix("项目", "某据点", "pool_recipes", key, None)
+            assert D.load_fixes(bd)["pool_recipes"] == {}
+            # 给池子存老的 recipes（「没有进料」卡的单条下拉、旧界面）：转存成 pool_recipes=[那一条]，不留两段
+            P.save_fix("项目", "某据点", "pool_recipes", key, [yz, jc])
+            P.save_fix("项目", "某据点", "recipes", key, jc)
+            fx = D.load_fixes(bd)
+            assert fx["pool_recipes"] == {key: [jc]} and key not in fx["recipes"], fx
+            P.save_fix("项目", "某据点", "recipes", key, "")  # 撤销
+            assert D.load_fixes(bd)["pool_recipes"] == {}
+            (P.pdir("项目") / "fixes.json").write_text(json.dumps({"某据点": {"recipes": {key: yz}}}, ensure_ascii=False), encoding="utf-8")
+            P.save_fix("项目", "某据点", "pool_recipes", key, None)  # 撤销池子配方：老文件里的 recipes[键] 一起删
+            assert D.load_fixes(bd)["recipes"] == {}
+            try:
+                P.save_fix("项目", "某据点", "recipes", key, "芽针×1 → 碳块×2（2秒）")  # 转存后照池子配方查：不是这种池子的配方
+                assert False
+            except ValueError:
+                pass
+            P.save_fix("项目", "某据点", "recipes", "精炼炉@1,1", yz)
+            P.save_fix("项目", "某据点", "recipes", "精炼炉@1,1", "")  # 空串对 recipes 仍是撤销
+            assert D.load_fixes(bd)["recipes"] == {}
+            bad = [("精炼炉@1,1", [yz]),                                               # 不是池子
+                   (key, ["芽针×1 → 碳块×2（2秒）"]),                                  # 不是这种池子的配方
+                   (key, [yz, yz]),                                                    # 重复
+                   ("反应池@1,1", [yz, "赤铜粉末×1 + 沉积酸×1 → 赤铜溶液×1（2秒）"]),     # 反应池 5 格，6 种物品
+                   (key, yz)]                                                          # 不是列表
+            for k, v in bad:
+                try:
+                    P.save_fix("项目", "某据点", "pool_recipes", k, v)
+                    assert False, (k, v)
+                except ValueError:
+                    pass
+            assert D.load_fixes(bd)["pool_recipes"] == {}
+            try:
+                P.save_fix("项目", "某据点", "recipes", key, [yz])  # recipes 仍只收字符串
+                assert False
+            except ValueError:
+                pass
+        finally:
+            P.BPA = old
+
+
 def test_feedback_pack_splits_under_the_limit():
-    """反馈包：每个压缩包不超过上限、都能单独解压、带说明；默认不带游戏原始截图；小的并成一个。"""
+    """反馈包：每个压缩包不超过上限、都能单独解压、带说明；默认不带游戏原始截图；小的并成一个。
+    2026-11-19：每张蓝图的结构文件（暗管配对 links.json 等）和 mosaic.png 默认带上，frames/、link_shots/ 只在 raw 时带。"""
     import zipfile
     with tempfile.TemporaryDirectory() as td:
         old = P.BPA
@@ -127,6 +202,11 @@ def test_feedback_pack_splits_under_the_limit():
                 (bd / "check.jpg").write_bytes(b"x" * 1000)                                                    # 标注图：不放
             (d / "bp" / "某蓝图" / "frames").mkdir(parents=True)
             (d / "bp" / "某蓝图" / "frames" / "00.png").write_bytes(rng.integers(0, 256, 200_000, dtype=np.uint8).tobytes())
+            (d / "bp" / "某蓝图" / "link_shots").mkdir()
+            (d / "bp" / "某蓝图" / "link_shots" / "r0_00_0.jpg").write_bytes(b"x" * 1000)                          # 点暗管的游戏截图
+            for f in ("links.json", "anchors.json", "devices.json", "size.json", "logistics.json"):
+                (d / "bp" / "某蓝图" / f).write_text("{}", encoding="utf-8")
+            (d / "bp" / "某蓝图" / "mosaic.png").write_bytes(b"x" * 1000)
             (d / "project.json").write_text(json.dumps({"name": "项目", "groups": {"甲": [], "乙": []}}, ensure_ascii=False), encoding="utf-8")
             (d / "inputs.json").write_text("{}", encoding="utf-8")
             out = Path(td) / "out"
@@ -138,17 +218,55 @@ def test_feedback_pack_splits_under_the_limit():
                     assert "说明.txt" in z.namelist() and "9.9.9" in z.read("说明.txt").decode("utf-8")
                     names += z.namelist()
             assert "base/甲/composite.png" in names and "base/乙/design.json" in names and "inputs.json" in names
-            assert not any(n.endswith(".jpg") or n.startswith("bp/") for n in names), names
+            assert not any(n.endswith(".jpg") for n in names), names
+            assert {"bp/某蓝图/links.json", "bp/某蓝图/anchors.json", "bp/某蓝图/devices.json", "bp/某蓝图/size.json",
+                    "bp/某蓝图/logistics.json", "bp/某蓝图/mosaic.png"} <= set(names), names            # 结构文件默认带
+            assert not any("/frames/" in n or "/link_shots/" in n for n in names), names              # 游戏截图默认不带
             assert sorted(p.name for p in out.iterdir()) == sorted(x["name"] for x in r)   # 没留下临时文件
             r = P.export_feedback("项目", Path(td) / "out2", raw=True, limit=10_000_000, log=lambda *_: None)
             assert len(r) == 1 and "全部" in r[0]["name"]
             with zipfile.ZipFile(r[0]["path"]) as z:
-                assert "bp/某蓝图/frames/00.png" in z.namelist() and "可能带 UID" in z.read("说明.txt").decode("utf-8")
+                nl = z.namelist()
+                assert "bp/某蓝图/frames/00.png" in nl and "bp/某蓝图/link_shots/r0_00_0.jpg" in nl and "可能带 UID" in z.read("说明.txt").decode("utf-8")
+                assert nl.count("bp/某蓝图/links.json") == 1, nl                                            # 结构文件不重复放
             r = P.export_feedback("项目", Path(td) / "out3", limit=100_000, log=lambda *_: None)   # 单个文件自己就超了：单独一包，写明
             big = [x for x in r if x["note"]]
             assert len(big) == 2 and all(x["files"] == 1 for x in big), r
         finally:
             P.BPA = old
+
+
+def test_tunnel_files_missing_per_blueprint():
+    """「暗管配对缺失」按蓝图逐张看（2026-11-19）：只有本该有配对、却读不到的蓝图才算缺；全是外接暗管（带 open）的蓝图
+    read_blueprints 本来就不写 links.json，不算缺（原来按整个据点「有暗管、0 对」判，这种据点重读也消不掉提示）。"""
+    with tempfile.TemporaryDirectory() as td:
+        proj = Path(td) / "项目"
+        bd = proj / "base" / "甲"
+        bd.mkdir(parents=True)
+        (bd / "transform.json").write_text(json.dumps({"bps": {k: {} for k in "ABCDEF"}}), encoding="utf-8")
+
+        def bp(name, anchors=None, partner=None, mosaic=True):
+            d = proj / "bp" / name
+            d.mkdir(parents=True)
+            if anchors is not None:
+                (d / "anchors.json").write_text(json.dumps({"anchors": anchors}, ensure_ascii=False), encoding="utf-8")
+            if partner is not None:
+                (d / "links.json").write_text(json.dumps({"pipes": [], "partner": partner}), encoding="utf-8")
+            if mosaic:
+                (d / "mosaic.png").write_bytes(b"x")
+        tun = {"name": "暗管入口", "p": [1, 1]}
+        bp("A")                                                              # 整个 bp/ 文件都没有（别人的武陵城反馈包）→ 缺
+        bp("B", [dict(tun, open=True), {"name": "暗管出口", "open": True}])    # 全是外接暗管，没有 links.json → 不缺
+        bp("C", [tun, {"name": "暗管出口"}], {"0": 1, "1": 0})                  # 配上了 → 不缺
+        bp("D", [tun], {"0": 1}, mosaic=False)                               # 没有 mosaic.png，tunnel_pairs 读不了 → 缺
+        bp("E", [tun], {"0": None})                                          # 一对都没配上 → 缺
+        bp("F", [{"name": "息壤供电桩"}])                                       # 没有暗管 → 不缺
+        assert D.tunnel_files_missing(bd) == ["A", "D", "E"], D.tunnel_files_missing(bd)
+        (bd / "transform.json").unlink()                                     # 还没拼合过：不知道有哪几张蓝图 → 空名单，不抛异常
+        assert D.tunnel_files_missing(bd) == []
+    # summary 的 warnings 只挑「暗管配对缺失」：「暗管未配对」（外接的，重读也配不出来）和种植机轮换那种字符串说明都不进
+    res = {"devices": [], "notes": ["种植机 (1,1) 锦草 / 芽针轮换", {"kind": "暗管未配对", "msg": "外接"}, {"kind": "暗管配对缺失", "msg": "缺 A"}]}
+    assert D.summary(res)["warnings"] == ["缺 A"], D.summary(res)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "src" / "tools"))
 
 import gate_limits as GL  # noqa: E402
+from _testkit import run, skip  # noqa: E402
 
 
 def test_num():
@@ -24,7 +25,7 @@ def test_panels():
              "gate_2326_1805.png": (False, None, None, "阻塞"),     # 阻塞：状态条红底、字认不出
              "gate_341_643.png": (True, 12.0, 0.0, "阻塞")}         # 重息壤口：限速 12，当前 0（OCR 认成 O）
     if not all((d / f).exists() for f in cases):
-        return
+        skip(f"本机没有 debug/shots/{d.name} 的面板截图")
     ocr = shared()
     for f, (on, lim, spd, st) in cases.items():
         img = imread(d / f)
@@ -32,16 +33,14 @@ def test_panels():
         assert (r["limit_on"], r["limit"], r["speed"], r["status"]) == (on, lim, spd, st), (f, r)
         assert r["count_on"] is False, (f, r)
     # 限制通过数量（用户 2026-11-09）：赤铜耐压罐口限量 1，芽针口限量 20；累计都已到上限
-    for f, lim in {"gate_853_780.png": 1.0, "gate_679_1667.png": 20.0}.items():
-        if not (d / f).exists():
-            continue
+    count_cases = {"gate_853_780.png": 1.0, "gate_679_1667.png": 20.0}
+    if not all((d / f).exists() for f in count_cases):
+        skip(f"后半（限制通过数量）要 debug/shots/{d.name} 里的 {'、'.join(count_cases)}，本机缺；前半已过")
+    for f, lim in count_cases.items():
         img = imread(d / f)
         r = GL.read_panel(lambda roi: "".join(t for _, t, *_ in sorted(ocr.boxes(img, roi), key=lambda x: x[0][0])).strip(), img, "物品准入口")
         assert (r["count_on"], r["count_limit"], r["passed"], r["limit_on"]) == (True, lim, lim, False), (f, r)
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过")
+    sys.exit(run([v for k, v in dict(globals()).items() if k.startswith("test_")]))

@@ -24,11 +24,13 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from . import atomic
 from . import centerline as CL
 from . import logistics as LG
 from . import vision as V
@@ -556,6 +558,12 @@ def arrow_votes(M, layer, path, nodes=()) -> int:
 
 
 # ------------------------------------------------------------------ 整个据点
+# _DARK_THIN、_DEVS、PORT_CMP 是 build 一次运行里的状态，放在模块变量里，下面一串函数（_touching_device、_end_info、_port_hit、
+# _port_bridges…）直接读。两个线程同时 build（拼合任务和别的重算撞上）会互相盖掉（2026-11-19 审计第 10 项）。
+# 没有改成参数往下传：要改十几个函数的签名，tests/test_port_links.py、test_trace_fixes.py 也是直接给 FL._DEVS 赋值来测单个函数的。
+# 改成用 _BUILD_LOCK 把 build / run_base 整个串行化：物流连接本来就是重计算（一个据点几十秒），排队没有损失。
+# 加锁顺序见 design._RUN_LOCK 的说明：这把锁在最里层，持锁期间不调 design.run_base
+_BUILD_LOCK = threading.RLock()
 _DARK_THIN = None
 _DEVS = []  # 每台底账设备的端口布局（ports.all_ports），build 里算
 USE_PORTS = True  # 2026-11-10 端口布局（游戏数据 + 口格折角定朝向）认带子/管子头接的是哪台设备的哪个口
@@ -629,6 +637,11 @@ def _device_at(T, ledger_pts, rects):
 
 def build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None = None, rects=None) -> dict:
     """→ {nodes: [...], links: [...], issues: [...]}。ledger_pts：[{name, c}]（底账设备换到拼合图坐标）。"""
+    with _BUILD_LOCK:  # 同一进程里一次只跑一个（_DEVS 等模块变量，见 _BUILD_LOCK 的说明）
+        return _build(img, items, ledger_pts, rects)
+
+
+def _build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None, rects) -> dict:
     M = masks(img)
     ledger_pts = [p for p in (ledger_pts or []) if p["name"] not in NOT_PORT]
     nodes = []
@@ -839,6 +852,14 @@ def _end_info(M, lay, r, ledger_pts, rects):
         hit, alt = _side_port(M, r, [p for p in ledger_pts if not _pipe_only(p["name"])], rects)
         if hit is None and alt is not None:
             return alt
+    elif hit is None and lay == "belt" and _weak(dv) and _pipe_near(M, r["path"][-1]):
+        # 次级分支（只加不改，上面那条不成立时才走）：带子头没正压在管子上，但旁边 12 px 内有管子压在黄带上（_pipe_near）——追线停在拐角点上，拐角点
+        # 离开了管子中线，_under_pipe 量不到深色（2026-11-19 审计：别人的武陵城 (301,610) 那条碳块带往南拐过去进天有洪炉 (409,714)，
+        # 一直按线框认成左边的采种机，天有洪炉没碳块）。只收端口布局命中的进料口，不用 alt「往那边探着找设备」：
+        # 放开 alt 会把皇帝武陵城塑形机 (1247,815) 那条带子改认成精炼炉
+        h2, _ = _side_port(M, r, [p for p in ledger_pts if not _pipe_only(p["name"])], rects)
+        if h2 is not None and h2[1].get("role") == "in":
+            hit = h2
     if hit is None:
         return e, dv
     i, p = hit
@@ -856,6 +877,21 @@ def _under_pipe(M, P, h=4) -> bool:
     x, y = int(round(P[0])), int(round(P[1]))
     w = M["gray"][max(0, y - h):y + h + 1, max(0, x - h):x + h + 1]
     return w.size > 0 and float((w < 170).mean()) >= 0.5
+
+
+def _pipe_near(M, P, R=12, n=20, g=2) -> bool:
+    """带子头 P 周围 R px 的方窗里，压在黄带上（黄带外扩 g px 以内）的深色像素 ≥ n：旁边有管子压着带子走
+    （_under_pipe 要求正中压着，拐角点偏出管子中线就量不到）。
+    2026-11-19 评审：原来数窗口里全部深色像素（M["pipe"] 就是低饱和深色），设备进出料口那条粗黑边、图标都算，四个据点「弱认、不压管子」
+    的带子头里约一半能过门（皇帝景玉谷 18 个全不是管子，如 (166,31) 研磨机口的黑边）。设备黑边和黄带之间隔着一道浅色缝，外扩 2 px 碰不到：
+    实测假的这些最多 8 px，别人的武陵城 (302,610) 那条真压在带子拐角上的管子 53 px。外扩 3 px 时景玉谷 (581,61) 的黑边就到 24 了。"""
+    x, y = int(round(P[0])), int(round(P[1]))
+    H, W = M["pipe"].shape
+    y0, y1, x0, x1 = max(0, y - R - g), min(H, y + R + g + 1), max(0, x - R - g), min(W, x + R + g + 1)
+    belt = cv2.dilate(M["belt"][y0:y1, x0:x1].astype(np.uint8), np.ones((2 * g + 1, 2 * g + 1), np.uint8)).astype(bool)
+    on = M["pipe"][y0:y1, x0:x1] & belt
+    wy, wx = max(0, y - R) - y0, max(0, x - R) - x0
+    return int(np.count_nonzero(on[wy:wy + (min(H, y + R + 1) - max(0, y - R)), wx:wx + (min(W, x + R + 1) - max(0, x - R))])) >= n
 
 
 def _side_port(M, r, ledger_pts, rects):
@@ -956,7 +992,7 @@ def _end_info_old(M, lay, r, ledger_pts, rects):
 
 def free_segments(M, nodes, links, ledger_pts, rects, step=12) -> list[dict]:
     """不经过物流件的带子/管子（设备 → 设备直连）：在还没被追到的带子/管子中段取种子点，往两头各追一遍。
-    种子点沿走向按最近的物流件对齐到格中心（同一张蓝图里格相位基本一致），这样拐弯搜索 ±12 px 够用。
+    带子的种子点沿走向按最近的物流件对齐到格中心（同一张蓝图里格相位基本一致；管子不对齐，见下），这样拐弯搜索 ±12 px 够用。
     两头都接设备（或一头分叉）才收；碰到物流件的说明物流件那头已经追过（或追失败过），跳过免得重复。"""
     H, W = M["gray"].shape
     cov = {lay: np.zeros((H, W), np.uint8) for lay in ("belt", "pipe")}
@@ -988,7 +1024,10 @@ def free_segments(M, nodes, links, ledger_pts, rects, step=12) -> list[dict]:
                     continue
                 dx, dy = DIRS[d]
                 P = np.array([x - dy * c, y + dx * c], float)  # 横向对中
-                if len(ncs):  # 沿走向对齐到格中心
+                if len(ncs) and lay == "belt":  # 沿走向对齐到格中心
+                    # 只对带子做：管子走的是中心线追踪（CL.walk 从种子附近找 1 px 中心线），不需要格相位；管子只有 6 px 宽，
+                    # 对齐会把种子沿走向挪出去最多半格，短管、拐角附近反而挪离了线（2026-11-19 审计；要和 centerline._seed
+                    # 的取整修法一起上：单改这一处时皇帝武陵城有 6 台状态变了，两处一起改皇帝产线 0 台变化）
                     k = int(np.argmin(np.hypot(*(ncs - P).T)))
                     ax = 0 if axis == "h" else 1
                     P[ax] = ncs[k][ax] + round((P[ax] - ncs[k][ax]) / C) * C
@@ -1408,6 +1447,11 @@ def structures(res) -> list[dict]:
 # ------------------------------------------------------------------ 项目入口
 def run_base(bd: Path, ledger: dict | None = None) -> dict:
     """bd = 项目 base/<据点>/。写 flow.json、flow.jpg，返回结果。"""
+    with _BUILD_LOCK:  # 连写 flow.json 一起排队：两次同时算同一个据点时，后写的是后算完的那份
+        return _run_base(bd, ledger)
+
+
+def _run_base(bd: Path, ledger: dict | None) -> dict:
     img = V.rd(bd / "composite.png")
     items = json.loads((bd / "logistics.json").read_text(encoding="utf-8"))
     tf = json.loads((bd / "transform.json").read_text(encoding="utf-8"))
@@ -1416,7 +1460,7 @@ def run_base(bd: Path, ledger: dict | None = None) -> dict:
         cx, cy = V.far_to_canvas(tf, dv["x"], dv["y"])
         pts.append({"name": dv["name"], "c": [float(cx), float(cy)]})
     res = build(img, items, pts)
-    (bd / "flow.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_json(bd / "flow.json", res)  # 原子写：设计分析、界面的据点图会读它（见 atomic.py）
     image(img, res).save(bd / "flow.jpg", quality=88)
     return res
 

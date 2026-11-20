@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "src" / "tools"), str(ROOT / "src" / "app")]
 
 import pool_channels as PC  # noqa: E402
+from _testkit import run, skip  # noqa: E402
 
 WL_1489 = "池产物：惰性壤晶废液(0)/息壤(50)/壤晶废液(50)；池内：息壤(50)/污水(50，原料)/壤晶废液(50)/惰性壤晶废液(50)"
 YLG_949 = "池产物：液化息壤(50)/重息壤(0)/液化重息壤(0)"
@@ -26,7 +27,7 @@ def test_channels_and_composite():
     assert [PC.recipe_text(r) for r in PC.from_text("扩容反应池", YLG_949)] == ["清水×1 + 息壤×1 → 液化息壤×1（2秒）"]
     allc = PC.from_text("扩容反应池", YLG_949, positive_only=False)  # 数量 0 的格也看：重息壤是原料 → 液化重息壤那条
     assert len(allc) == 2 and "重息壤" in PC.recipe_text(allc[1])
-    # 两种互不相干的产物：两组（设计分析按轮流做算）
+    # 两种互不相干的产物：两组（设计分析按并行算，2026-11-19 审计第 3 项；原来按轮流做算）
     assert len(PC.from_text("反应池", "池产物：芽针溶液(50)/芽针(0)/锦草溶液(50)；池内：?(50)/?(50)")) == 2
 
 
@@ -35,6 +36,8 @@ def test_water_need():
     assert PN.water_per_min(YLG_949, "清水", "扩容反应池") == 30
     assert PN.water_per_min(WL_1489, "清水", "扩容反应池") == 30  # 原来是 0：「息壤」按产物找不到
     assert PN.water_per_min("池产物：壤晶废液(49)/惰性壤晶废液(0)；池内：液化息壤(50，原料)", "清水", "扩容反应池") == 0
+    # 两组互不相干的同时跑，用量相加（武陵城反应池 (1357,1332)）。2026-11-19 前按轮流做取大的那组，是 30
+    assert PN.water_per_min("池产物：芽针溶液(50)/锦草溶液(50)", "清水", "反应池") == 60
 
 
 def test_combine_no_fallback_for_pool():
@@ -79,7 +82,7 @@ def test_theo_flip_after_reconnect():
     import combine as C
     after = ROOT / "debug" / "brief_20261110-174739.json"
     if not after.exists():
-        return
+        skip(f"本机没有 debug/{after.name}（2026-11-10 断水实测的简报）")
     _, d = C.run(after, ROOT / "debug" / "patrol_20261110-174225.json", "1.6皇帝产线", merge=False)
     assert not [v for v in d["verdicts"].get("问题", []) if "理论消耗" in (v.get("title") or "")], d["verdicts"]["问题"]
     _, d = C.run(ROOT / "debug" / "brief_20261110-153748.json", ROOT / "debug" / "patrol_20261110-153300.json", "1.6皇帝产线", merge=False)
@@ -93,11 +96,4 @@ def test_theo_flip_after_reconnect():
 if __name__ == "__main__":
     fs = [test_channels_and_composite, test_water_need, test_combine_no_fallback_for_pool, test_expert_water_drop, test_link_cut_victims,
           test_theo_flip_after_reconnect]
-    ok = 0
-    for f in fs:
-        try:
-            f(); ok += 1
-        except AssertionError as e:
-            print("FAIL", f.__name__, str(e)[:400])
-    print(f"{ok}/{len(fs)} 通过")
-    sys.exit(0 if ok == len(fs) else 1)  # 原来有没过的也正常退出，跑全部测试时看不出来
+    sys.exit(run(fs))  # 原来有没过的也正常退出，跑全部测试时看不出来

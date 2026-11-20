@@ -224,7 +224,8 @@ def water_per_min(recipe: str, fluid: str = "清水", machine: str = "") -> floa
 
 def _pool_need(recipe: str, fluid: str, machine: str) -> float:
     """池子配置的配方（pool_channels：面板列的物品还原成几条通道，首尾相接的并成一条净配方）里 fluid 的每分钟用量。
-    互不相干的几组（武陵城反应池 (1357,1332) 芽针溶液 / 锦草溶液）按轮流做算，取用得最多的那组（设计分析同样按交替配方算）。
+    互不相干的几组（武陵城反应池 (1357,1332) 芽针溶液 / 锦草溶液）同时跑，用量相加（30 + 30 = 60）。
+    2026-11-19 审计第 3 项：原来按轮流做取用得最多的那组（30），池子能同时跑几条配方（官方），设计分析也改成了并行。
     2026-11-10 武陵城扩容反应池 (1489,1055)：面板「息壤」是「清水 + 息壤 → 液化息壤」的原料，原来按产物找不到、算成不用清水。"""
     try:
         import pool_channels as PC
@@ -232,7 +233,7 @@ def _pool_need(recipe: str, fluid: str, machine: str) -> float:
         groups = PC.from_text(machine, recipe)
     except Exception:  # noqa: BLE001
         return 0.0
-    return max((r["inputs"].get(fid, 0) * 60.0 / r["seconds"] for r in groups), default=0.0)
+    return sum(r["inputs"].get(fid, 0) * 60.0 / r["seconds"] for r in groups)
 
 
 def load_inputs(base_dir: Path) -> list[dict]:

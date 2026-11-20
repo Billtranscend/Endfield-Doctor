@@ -146,26 +146,27 @@
       <div class="card">
         <div class="card-h"><span>设计分析（按外部来料算每台设备的设计开工率）<button type="button" class="help" data-help="bpadesign" aria-label="说明">?</button></span>
           <span class="btn-row inline"><select id="bpaDsBase" onchange="bpaDesign()"></select>
-            <select id="bpaDsFilter" onchange="bpaDesignTable()"><option value="all">全部设备</option><option value="bad">没满速的</option><option value="inferred">涉及推断的</option><option value="env">要稳定环境的配方</option><option value="unconfirmed">还没确认的</option><option value="wrong">说不对的</option></select></span></div>
+            <select id="bpaDsFilter" onchange="bpaDesignTable()"><option value="all">全部设备</option><option value="bad">没满速的</option><option value="inferred">涉及推断的</option><option value="env">要稳定环境的配方</option><option value="unknown">配方未知的</option><option value="unconfirmed">还没确认的</option><option value="wrong">说不对的</option></select></span></div>
         <div class="hint">「拼合」时自动算。依据里标〔推断连线〕的那段不是沿带子追出来的（按配方/紧贴/按格子补），配方带「推断配方」的是推断的；这些地方以游戏里实际为准。</div>
         <details class="hint-d"><summary>作者确认：怎么用</summary>对着游戏里的实际情况逐台看「开工率 / 状态」：对就点「对」，不对就选实际情况（满速 / 间歇 / 平时空闲（设计如此） / 没在用）并写一句为什么。
           也可以先用上面的筛选挑出一批（比如「没满速的」），核对无误后点「这一页全部确认为对」。确认记录随 zip 导出；别人导入后，只有你确认过的「平时空闲 / 间歇」才会在巡检里当作设计如此、不报问题，没确认的只当参考。</details>
         <div id="bpaDsSummary"></div>
         <div id="bpaDsPending"></div>
         <div class="btn-row"><span id="bpaDsProgress" class="muted"></span><button class="btn sm" onclick="bpaConfirmPage()">这一页全部确认为「对」</button></div>
+        <div id="bpaDsRowCard"></div>
         <div id="bpaDsTable" class="bpa-dstable"></div>
         <details class="hint-d"><summary>推断出来的连线（<span id="bpaDsInfN">0</span> 条）</summary><div id="bpaDsInf"></div></details>
       </div>
       <div class="card">
         <div class="card-h"><span>准入口图标分组<button type="button" class="help" data-help="bpagates" aria-label="说明">?</button></span>
-          <span><button class="btn sm" onclick="bpaSaveGates()">保存并重算</button></span></div>
+          <span><button class="btn sm" id="bpaSaveGates" onclick="bpaSaveGates()">保存并重算</button></span></div>
         <div class="hint">同一组 = 同一种物品。液体、气体图标 → 管道准入口；固体 → 物品准入口。认识的程序已自动填，不认识的请选形态（名字可不填）。</div>
         <details class="hint-d"><summary>「底下可能叠物品准入口」是什么</summary>「底下可能叠物品准入口」= 这格有传送带经过，游戏里只显示上面的管道准入口，要到俯瞰里点开那一格看弹出的列表（或按 F2 看传送带图层）。</details>
         <div id="bpaGateTable"></div>
       </div>
       <div class="card">
         <div class="card-h"><span>输入端<button type="button" class="help" data-help="bpainputs" aria-label="说明">?</button></span>
-          <span class="btn-row inline"><select id="bpaInBase" onchange="bpaInputs()"></select><button class="btn sm primary" onclick="bpaSaveInputs()">保存</button></span></div>
+          <span class="btn-row inline"><select id="bpaInBase" onchange="bpaInputs()"></select><button class="btn sm primary" id="bpaSaveIn" onclick="bpaSaveInputs()">保存</button></span></div>
         <div class="hint">红圈 = 程序标的输入端，蓝圈 = 你补的。物品名和液体的量（一口一泵 60/分）已预填，请核对后补上气体的量；单个口流速不同（如 3 号 120/分）直接改那一行。</div>
         <details class="hint-d"><summary>详细说明</summary>程序先标出「接入口紧贴基地外侧」的准入口当输入端，水和沉积酸都按一口一泵 60/分预填。贴边但程序判断不是输入的（两旁接着分流器/汇流器、没贴着外侧等）画成灰色虚圈，列在表格下面，判断错了点「加回」；红圈标错了点「删」；漏了的在图上点一下补标。图上按住左键拖动、滚轮缩放，右上「复位」回到整图；单个口的流速不同（如 3 号 120/分）直接改那一行的「每分钟」，巡检和管网都按你填的算。外面先汇流成一个口的勾「汇流口」并填总量。</details>
         <div class="bpa-batch">批量填：编号 <input id="bpaBRange" placeholder="1-8" size="6"> 物品 <input id="bpaBItem" list="bpaItemList" placeholder="清水" size="6"> 每口 <input id="bpaBRate" placeholder="60" size="4">/分

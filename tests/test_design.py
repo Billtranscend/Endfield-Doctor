@@ -4,25 +4,38 @@
 - 武陵城装备原件机：重息壤准入口限速 12 → 分 3 路 → 回环分走一半 → 2/分。
 - 仓库口物品按图标认（景玉谷 36 个都认得准）；配方按机身图标纠正（(507,581)/(507,640) 两台粉碎机历史配对配反）。
 """
+import atexit
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "src" / "tools")]
 
 from bpa import design as D  # noqa: E402
+from _testkit import copy_project, project_ledger, run  # noqa: E402
 
-BASE = ROOT / "debug/bpa/实测-皇帝产线/base"
 ARCH = ROOT / "data/blueprints/1.6皇帝产线"
 
 
 def _run(area):
-    return D.run_base(BASE / area, ARCH, area)
+    # 2026-11-19：原来直接对 debug/bpa/实测-皇帝产线/base 跑，run_base 会改写界面显示的那份 design.json；
+    # 底账也没传，用的是档案里的，和界面（project.rerun_design 传项目自己的底账）不一样。改成在项目副本上跑、和界面取同一份底账
+    proj = copy_project("实测-皇帝产线")
+    return D.run_base(proj / "base" / area, ARCH, area, ledger=project_ledger(proj, area))
+
+
+def _no_tunnel_warning(r, n):
+    """皇帝产线三个据点暗管配对都读到了（2026-11-19：景玉谷 2 / 武陵城 11 / 应龙关 16 对），不出「暗管配对缺失」"""
+    assert r["tunnels"] >= n and D.summary(r)["warnings"] == [], (r["tunnels"], D.summary(r)["warnings"])
+    assert not [x for x in r["notes"] if isinstance(x, dict) and x.get("kind") in ("暗管配对缺失", "暗管未配对")], r["notes"]
 
 
 def test_jingyugu():
     r = _run("景玉谷")
+    _no_tunnel_warning(r, 2)
     zr = [d for d in r["devices"] if "中容" in d["recipe"] and d["c"] == [240, 1615]]
     assert zr and abs(zr[0]["rate"] - 0.25) < 1e-6, zr
     ports = r["ports"]
@@ -33,7 +46,8 @@ def test_jingyugu():
 
 def test_wulingcheng_loop():
     r = _run("武陵城")
-    yj = [d for d in r["devices"] if "装备原件" in d["recipe"]]
+    _no_tunnel_warning(r, 11)
+    yj =[d for d in r["devices"] if "装备原件" in d["recipe"]]
     assert yj and abs(yj[0].get("available", {}).get("重息壤", 0) - 2.0) < 1e-6, yj  # 它缺灼铜零件转不起来，但重息壤这一路送得到 2/分
     # 塑形机的赤铜块来自精炼炉（作者确认，2026-11-09）：每台精炼炉底边两个出料口，一个直连塑形机（主路）、
     # 一个落进正下方 1 进 1 出的汇流器 → 配件机（备路：主路堵了才走，作者 11-03 讲的传送带优先级）。
@@ -65,12 +79,45 @@ def test_yinglongguan_gas_priority():
     r = _run("应龙关")
     g5 = [g for g in r["gates"] if g["c"] == [60, 1570]]
     assert g5 and g5[0]["limit"] == 30 and abs((g5[0]["downstream"] or 0) - 30) < 1e-6, g5
-    assert r["tunnels"] >= 16, r["tunnels"]
+    _no_tunnel_warning(r, 16)
     fy = [d for d in r["devices"] if d["device"] == "气体反应炉" and d["c"] == [878, 373]]
     assert fy and fy[0].get("available", {}).get("息壤气", 0) > 0, fy  # 它缺气态赫铜平时不转（灼铜链溢流设计），但息壤气是送得到的
     # 液气转化机：液化息壤经「汇流器 → 准入口限 6 → 分流器（一路绕回汇流器）」只剩 6÷2 = 3/分（4.7）；配方补自游戏内确认（结构.json）
     yq = [d for d in r["devices"] if d["device"] == "液气转化机"]
     assert yq and any(b.endswith("→ 3") and "液化息壤" in b for b in yq[0]["basis"]), yq
+
+
+def test_tunnel_pairs_missing_warning():
+    """「暗管配对缺失」（2026-11-19）：景玉谷有暗管的蓝图删掉 links.json → 正好一条提示，点名这几张蓝图，个数等于底账里的暗管入口 / 出口数；
+    再把这些蓝图的暗管都标成外接（open，read_blueprints 不点、不写 links.json）→ 不进 warnings，只留一条「暗管未配对」说明。
+    要删文件、改 anchors，单独复制一份，不碰同一脚本里共用的副本。"""
+    src = copy_project("实测-皇帝产线")
+    tmp = Path(tempfile.mkdtemp(prefix="bpa_test_"))
+    atexit.register(shutil.rmtree, tmp, True)
+    proj = tmp / src.name
+    shutil.copytree(src, proj)
+    area = "景玉谷"
+    bd = proj / "base" / area
+    led = project_ledger(proj, area)
+    n_tun = sum(1 for d in json.loads(led.read_text(encoding="utf-8"))["devices"] if "暗管入口" in d["name"] or "暗管出口" in d["name"])
+    bps = [b for b in json.loads((bd / "transform.json").read_text(encoding="utf-8"))["bps"] if (proj / "bp" / b / "links.json").exists()]
+    assert n_tun and bps, (n_tun, bps)
+    for b in bps:
+        (proj / "bp" / b / "links.json").unlink()
+    r = D.run_base(bd, ARCH, area, ledger=led)
+    w = D.summary(r)["warnings"]
+    assert r["tunnels"] == 0 and len(w) == 1 and f"有 {n_tun} 个暗管" in w[0] and all(b in w[0] for b in bps), (r["tunnels"], w)
+    assert sum(1 for x in r["notes"] if isinstance(x, dict) and x.get("kind") == "暗管配对缺失") == 1, r["notes"]
+    for b in bps:
+        f = proj / "bp" / b / "anchors.json"
+        anc = json.loads(f.read_text(encoding="utf-8"))
+        for a in anc["anchors"]:
+            if "暗管" in a["name"]:
+                a["open"] = True
+        f.write_text(json.dumps(anc, ensure_ascii=False), encoding="utf-8")
+    r = D.run_base(bd, ARCH, area, ledger=led)
+    assert D.summary(r)["warnings"] == [], D.summary(r)["warnings"]
+    assert [x["kind"] for x in r["notes"] if isinstance(x, dict) and "暗管" in x.get("kind", "")] == ["暗管未配对"], r["notes"]
 
 
 def test_plant_alternation():
@@ -91,11 +138,5 @@ def test_plant_alternation():
 
 
 if __name__ == "__main__":
-    ok = 0
-    for f in (test_jingyugu, test_wulingcheng_loop, test_yinglongguan_gas_priority, test_plant_alternation):
-        try:
-            f(); ok += 1
-        except AssertionError as e:
-            print("FAIL", f.__name__, str(e)[:300])
-    print(f"{ok}/4 通过")
-    sys.exit(0 if ok == 4 else 1)  # 原来有没过的也正常退出，跑全部测试时看不出来
+    # 原来有没过的也正常退出，跑全部测试时看不出来；本机没有实测项目时报跳过（_testkit.run）
+    sys.exit(run([test_jingyugu, test_wulingcheng_loop, test_yinglongguan_gas_priority, test_tunnel_pairs_missing_warning, test_plant_alternation]))

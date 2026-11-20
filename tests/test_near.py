@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "tools"))
 
 import near_patrol as NP  # noqa: E402
+from _testkit import run, skip  # noqa: E402
 
 
 def _ents(pts, name="固气转化机"):
@@ -135,7 +136,7 @@ def test_jingyugu_water_networks_and_pump_gates():
     bd = root / "debug/bpa/实测-皇帝产线/base/景玉谷"
     led_p = root / "data/blueprints/1.6皇帝产线/ledger/景玉谷.json"
     if not (bd / "composite.png").exists() or not led_p.exists():
-        return
+        skip("本机没有实测项目景玉谷的拼合图或档案底账")
     led = json.loads(led_p.read_text(encoding="utf-8"))
     recs = json.loads((led_p.parent / "景玉谷_recipes.json").read_text(encoding="utf-8"))["devices"]
     nets, users = {}, set()
@@ -147,7 +148,7 @@ def test_jingyugu_water_networks_and_pump_gates():
     assert len(users) == 12
     targets, _, _, F2N = NP.load_targets("1.6皇帝产线", "景玉谷", ["水泵"])
     if not NP.baseline_dir("1.6皇帝产线", "景玉谷").exists():
-        return
+        skip("后半（水泵进哪个输入端）要近景巡检基线，本机没有；前半已过")
     got = {tuple(t["far"]): NP.pump_gate("1.6皇帝产线", "景玉谷", t, F2N)[0] for t in targets}
     assert got == {(1313, 241): 1, (1357, 345): 2, (1437, 443): 3, (1437, 541): 4, (1436, 640): 5}, got
 
@@ -161,7 +162,7 @@ def test_area_check_trust():
         bd = root / f"debug/bpa/实测-皇帝产线/base/{area}"
         lp = root / f"data/blueprints/1.6皇帝产线/ledger/{area}.json"
         if not (bd / "composite.png").exists() or not lp.exists():
-            return
+            skip(f"本机没有实测项目{area}的拼合图或档案底账")
         r = PN.area_check(bd, json.loads(lp.read_text(encoding="utf-8")),
                           json.loads((lp.parent / f"{area}_recipes.json").read_text(encoding="utf-8"))["devices"])
         assert r["trusted"] == want, (area, r["coverage"], r["problems"])
@@ -179,10 +180,10 @@ def test_area_check_near():
         bd = NP.bpa_base_dir("1.6皇帝产线", area)
         lp = root / f"data/blueprints/1.6皇帝产线/ledger/{area}.json"
         if bd is None or not lp.exists():
-            return
+            skip(f"本机没有实测项目{area}的拼合图或档案底账")
         led = json.loads(lp.read_text(encoding="utf-8"))
         if not (root / led["scan"]["dir"] / "scan.json").exists():
-            return
+            skip(f"本机没有{area}底账扫描的近景图（{led['scan']['dir']}）")
         NP.register_near_checks("1.6皇帝产线", area)
         recs = json.loads((lp.parent / f"{area}_recipes.json").read_text(encoding="utf-8"))["devices"]
         r = PN.area_check(bd, led, recs)
@@ -217,10 +218,10 @@ def test_gate_watch():
     for area, n in want.items():
         lp = root / f"data/blueprints/1.6皇帝产线/ledger/{area}.json"
         if not lp.exists() or NP.bpa_base_dir("1.6皇帝产线", area) is None:
-            return
+            skip(f"本机没有实测项目{area}的拼合图或档案底账")
         sd = root / json.loads(lp.read_text(encoding="utf-8"))["scan"]["dir"]
         if not (sd / "scan.json").exists():
-            return
+            skip(f"本机没有{area}底账扫描的近景图（{sd.name}）")
         F2N = NP.calib(sd)
         gts = NP.gate_targets("1.6皇帝产线", area, F2N, None)
         assert len(gts) == n, (area, len(gts))
@@ -248,7 +249,7 @@ def test_gate_watch():
     for stamp in ("20261108-203422", "20261108-212711", "20261108-213105", "20261108-213737"):
         pp = root / f"debug/patrol_{stamp}.json"
         if not pp.exists():
-            return
+            skip(f"后半（景玉谷 3 号口真断管）要 debug/{pp.name}，本机没有；前半已过")
         pj = json.loads(pp.read_text(encoding="utf-8"))
         F2N = NP.calib(root / pj["near"]["ledger_scan"])
         e = next(t for t in NP.gate_targets("1.6皇帝产线", "景玉谷", F2N) if t["gate_no"] == 3)
@@ -323,7 +324,7 @@ def test_author_gate_rate():
     bd = NP.bpa_base_dir("1.6皇帝产线", "景玉谷")
     lp = root / "data/blueprints/1.6皇帝产线/ledger/景玉谷.json"
     if bd is None or not lp.exists():
-        return
+        skip("后半要本机实测项目景玉谷，没有；前半已过")
     led = json.loads(lp.read_text(encoding="utf-8"))
     recs = json.loads((lp.parent / "景玉谷_recipes.json").read_text(encoding="utf-8"))["devices"]
     inputs = json.loads((bd / "inputs_auto.json").read_text(encoding="utf-8"))
@@ -334,7 +335,4 @@ def test_author_gate_rate():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过")
+    sys.exit(run([v for k, v in dict(globals()).items() if k.startswith("test_")]))

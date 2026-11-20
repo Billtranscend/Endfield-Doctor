@@ -19,23 +19,38 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 
+from . import atomic
+from . import pool_model as PM
 from . import vision as V
 
 BELT_CAP = 30.0
 PIPE_CAP = 120.0
 FUEL_MIN = {"气体散布机": 6.0, "固气转化机": 6.0, "液气转化机": 6.0}
 MERGE_T = ("汇流器", "管道汇流器")
+# RATE_LIMITED_INTAKE、MAIN_BLOCKED 只是 analyze 的默认值，运行中不再改它们，要换模式就给 analyze 传参数（2026-11-19）。
+# 原来 run_base 靠改这两个模块变量切换三遍计算的模式；界面每次接口调用都在单独的线程里跑，两次设计分析同时跑（拼合任务和待确认的
+# 重算撞上、「保存并重算」双击，同一个据点或两个不同据点都算）会互相改掉对方的开关。审计在副本上实测 21 轮并发 12 轮算错：
+# 别人的武陵城 3 台封装机 (2080,1071)、(612,1652)、(2113,2029) 的 available / limit_by 错，皇帝应龙关 5 台的 got 错，
+# 其中气体反应炉 (878,373) 在没料和溢流位之间翻转，错的结果还写进了 design.json
 RATE_LIMITED_INTAKE = True  # 设备只按「另一种原料够跑多快」吃这种原料（False：每种原料各吃各的，用来算「能送到多少」）
 BACKPRESSURE = True  # 2026-11-10 背压：产物全部去向都是确定的设备、吃不完时，生产者跟着减速（主路顶住 → 多出来的走备路）
 MAIN_BLOCKED = False  # 第三遍（情景）：设备出料口的主路全堵死，看备路上的设备能拿到多少（塑形机出料堵住时精炼炉溢流到配件机）
 BUFFERS = ("协议储存箱", "储气罐")  # 进来什么就往外出什么（缓冲中转）：景玉谷研磨机 → 储存箱 → 中容封装机（2026-11-09）
 SOURCE_PORTS = ("仓库取货口", "暗管出口", "暗管入口", "多口暗管出口", "多口暗管入口")  # 往外出带子/管子的：仓库、暗管来料（物品和量看不到，按满带、到设备按缺口分）
+# 反应池 → 格数（审计第 3 项，2026-11-19）：池子能同时跑几条配方（官方），所有在跑配方的物品种类不超过格数。
+# 规则和纯函数在 pool_model；这里只认机器名
+POOLS = PM.SLOTS
 EPS = 1e-6
+# 开工率迭代的轮数上限（2026-11-19 审计第 3 项）。INNER_MAX：出结果那一趟（原来就是 20）。
+# 有并行池子时外层先定出料上限（最多 OUTER_MAX 轮，每轮一趟内层）：皇帝产线武陵城第一趟不带上限要 17 轮，离 20 只差 3 轮，
+# 这几趟放宽到 CAP_INNER_MAX。合成场景里外层最多 6 轮（共用清水反向耦合）、三层池子串联 4 轮
+INNER_MAX, CAP_INNER_MAX, OUTER_MAX = 20, 40, 8
 
 
 _RECIPES = None
@@ -72,7 +87,14 @@ def _machine_recipes(machine: str) -> list[str]:
     return out
 
 
-def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None) -> list[dict]:
+def _recipes_of(rec, i, extra=None) -> list[str]:
+    """第 i 台在跑的全部配方：主配方 + extra[i]（交替配方、并行池子的其余几条；analyze 里由 recipes_of 生成）。
+    2026-11-19 审计第 3 项：池子要能同时跑几条配方，原来这些地方只认主配方、最多再加一条交替配方
+    （武陵城反应池 (1357,1332) 芽针溶液 / 锦草溶液两条，第二条的原料产物在判连线方向、仓库口取存时看不到）。"""
+    return [rec.get(i, ("", False))[0]] + list((extra or {}).get(i, ()))
+
+
+def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None, par=None) -> list[dict]:
     """配方是推断出来的设备（配方表里没有：没读到 / 池子只记了池产物）：按物流图上相邻的、配方可信的设备重挑。
     从这台设备顺着连线（不管方向；穿过物流件和储存箱，不穿过别的生产设备）找邻居：邻居产的东西可能是原料，邻居吃的东西可能是产物；
     输入端准入口的物品（作者填的清水等）也算原料。每个候选配方：原料有人产 +1，产物有人吃 +1；唯一最高分且高过现在的才换。
@@ -86,6 +108,11 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                 if dist < bd_:
                     best, bd_ = i, dist
         return ("d", best) if best is not None and bd_ < 3 else None
+
+    def nb_recipes(j):
+        """邻居 j 在跑的配方：主配方 + 交替配方 / 并行池子的其余几条（这一趟里 alt 会被改，现查）。"""
+        more = [c["recipe"] for c in (par or {}).get(j, [])[1:]] + ([alt[j][0]] if alt and j in alt else [])
+        return _recipes_of(rec, j, {j: more})
     adj = defaultdict(set)
     for lk in flow["links"]:  # 只看物流图的连线，不管方向（在建图之前做：方向没定的带子要靠改好的配方定方向）
         a = dev_of(lk["a_dev"]) if lk.get("a_dev") else (("n", lk["a"]) if lk.get("a") is not None else None)
@@ -106,6 +133,9 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
         for i, d in enumerate(devices):
             rc, inferred = rec.get(i, ("", False))
             if not inferred or d["name"] in BUFFERS or d["name"] in PORT_NAMES:
+                continue
+            if par and i in par:
+                # 池产物已经读出几条并行配方的池子整台不动（2026-11-19）：下面「唯一最高」那条会把它换成一条，并行的另几条就丢了
                 continue
             cands = _machine_recipes(d["name"])
             if len(cands) < 2:
@@ -128,10 +158,11 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                         elif devices[v[1]]["name"] in BUFFERS:
                             nxt.append(v)
                         elif not rec.get(v[1], ("", True))[1] or v[1] in fixed:  # 配方可信的邻居（含上一轮按邻居改好的）
-                            made |= set(outputs_of(rec[v[1]][0]))
-                            eaten |= set(inputs_of(rec[v[1]][0]))
-                            for k in outputs_of(rec[v[1]][0]):
-                                makers[k].append(rec[v[1]][0])
+                            for r in nb_recipes(v[1]):  # 邻居同时跑 / 交替跑的几条配方都算
+                                made |= set(outputs_of(r))
+                                eaten |= set(inputs_of(r))
+                                for k in outputs_of(r):
+                                    makers[k].append(r)
                 frontier = nxt
 
             def score(r):
@@ -145,10 +176,17 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                 r1, r2 = sc[0][1], sc[1][1]
                 own1, own2 = set(inputs_of(r1)) - set(inputs_of(r2)), set(inputs_of(r2)) - set(inputs_of(r1))
                 if own1 & made and own2 & made:  # 两种配方各自的原料都有人送进来：池子两种都做（扩容反应池吃芽针粉末和锦草粉末）
-                    fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rc, "to": f"{r1} / 交替 {r2}",
-                                  "how": "按相邻设备推断：两种原料都有人送进来，两种配方轮流做"})
+                    if par is not None and d["name"] in POOLS:
+                        # 池子两条同时跑（官方：池子能同时跑几条配方；2026-11-19 审计第 3 项，原来按轮流做算）。
+                        # 皇帝产线武陵城扩容反应池 (1313,1114)：芽针粉末、锦草粉末两边都有粉碎机送
+                        fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rc, "to": f"{r1} + 并行 {r2}",
+                                      "how": "按相邻设备推断：两种原料都有人送进来，两条配方同时跑（并行，推断）"})
+                        par[i] = [{"recipe": r, "members": [r], "src": "邻居推断"} for r in (r1, r2)]
+                    else:
+                        fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rc, "to": f"{r1} / 交替 {r2}",
+                                      "how": "按相邻设备推断：两种原料都有人送进来，两种配方轮流做"})
+                        alt[i] = (r2, "相邻设备送进来两种原料，按两种配方轮流做算（推断）")
                     rec[i] = (r1, True)
-                    alt[i] = (r2, "相邻设备送进来两种原料，按两种配方轮流做算（推断）")
                     fixed.add(i)
                     changed = True
                     continue
@@ -203,8 +241,8 @@ UNKNOWN = (UNK_BELT, UNK_PIPE)
 
 
 def _is_fluid(item: str) -> bool:
-    """走管子的东西（液体、气体）。固体只走带子。"""
-    return "气" in item or "液" in item or item in ("清水", "污水", "沉积酸")
+    """走管子的东西（液体、气体）。固体只走带子。规则在 pool_model.is_fluid（池子格数、选择器也按它分流体 / 固体）。"""
+    return PM.is_fluid(item)
 
 
 def _unknown_fits(unk: str, item: str) -> bool:
@@ -500,11 +538,18 @@ def _plant_alternation(flow, devices, dev_canvas, rec, alt) -> list[str]:
     return notes
 
 
-def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, alt=None):
+def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, extra=None):
     """紧挨着的两台设备端口直接对接、中间没有带子（种植机 ↔ 采种机等，2026-11-09 景玉谷）：
-    两台设备外框相贴（缝 ≤ gap px，外框线各自往里缩几 px，实测相贴的缝 11 px；隔一格约 35 px、相贴边重叠 ≥ 1 格），且一台的产物是另一台的原料 → 加一条推断连接。"""
+    两台设备外框相贴（缝 ≤ gap px，外框线各自往里缩几 px，实测相贴的缝 11 px；隔一格约 35 px、相贴边重叠 ≥ 1 格），且一台的产物是另一台的原料 → 加一条推断连接。
+    extra = {设备序号: [主配方以外在跑的配方…]}（交替配方、并行池子的其余几条），产物 / 原料都算。"""
     import cv2 as _cv
     from .pipenet import _rects, device_rect
+
+    def outs_of(i):
+        return set().union(*(set(outputs_of(r)) for r in _recipes_of(rec, i, extra)))
+
+    def ins_of(i):
+        return set().union(*(set(inputs_of(r)) for r in _recipes_of(rec, i, extra)))
     canvas = V.rd(bd / "composite.png")
     hsv = _cv.cvtColor(canvas, _cv.COLOR_BGR2HSV)
     dark_thin = ((_cv.cvtColor(canvas, _cv.COLOR_BGR2GRAY) < 120) & (hsv[..., 1] < 60)).astype(np.uint8)
@@ -533,10 +578,7 @@ def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, alt=None):
             eb = {"N": "S", "S": "N", "E": "W", "W": "E"}[ea]
             ga, gb = glyph_sides(gray_, box[a]), glyph_sides(gray_, box[b])
             for u, v in ((a, b), (b, a)):
-                items = set(outputs_of(rec[u][0])) & set(inputs_of(rec[v][0]))
-                if alt:  # 交替配方的产物 / 原料也算（两种植物轮换的种植机 ↔ 采种机）
-                    items |= (set(outputs_of(alt[u][0])) if u in alt else set()) & (set(inputs_of(rec[v][0])) | (set(inputs_of(alt[v][0])) if v in alt else set()))
-                    items |= set(outputs_of(rec[u][0])) & (set(inputs_of(alt[v][0])) if v in alt else set())
+                items = outs_of(u) & ins_of(v)  # 交替配方的产物 / 原料也算（两种植物轮换的种植机 ↔ 采种机）
                 eu, ev = (ea, eb) if u == a else (eb, ea)
                 gu, gv = (ga, gb) if u == a else (gb, ga)
                 if gu.get(eu) == "in" or gv.get(ev) == "out":
@@ -573,10 +615,10 @@ def adjacent_links(G, bd, devices, dev_canvas, rec, gap=14, alt=None):
             if len(runs) != 1 or not (0.35 * V.CELL <= runs[0] <= 0.9 * V.CELL):
                 continue
             for u, v in ((a, b), (b, a)):
-                items = set(outputs_of(rec[u][0])) & set(inputs_of(rec[v][0]))
+                items = outs_of(u) & ins_of(v)
                 if not items or (("d", u), ("d", v)) in have or (("d", v), ("d", u)) in have:
                     continue
-                if any(set(lk.get("items") or outputs_of(rec[w[1]][0]) if w[0] == "d" else ()) & items for w, lk in G.inn[("d", v)]):
+                if any(set(lk.get("items") or outs_of(w[1]) if w[0] == "d" else ()) & items for w, lk in G.inn[("d", v)]):
                     continue  # 这种原料已经有设备在送了
                 lk = {"layer": "belt", "adjacent": True, "dir": "a->b", "items": sorted(items),
                       "basis": [f"{devices[u]['name']}和{devices[v]['name']}隔一格、中间一条直带（按配方推断）"]}
@@ -673,10 +715,11 @@ def _rots_fn(bd: Path):
     return at
 
 
-def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, recipes: list[dict]) -> list[dict]:
+def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, recipes: list[dict], skip=()) -> list[dict]:
     """设备机身中间的圆图标画着它的产物（2026-11-09）。同类设备在本据点有几种配方时，按图标认产物定配方：
     历史配方是按同名最近配对的（±30 px），挨着的同类设备会配反（景玉谷 (507,581)/(507,640) 两台粉碎机）。
-    只在图标离设备 ≤30 px、分数 ≥0.45、领先第二名 ≥0.25 时改；改了的标推断。"""
+    只在图标离设备 ≤30 px、分数 ≥0.45、领先第二名 ≥0.25 时改；改了的标推断。
+    skip：并行池子（同时跑几条配方，2026-11-19）。机身图标只画一种产物，按它改成一条会把另几条丢掉。"""
     from . import flow as F
     from . import logistics as LG
     known = defaultdict(set)
@@ -692,7 +735,7 @@ def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict,
     rots_at = _rots_fn(bd)
     out = []
     for i, d in enumerate(devices):
-        if d["name"] not in multi or not disks:
+        if d["name"] not in multi or not disks or i in skip:
             continue
         cx, cy = dev_canvas[i]
         dk = min(disks, key=lambda k: np.hypot(k[0] - cx, k[1] - cy))
@@ -718,12 +761,13 @@ def _recipes_by_icon(bd: Path, devices: list[dict], dev_canvas: list, rec: dict,
     return out
 
 
-def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=None) -> dict:
+def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=None, extra=None) -> dict:
     """仓库口圆图标里画着它存/取的物品（2026-11-09）：圆图标中间那块缩到 23×23，和 AKEData 物品图标比。
     候选只取这个据点配方里出现过的物品（致密源石粉末 / 致密晶体粉末这种长得像的才分得开）。
     仓库只存物品：液体/气体不算候选。连着的设备（G 里直接相连）配方里有的物品优先：图标上压着管子时比对分数很低，
     但「连着固气转化机（赤铜块 → 气态赤铜）」就只剩赤铜块一个候选（应龙关那排红色图标）。
-    同样子的图标归一组，组里有一个认得准就整组用它。→ {设备序号: {item, score, sure, how}}"""
+    同样子的图标归一组，组里有一个认得准就整组用它。→ {设备序号: {item, score, sure, how}}
+    extra：主配方以外在跑的配方（见 _recipes_of），候选、连着的设备、下游吃什么都按全部配方算。"""
     import cv2 as _cv
     from . import flow as F
     from . import logistics as LG
@@ -732,8 +776,9 @@ def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=Non
     _, disks = F.icon_disks(img, flow["nodes"])
     rots_at = _rots_fn(bd)
     cand = set()
-    for rc, _ in rec.values():
-        cand |= set(inputs_of(rc)) | set(outputs_of(rc))
+    for j in rec:
+        for rc in _recipes_of(rec, j, extra):
+            cand |= set(inputs_of(rc)) | set(outputs_of(rc))
     found = {}
     for i, d in enumerate(devices):
         if d["name"] not in PORT_NAMES or not disks:
@@ -752,7 +797,8 @@ def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=Non
         if G is not None:
             for v, _ in G.out[("d", i)] + G.inn[("d", i)]:
                 if v[0] == "d":
-                    local |= _port_side(d["name"], rec[v[1]][0])
+                    for rc in _recipes_of(rec, v[1], extra):
+                        local |= _port_side(d["name"], rc)
         cs_local = [c for c in allc if c["name"] in local]
         cs = [c for c in allc if c["name"] in cand] if cand else []
         if _port_icon_clear(cs, {c["name"] for c in cs_local}):  # 图标看得清：只信图标（连着的设备配方可能配错台，会把仓库口也带错）
@@ -778,9 +824,10 @@ def port_items(bd: Path, devices: list[dict], dev_canvas: list, rec: dict, G=Non
                         if v[0] == "n":
                             nxt.append(v)
                         elif not rec.get(v[1], ("", True))[1]:
-                            eat |= set(inputs_of(rec[v[1]][0]))
+                            for rc in _recipes_of(rec, v[1], extra):
+                                eat |= set(inputs_of(rc))
                 front = nxt
-            nobody = not any(found[i]["item"] in inputs_of(rec[j][0]) for j in rec if not rec[j][1])  # 全据点配方可信的设备都不吃它
+            nobody = not any(found[i]["item"] in inputs_of(rc) for j in rec if not rec[j][1] for rc in _recipes_of(rec, j, extra))  # 全据点配方可信的设备都不吃它
             if eat and found[i]["item"] not in eat and nobody:
                 alts = [c for c in allc if c["name"] in eat and c["score"] >= 0.15]
                 if alts:
@@ -808,7 +855,9 @@ def _cap(lk):
     return PIPE_CAP if lk["layer"] == "pipe" else BELT_CAP
 
 
-def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | None = None, inputs: list[dict] | None = None) -> dict:
+def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | None = None, inputs: list[dict] | None = None,
+            rate_limited_intake: bool = RATE_LIMITED_INTAKE, main_blocked: bool = MAIN_BLOCKED) -> dict:
+    """rate_limited_intake=False：每种原料各算「能送到多少」（run_base 第二遍）；main_blocked=True：出料口的主路全堵死的情景（第三遍）。"""
     from .pipenet import load_inputs, recipe_table
     flow = json.loads((bd / "flow.json").read_text(encoding="utf-8"))
     tf = json.loads((bd / "transform.json").read_text(encoding="utf-8"))
@@ -817,33 +866,105 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
     table = recipe_table(bd, ledger, recipes)
     rec = {i: table.get((d["name"], d["x"], d["y"]), ("", False)) for i, d in enumerate(devices)}
     alt = {}  # 交替配方（液气转化机：两路液体轮流做，2026-11-09 补；配方表 alt 字段）
+    # 审计第 3 项（2026-11-19）：池子同时跑的几条配方。par[i] = [{recipe: 净配方, members: [原始配方…], src}…]，
+    # 只放并出来 ≥2 组的池子，rec[i][0] 是第一组；和 alt 不重叠（alt 只留液气转化机、种植机 / 采种机轮换这类真的轮流做的）。
+    # par_note：并行的说明；pool_src：池子配方从哪来；unknown：没配方的生产设备；pool_unused：作者说没在用的池子
+    par, par_note, pool_src = {}, {}, {}
+    unknown, pool_unused = set(), set()
+
+    def recipes_of(i):
+        """第 i 台在跑的全部配方（并行池子的每一组、交替配方的两条、其它设备只有主配方）。"""
+        if i in par:
+            return [c["recipe"] for c in par[i]]
+        if i in alt:
+            return [rec[i][0], alt[i][0]]
+        return [rec[i][0]]
+
+    def extra():
+        """给模块级的连线 / 仓库口函数：{设备: [主配方以外在跑的配方…]}。alt、par 一路在补，每次用时现算。"""
+        return {i: recipes_of(i)[1:] for i in set(alt) | set(par)}
     for i, d in enumerate(devices):  # 反应池只记「池产物：液化息壤(50)/…」：换成配方表里这种池子做这个产物的配方
         rc = rec[i][0]
         if rc.startswith("池产物"):
             rec[i] = (_pool_recipe(rc, d["name"]) or rc, True)
-            second = _pool_recipe(rc, d["name"], 1)
-            first = rec[i][0]
-            chain = second and (set(outputs_of(first)) & set(inputs_of(second)) or set(outputs_of(second)) & set(inputs_of(first)))
-            if second and not chain:  # 池产物同时记了两种有量、互不相干的产物（武陵城反应池：芽针溶液 50 / 锦草溶液 50）：两种配方轮流做；
-                # 一种的产物是另一种的原料（壤晶废液 → 壤晶）是两步串联，不算
-                alt[i] = (second, "池产物里记了两种产物，按两种配方轮流做算（推断）")
+            # 池产物同时记了几种有量、互不相干的产物（武陵城反应池 (1357,1332)：芽针溶液 50 / 锦草溶液 50）：几条配方同时跑。
+            # 2026-11-19 审计第 3 项：原来按两种配方轮流做（alt）算，可池子能同时跑几条配方（官方），轮流会把它少算一半。
+            # 首尾相接的几条（壤晶废液 → 壤晶）并成一组净配方，只有一组的照旧只写 rec（应龙关扩容反应池 (949,731) 结果不变）
+            gs = PM.groups(d["name"], PM.panel_recipes(d["name"], rc)) if d["name"] in POOLS else []
+            if len(gs) >= 2:
+                par[i] = [dict(g, src="面板") for g in gs]
+                par_note[i] = "池产物里记了几种互不相干的产物：几条配方同时跑（并行）"
+                rec[i] = (gs[0]["recipe"], True)
     for q in recipes:
         if q.get("alt"):
             for i, d in enumerate(devices):
+                if i in par:  # 池产物已经读出几条并行的配方：配方表的交替配方不再盖上去（一台池子不会既并行又交替）
+                    continue
                 if d["name"] == q["name"] and abs(d["x"] - q["x"]) <= 30 and abs(d["y"] - q["y"]) <= 30:
                     alt[i] = (q["alt"], q.get("note", ""))
-    icon_fixes = _recipes_by_icon(bd, devices, dev_canvas, rec, recipes)
+    icon_fixes = _recipes_by_icon(bd, devices, dev_canvas, rec, recipes, skip=par)
     fx = load_fixes(bd)
+    # 作者在「池子配方」待确认里勾的几条原始配方（fixes.json 的 pool_recipes，2026-11-19 审计第 3 项）：池子机身没有产物图标，
+    # 别人的武陵城 7 台池子只能靠作者说。[] = 这台没在用；格数不够等放不下的忽略（写一条说明），照旧按没指定算。
+    # 比老的 recipes[键]（一台只能一条）优先：两段都有时以 pool_recipes 为准
+    pool_fix, pool_notes = {}, []
+    for i, d in enumerate(devices):
+        want = (fx.get("pool_recipes") or {}).get(f"{d['name']}@{d['x']},{d['y']}")
+        if d["name"] not in POOLS or not isinstance(want, list):
+            continue
+        ck = PM.check(d["name"], want) if want else {"ok": True}
+        if ck["ok"]:
+            pool_fix[i] = list(want)
+        else:
+            pool_notes.append({"kind": "池子配方放不下", "msg": f"{d['name']} ({d['x']},{d['y']}) 作者指定的池子配方没用上："
+                                                           + "；".join(ck["why"])})
+    by_author = set()  # 配方是作者指定的设备（老的 recipes 和 pool_recipes 都算）
     for i, d in enumerate(devices):  # 作者指定的配方：盖过图标认的、按邻居推的，算可信（别的设备可以拿它当依据）
         want = (fx.get("recipes") or {}).get(f"{d['name']}@{d['x']},{d['y']}")
-        if want and want != rec[i][0]:
-            icon_fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rec[i][0], "to": want, "how": "作者指定"})
+        if i in pool_fix:
+            if want:  # 手改的 fixes.json、旧版存下的：不静默丢掉，说一句以池子配方为准（2026-11-19；界面已经把池子的单条入口改成存 pool_recipes）
+                pool_notes.append({"kind": "老的配方指定没用上", "msg": f"{d['name']} ({d['x']},{d['y']}) 老的单条配方指定「{want}」没用上："
+                                                                   "这台另有作者勾的池子配方，以池子配方为准"})
+            continue
+        if want:
+            by_author.add(i)
+        if want and (want != rec[i][0] or i in par):
+            # 并行池子被老的单条指定清成一条：选的正好是现在第一条时原来什么都不记，另几条配方的下游悄悄变成没料（2026-11-19，
+            # 合成例子：面板读出芽针 + 锦草两条的反应池，recipes[键] = 芽针那条 → 锦草灌装机没料、recipe_fixes 空的）
+            icon_fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rec[i][0], "to": want,
+                               "how": "作者指定（只留这一条，原来并行的另几条已去掉）" if i in par else "作者指定"})
         if want:
             rec[i] = (want, False)
-    icon_fixes += _infer_by_neighbors(flow, devices, dev_canvas, rec, inputs if inputs is not None else load_inputs(bd), alt=alt)
+            # 作者只给了一条：这台就只跑这一条，池产物读出的并行配方、配方表的交替配方都不留（2026-11-19，原来交替配方会残留）
+            alt.pop(i, None)
+            par.pop(i, None)
+            par_note.pop(i, None)
+    for i, want in pool_fix.items():
+        d = devices[i]
+        by_author.add(i)
+        alt.pop(i, None)
+        par.pop(i, None)
+        par_note.pop(i, None)
+        if not want:  # 没在用：不出产物、不吃原料，单出一行「没在用（作者说）」（不借「溢流位」：那个前缀会让 run_base 多跑一遍堵死情景）
+            pool_unused.add(i)
+            rec[i] = ("", False)
+            continue
+        # 首尾相接的几条先并成一条净配方再算：液化息壤 + 壤晶废液 + 壤晶三条原样当三条并行，中间产物液化息壤会被当成要从外面送的原料，
+        # 后两条就成了没料（别人的武陵城扩容反应池 (1570,1196)）。格数在上面按原始配方查过（中间产物也占一格）
+        gs = PM.groups(d["name"], want)
+        to = " + 并行 ".join(g["recipe"] for g in gs)
+        if to != rec[i][0]:
+            icon_fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rec[i][0], "to": to, "how": "作者指定（池子配方）"})
+        rec[i] = (gs[0]["recipe"], False)
+        if len(gs) >= 2:
+            par[i] = [dict(g, src="作者") for g in gs]
+            par_note[i] = "作者指定了几条互不相干的配方：几条同时跑（并行）"
+    icon_fixes += _infer_by_neighbors(flow, devices, dev_canvas, rec, inputs if inputs is not None else load_inputs(bd), alt=alt, par=par)
+    for i in par:
+        par_note.setdefault(i, "相邻设备送进来几种原料：几条配方同时跑（并行，推断）")
     plant_notes = _plant_alternation(flow, devices, dev_canvas, rec, alt)
     G = Graph(flow, devices, dev_canvas, rec)
-    adjacent_links(G, bd, devices, dev_canvas, rec, alt=alt)
+    adjacent_links(G, bd, devices, dev_canvas, rec, extra=extra())
     tpairs = tunnel_pairs(bd, devices, dev_canvas)
     buf_ids = {i for i, d in enumerate(devices) if d["name"] in BUFFERS}
     for a, b in tpairs:  # 暗管入口 → 出口：入口进什么、出口就出什么
@@ -852,18 +973,27 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         buf_ids |= {a, b}
     import cv2
     gray = cv2.cvtColor(V.rd(bd / "composite.png"), cv2.COLOR_BGR2GRAY)
-    _outlet_touch(G, flow, devices, dev_canvas, rec, gray)
+    _outlet_touch(G, flow, devices, dev_canvas, rec, gray, extra=extra())
     _feed_touch(G, flow, devices, dev_canvas, rec)
     _glyph_dirs(G, flow, devices, dev_canvas, bd)
-    _buffer_dirs(G, flow, devices, dev_canvas, rec, alt)
-    _orphan_feeds(G, flow, devices, dev_canvas, rec)
-    reread, pending = _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=fx.get("feeds"))
+    _buffer_dirs(G, flow, devices, dev_canvas, rec, extra())
+    _orphan_feeds(G, flow, devices, dev_canvas, rec, extra=extra())
+    reread, pending = _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=fx.get("feeds"), extra=extra())
     for u in list(G.out):  # 推断出来的连线打标，推料时经过它的路径带上〔推断连线〕
         for v, lk in G.out[u]:
             if _is_inferred(lk):
                 lk["inferred"] = True
-    pitem = port_items(bd, devices, dev_canvas, rec, G)
-    fixes = icon_fixes + _fix_recipes_by_ports(G, devices, rec, recipes, pitem)
+    pitem = port_items(bd, devices, dev_canvas, rec, G, extra=extra())
+    # 作者用 pool_recipes 指定的池子（一条也好、几条也好）不再按取货口物品改：作者说的算
+    fixes = icon_fixes + _fix_recipes_by_ports(G, devices, rec, recipes, pitem, skip=set(par) | set(pool_fix))
+    # 改配方的步骤到这里都做完了：并行池子的主配方就是第一组，一台池子不会既并行又交替
+    assert not set(par) & set(alt), [devices[i]["name"] for i in set(par) & set(alt)]
+    assert all(rec[i][0] == par[i][0]["recipe"] for i in par), [devices[i]["name"] for i in par if rec[i][0] != par[i][0]["recipe"]]
+    # 审计第 3 项（2026-11-19）：配方库里有配方、但这台没读到配方（或配方文字认不出）的生产设备。原来出记录时 `if not need: continue`
+    # 整台消失：别人的武陵城 7 台池子（扩容反应池 (1798,454) 等）不在结果里，下游 6 台缺料也看不出是它们的缘故。
+    # 配方库里 0 条配方的机器（废水处理机、散布机、热能池、水泵…）不算，照旧不出行。作者说没在用的池子另出一行，不算配方未知
+    unknown |= {i for i, d in enumerate(devices) if i not in buf_ids and d["name"] not in PORT_NAMES and i not in pool_unused
+                and "→" not in rec[i][0] and _machine_recipes(d["name"])}
 
     def port_role(i):
         """仓库口是往外出（取货）还是往里收（存货）：物品是连着的设备的原料 → 取；是产物 → 存；都不是看底账名字。"""
@@ -871,9 +1001,9 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         item = it.get("item") if it.get("sure") else None
         if item:
             nb = [v for v, _ in G.out[("d", i)] + G.inn[("d", i)] if v[0] == "d"]
-            if any(item in inputs_of(rec[v[1]][0]) for v in nb):
+            if any(item in inputs_of(r) for v in nb for r in recipes_of(v[1])):  # 连着的是池子：哪一组配方吃 / 产它都算
                 return "取", item
-            if any(item in outputs_of(rec[v[1]][0]) for v in nb):
+            if any(item in outputs_of(r) for v in nb for r in recipes_of(v[1])):
                 return "存", item
         nm = devices[i]["name"]
         return ("取" if nm in SOURCE_PORTS else "存" if nm == "仓库存货口" else None), item
@@ -925,13 +1055,33 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                           "basis": [f"输入端紧贴{devices[i]['name']}"]}
                     G.out[("n", nid)].append((("d", i), lk)); G.inn[("d", i)].append((("n", nid), lk))
 
+    # 并行池子每条配方满速的原料 / 产物（每分钟）、几条都要的原料（共用的清水）
+    cneed = {i: [inputs_of(c["recipe"]) for c in cs] for i, cs in par.items()}
+    cout = {i: [outputs_of(c["recipe"]) for c in cs] for i, cs in par.items()}
+    shared_of = {i: {k for k in set().union(*nds) if sum(k in nd for nd in nds) >= 2} for i, nds in cneed.items()}
+    cout_all = {}  # 并行池子 → 产物 → 几条合计满速产量（按配方顺序，依据里的先后不随进程变）
+    for i, ods in cout.items():
+        cout_all[i] = {}
+        for od in ods:
+            for k, v in od.items():
+                cout_all[i][k] = cout_all[i].get(k, 0.0) + v
+    par_products = {k for agg in cout_all.values() for k in agg}
+
     def dev_need(i):
         rc, _ = rec[i]
         need = inputs_of(rc)
+        if i in par:  # 几条同时跑：用量相加（武陵城反应池 (1357,1332) 两条各要清水 30 → 60）
+            need = {}
+            for nd in cneed[i]:
+                for k, v in nd.items():
+                    need[k] = need.get(k, 0.0) + v
         nm = devices[i]["name"]
         return need, FUEL_MIN.get(nm, 0.0)
 
     resid = [False]  # True：推料阶段，设备按剩余缺口算
+    # 这一趟内层按不按「别的原料够跑多快」限吃量（rl），是不是在给并行池子定出料上限（capping）。只有并行池子的外层会临时改它们
+    rl = [rate_limited_intake]
+    capping = [False]
     last_sup = {}     # 上一轮每台设备到手的料（按「另一种原料够跑多快」限这种原料的吃量）
     prev_sup = {}     # 再上一轮：两种原料互相限吃量会来回震荡（塑形机赤铜块 50/惰气 30 ↔ 60/25），取两轮里多的那轮，收敛到上面那个自洽解
 
@@ -942,15 +1092,18 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         if u[0] == "d" and u[1] not in buf_ids:
             need, fuel = dev_need(u[1])
             got_i = sup.get(u[1], {}) if resid[0] else {}  # 推料时按「还差多少」分：多个水口都往同一台送时，灌满的不再多拿（武陵城精炼炉 40/30 vs 20/30）
+            if u[1] in par and item and item not in UNKNOWN:
+                return max(0.0, sum(nd[item] * _ch_intake(u[1], c, item) for c, nd in enumerate(cneed[u[1]]) if item in nd)
+                           - got_i.get(item, 0.0))
             if u[1] in alt and item in inputs_of(alt[u[1]][0]):
                 return max(0.0, inputs_of(alt[u[1]][0])[item] - got_i.get(item, 0.0))
             if fuel and item and _is_fuel(item, rec[u[1]][0]):
                 return max(0.0, fuel - (_fuel_got(got_i, rec[u[1]][0]) if got_i else 0.0))  # 转化机/散布机烧的气：每台最低 6/分（4.7）
             if item and item not in UNKNOWN:
                 k_rate = 1.0
-                if resid[0] and RATE_LIMITED_INTAKE and item in need:  # 另一种原料只够跑 X%，这种也只吃 X%（灌装机缺赤铜耐压罐时不吃惰气，气改流向塑形机；用户 2026-11-09）
+                if resid[0] and rl[0] and item in need:  # 另一种原料只够跑 X%，这种也只吃 X%（灌装机缺赤铜耐压罐时不吃惰气，气改流向塑形机；用户 2026-11-09）
                     others = [min(1.0, max(last_sup.get(u[1], {}).get(k, 0.0), prev_sup.get(u[1], {}).get(k, 0.0)) / v)
-                              for k, v in need.items() if k != item and v > 0]
+                              for k, v in need.items() if k != item and v > 0 and not (capping[0] and k in par_products)]
                     if others and last_sup:
                         k_rate = min(others)
                 if resid[0]:
@@ -972,12 +1125,42 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
 
     # 来量：从来源往下推（每轮按拓扑顺序；设备产物下一轮才有）
     sup = defaultdict(lambda: defaultdict(float))     # 设备 → 物品 → 每分钟到手
+    # 到手里来自并行池子的、按缺口分来的未知来料（定池子出料上限时，下游「从别处已经拿到的」要扣掉这两种以外的）
+    not_exo = defaultdict(lambda: defaultdict(float))
+    pushing_par = [False]  # 正在推的是并行池子的产物
     via = defaultdict(lambda: defaultdict(list))      # 设备 → 物品 → 依据
     # 从「全部满速」开始往下迭代（取最大的自洽解）：种植机 ↔ 采种机这种互相供料的环从 0 开始永远起不来
     dev_rate = {i: 1.0 for i in range(len(devices))}
     out_cap = {}  # 设备 → 产物能出去的比例（背压，上一轮算的）
     alt_split = {i: (0.5, 0.5) for i in alt}  # 交替配方两种各占的开工时间（迭代里按来料更新）
     notes = []
+    # 并行池子（审计第 3 项，2026-11-19）。每条配方各有开工率；出料上限有两种：
+    # struct_cap = 结构背压（和别的设备同一套，按下游满速用量，每轮内层算）；dem_cap = 下游「实际」吃得下多少（看下游别的原料够不够），
+    # 外层算、一趟内层里不变。有效上限 ecap 取两者小的，用在推料吸收量和每条的开工率上；给别的设备算背压的 drain 只用 struct_cap
+    # （别的设备的背压口径不动，那是另一个审计项）。
+    # 为什么要 dem_cap：皇帝产线武陵城反应池 (1357,1332) 两条溶液下游的灌装机各只有 15 蓝铁瓶，只按结构算两条都满速、白占 60 清水，
+    # 和它共用分流器的种植机 (1573,1391) 就被算成缺水（作者 2026-11-10 说那组设备游戏里都在转，巡检看到的是下游堵）
+    chan_rate = {i: [1.0] * len(cs) for i, cs in par.items()}
+    struct_cap = {}  # 池子 → [每条的结构背压上限]（有一条 < 1 才记）
+    dem_cap = {}     # 池子 → [每条的下游需求上限]（有一条 < 1 才记）
+    dem_why = {}     # 池子 → 产物 → (下游吃得下, 满速产, [点名的下游设备说明], [点名的设备键])
+    last_scale = {}  # 池子 → 共用原料 → 上一轮「到手 / 按各条开工率要的」（不够时按各条用量比例分）
+
+    def ecap(i, c):
+        return min(struct_cap[i][c] if i in struct_cap else 1.0, dem_cap[i][c] if i in dem_cap else 1.0)
+
+    def _ch_intake(i, c, item):
+        """并行池子第 c 条配方在推料时按满速用量的几成吃 item：这条别的独有原料上一轮只够跑多少（限吃量那一遍）、
+        共用原料上一轮按比例分到几成、这条的出料上限，取最小。不是推料阶段（算准入口下游需求）时都按满速。"""
+        nd, k = cneed[i][c], 1.0
+        if resid[0] and rl[0] and last_sup:
+            own = [kk for kk in nd if kk != item and kk not in shared_of[i] and nd[kk] > 0 and not (capping[0] and kk in par_products)]
+            if own:
+                k = min(1.0, min(max(last_sup.get(i, {}).get(kk, 0.0), prev_sup.get(i, {}).get(kk, 0.0)) / nd[kk] for kk in own))
+            k = min([k] + [last_scale.get(i, {}).get(kk, 1.0) for kk in nd if kk != item and kk in shared_of[i]])
+        if resid[0]:
+            k = min(k, ecap(i, c))
+        return k
 
     def push(u, item, q, path, seen):
         """q/分的 item 到了 u，往下分。"""
@@ -988,6 +1171,8 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 star[u[1]].append((q, path, item))
                 return
             sup[u[1]][item] += q
+            if pushing_par[0]:
+                not_exo[u[1]][item] += q
             via[u[1]][item].append(path + [f"{q:g}"])
             return
         if u in seen:
@@ -1032,7 +1217,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         for grp, tag in ((main, "主路"), (back, "备路")):
             if not grp or left <= EPS:
                 continue
-            if MAIN_BLOCKED and tag == "主路" and back and kd == "出料口":
+            if main_blocked and tag == "主路" and back and kd == "出料口":
                 continue  # 情景：主路堵死，全部走备路
             caps = [min(_cap(lk), absorb(v, item, tuple(seen))) for v, lk in grp]
             alloc = [0.0] * len(grp)
@@ -1086,6 +1271,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
 
     def sources():
         out = []
+        par_srcs.clear()
         pool = pools()
         for nid, g in gate.items():
             m = g.get("input")
@@ -1118,7 +1304,7 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 how = "图标" if pit else ""
                 outs = list(G.out[u])
                 if pit:  # 底账名字/小三角把方向弄反了（连成 设备 → 仓库口）：这台设备要这种原料，就按仓库口往它出
-                    outs += [(v, lk) for v, lk in G.inn[u] if v[0] == "d" and pit in inputs_of(rec[v[1]][0])]
+                    outs += [(v, lk) for v, lk in G.inn[u] if v[0] == "d" and any(pit in inputs_of(r) for r in recipes_of(v[1]))]
                 for v, lk in outs:
                     item = pit or _first_gate_item(G, v, gate, stop=makers) or (UNK_PIPE if lk.get("layer") == "pipe" else UNK_BELT)
                     tag = f"{item}，认{how}" if pit else (item if item not in UNKNOWN else "物品没看到，按设备缺口分")
@@ -1129,7 +1315,13 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                     out.append((v, item, _cap(lk), [f"{d['name']}（{item if item not in UNKNOWN else '物品没看到，按设备缺口分'}）{_cap(lk):g}/分"]))
             elif dev_rate.get(i, 0) > EPS:
                 rc, _ = rec[i]
-                if i in alt and i in alt_split:  # 交替配方：主配方和交替配方各按自己的开工时间出产物（扩容反应池轮流做锦草/芽针溶液）
+                if i in par:  # 并行池子：每条按自己的开工率出产物，几条产同一种的相加
+                    agg = {}
+                    for c, od in enumerate(cout[i]):
+                        for it_, q_ in od.items():
+                            agg[it_] = agg.get(it_, 0.0) + q_ * chan_rate[i][c]
+                    prods = [(it_, q_) for it_, q_ in agg.items() if q_ > EPS]
+                elif i in alt and i in alt_split:  # 交替配方：主配方和交替配方各按自己的开工时间出产物（应龙关液气转化机 (950,879) 轮流做两路液体）
                     t1, t2 = alt_split[i]
                     prods = [(it, r * t1) for it, r in outputs_of(rc).items()] + [(it, r * t2) for it, r in outputs_of(alt[i][0]).items()]
                 else:
@@ -1148,7 +1340,13 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                     elif targets:  # 几个出料口：推料时按主路/备路分（那时才知道下游各吃得下多少）
                         prod_out[(i, item)] = targets
                         out.append((("out", i), item, q, [f"{d['name']}产 {item} {q:.2g}/分"]))
+                    else:
+                        continue
+                    if i in par:
+                        par_srcs.add(len(out) - 1)
         return out
+
+    par_srcs = set()  # sources() 这一趟返回的来源里，哪几条是并行池子的产物（下标）
 
     prod_out = {}
 
@@ -1165,6 +1363,11 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 return float("inf")  # 连到不吃这种东西的设备：多半是认错了连线/配方，不拿它当「堵」
             # 只算结构上的堵：满速用量 × 它自己的产物出不出得去。不看它别的原料够不够
             # （粉碎机 → 研磨机：两台粉碎机分别供源石粉末和砂叶粉末，按「别的原料够不够」算会互相压成 0）
+            # 并行池子：各条按自己的结构背压吃（不用下游需求上限 dem_cap，见 chan_rate 上面的说明）。注意 _backpressure 前
+            # struct_cap、out_cap 都先清空（先清后算，和原来一样），所以这里和下面普通设备的系数实际总是 1：结构背压只往上传一层
+            # （2026-11-19 核实：池子串池子、下游池子那条被准入口限到 50% 时，上游池子的 struct_cap 仍是空的，靠 dem_cap 限住）
+            if u[1] in par:
+                return sum(nd.get(item, 0.0) * (struct_cap[u[1]][c] if u[1] in struct_cap else 1.0) for c, nd in enumerate(cneed[u[1]]))
             return need[item] * out_cap.get(u[1], 1.0)
         outs = G.out[u]
         if not outs:
@@ -1182,12 +1385,32 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 tot = min(tot, g["limit"])
         return tot
 
-    def _backpressure(rate) -> dict:
+    def _backpressure(rate) -> tuple[dict, dict]:
         """每台生产设备：每种产物，所有去向都是确定的设备时，下游这一轮最多吃多少 ÷ 满速产量 → 开工率上限。
-        几台生产者往同一台下游送时，每台都按下游全部用量算（只会少算堵，不会多算）。交替配方的设备不算。"""
-        caps = {}
+        几台生产者往同一台下游送时，每台都按下游全部用量算（只会少算堵，不会多算）。交替配方的设备不算。
+        并行池子按条算（第二个返回值，池子 → [每条的上限]）：某种产物没有去向 → 含它的那条不限；下游有「不知道」的（inf）→
+        这种产物不参加取小，同一条的别的产物照样限。"""
+        caps, ch_caps = {}, {}
         for i, d in enumerate(devices):
             rc, _ = rec[i]
+            if i in par:
+                icap = {}
+                for item, full in cout_all[i].items():
+                    if full <= EPS:
+                        continue
+                    targets = [(v, lk) for v, lk in G.out[("d", i)] if (not lk.get("items") or item in lk["items"])
+                               and (not lk.get("layer") or (lk["layer"] == "pipe") == _is_fluid(item))]
+                    if not targets:
+                        icap[item] = None
+                        continue
+                    tot = sum(min(_cap(lk), drain(v, item, rate, (("d", i),))) for v, lk in targets)
+                    if tot != float("inf"):
+                        icap[item] = max(0.0, min(1.0, tot / full))
+                chc = [1.0 if any(k in icap and icap[k] is None for k in od) else min([icap[k] for k in od if k in icap] or [1.0])
+                       for od in cout[i]]
+                if any(x < 1.0 - 1e-3 for x in chc):
+                    ch_caps[i] = chc
+                continue
             if i in alt or i in buf_ids or not outputs_of(rc) or not inputs_of(rc):
                 continue
             u = ("d", i)
@@ -1207,61 +1430,377 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 lim = min(lim, tot / full)
             if lim is not None and lim < 1.0 - 1e-3:
                 caps[i] = max(0.0, lim)
-        return caps
+        return caps, ch_caps
+
+    def eat(u, item, origin, acc, seen=()):
+        """item 从 u 往下「实际」能被吃掉多少（给并行池子 origin 定出料上限用）。和 drain 不同，这里看下游别的原料够不够：
+        - 普通设备：满速用量 × min(1, 它自己的结构背压, 每种别的原料 到手 / 用量)，再减去它从别处（不是并行池子、也不是按缺口分的
+          未知来料）已经拿到的这种料。别的原料到手是 0 的不按它截（多半是物流图漏连：按它把池子截成 0，省下的共用原料会送给别人、
+          藏住别处的缺料）；只有「有、但不够」才截。别的原料是 origin 自己的产物时，按那条配方没被共用原料比例压之前的量算
+          （池内反向耦合：下游吃 芽针溶液×1 + 锦草溶液×2、清水不够时两条一起被压，不能拿压过的量再去压自己）；
+        - 下游也是并行池子：逐条配方算，相加；共用原料的分母 = 这条的用量 + 别的条按 chan_rates 口径（独有原料、出料上限）
+          实际要的量；吃不满时和普通设备一样点名（写进 why / keys）；
+        - 储存箱 / 储气罐 / 暗管 / 物流件：穿过去，各路相加，每路受连线上限封顶；准入口物品不对算 0、有限速按限速封顶；
+          通到同一台设备的几路只算一次（和 split 同口径）；
+        - 不知道的去处 → inf：仓库存货口、没配方的设备、交替配方设备、没出口的储存箱或物流件、绕回的环；
+        - 不吃这种料的设备 → 0（推料时也不往那边分）。
+        acc：found（追到过吃它的设备没有）、why / keys（点名限住它的下游设备）。"""
+        if u in seen:
+            return float("inf")
+        if u[0] == "d" and u[1] not in buf_ids:
+            j = u[1]
+            need, _ = dev_need(j)
+            if devices[j]["name"] == "仓库存货口" or not need or j in alt:
+                return float("inf")
+            if item not in need:
+                return 0.0
+            acc["found"] = True
+            exo = max(0.0, sup[j].get(item, 0.0) - not_exo[j].get(item, 0.0))
+
+            def got(kk):
+                g = sup[j].get(kk, 0.0)
+                if kk in cout_all[origin]:
+                    s = max((min([last_scale.get(origin, {}).get(k2, 1.0) for k2 in cneed[origin][c] if k2 in shared_of[origin]] or [1.0])
+                             for c, od in enumerate(cout[origin]) if od.get(kk, 0.0) > 0), default=1.0)
+                    if s > EPS:
+                        g /= s
+                return g
+            if j in par:
+                # 共用原料按别的条「实际能跑多少」分，和 PM.chan_rates 一个口径（2026-11-19）。原来分母是各条满速用量相加，
+                # 把不跑的那条也算进去：合成例子 P2 两条共用蓝铁粉末 15、赫铜溶液为 0，chan_rates 里第二条跑 0、蓝铁全归第一条
+                # （能跑 50%、吃 30 壤晶废液），这里却按 15/(30+30) 只算吃 15，上游池子废液那条被压到 50%，两台一起低估还自洽收敛。
+                # 别的条独有原料到手为 0 就按 0 算，不套「到手为 0 不截」：那条是防止把 origin 截低，这里让别的条按 0 是把共用原料让给
+                # 这条、把 origin 放宽，方向本来就对。
+                def _f_other(c2):
+                    n2 = cneed[j][c2]
+                    own = [got(k2) / x for k2, x in n2.items() if k2 != item and k2 not in shared_of[j] and x > 0]
+                    return max(0.0, min([1.0, ecap(j, c2)] + own))
+                tot, full, worst = 0.0, 0.0, None
+                for c, nd in enumerate(cneed[j]):
+                    if item not in nd:
+                        continue
+                    k, lim_k = ecap(j, c), None
+                    for kk, v in nd.items():
+                        if kk == item or v <= 0 or sup[j].get(kk, 0.0) <= EPS:
+                            continue
+                        dn = v + sum(n2[kk] * _f_other(c2) for c2, n2 in enumerate(cneed[j]) if c2 != c and kk in n2) \
+                            if kk in shared_of[j] else v
+                        if got(kk) / dn < k:
+                            k, lim_k = got(kk) / dn, (kk, sup[j].get(kk, 0.0), dn)
+                    k = max(0.0, min(1.0, k))
+                    tot += nd[item] * k
+                    full += nd[item]
+                    if k < 1.0 - 1e-3 and (worst is None or k < worst[0]):
+                        worst = (k, lim_k)
+                if tot < full - 1e-3 and worst:
+                    # 和普通设备一样点名（2026-11-19）：池子串池子（P1 液化息壤 → P2，P2 的污水只有 15）时 P1 的「出料受限」原来不提 P2，
+                    # channels[].named 空着，run_base 也就挡不住 P2 反过来把液化息壤列进「卡在」，两台互相指认。取压得最狠的那条的原因。
+                    d, (k, lim_k) = devices[j], worst
+                    acc["why"].append(f"{d['name']}({d['x']},{d['y']}) " + (f"缺{lim_k[0]}（能送到 {lim_k[1]:g}/{round(lim_k[2], 2):g}）" if lim_k
+                                                                             else f"自己的产物出不去（背压 {k:.0%}）")
+                                      + f"，只吃得下 {round(tot, 2):g}/{full:g}")
+                    acc["keys"].append(f"{d['name']}@{d['x']},{d['y']}")
+                return max(0.0, tot - exo)
+            k, lim_k = out_cap.get(j, 1.0), None
+            for kk, v in need.items():
+                if kk == item or v <= 0 or sup[j].get(kk, 0.0) <= EPS:
+                    continue
+                if got(kk) / v < k:
+                    k, lim_k = got(kk) / v, (kk, sup[j].get(kk, 0.0), v)
+            k = max(0.0, min(1.0, k))
+            if k < 1.0 - 1e-3:
+                d = devices[j]
+                acc["why"].append(f"{d['name']}({d['x']},{d['y']}) " + (f"缺{lim_k[0]}（能送到 {lim_k[1]:g}/{lim_k[2]:g}）" if lim_k
+                                                                         else f"自己的产物出不去（背压 {k:.0%}）")
+                                  + f"，只吃得下 {need[item] * k:g}/{need[item]:g}")
+                acc["keys"].append(f"{d['name']}@{d['x']},{d['y']}")
+            return max(0.0, need[item] * k - exo)
+        outs = G.out[u]
+        if not outs:
+            return float("inf")
+        tot, dv = 0.0, set()
+        for v, lk in outs:
+            if lk.get("items") and item not in lk["items"]:
+                continue
+            if v[0] == "d":  # 通到同一台设备的几路按一个去向算（split 推料时也去重）
+                if v in dv:
+                    continue
+                dv.add(v)
+            tot += min(_cap(lk), eat(v, item, origin, acc, seen + (u,)))
+        if G.kind(u) == "准入口":
+            g = gate.get(u[1], {})
+            if g.get("item") and g["item"] != item:
+                return 0.0
+            if g.get("limit") is not None:
+                tot = min(tot, g["limit"])
+        return tot
+
+    def _demand_caps() -> tuple[dict, dict]:
+        """按刚收敛的「定上限」那趟，算每台并行池子每条配方的下游需求上限 = 它的产物下游实际吃得下 ÷ 满速产量（取各产物里最小的）。
+        产物一条去向都没有、或一路追下去没有一台吃它的设备 → 含它的那条不限（物流图漏连时不把池子压成 0）；
+        下游合计是 inf（不知道）→ 这种产物不参加取小。→ ({池子: [每条上限]}, {池子: {产物: (吃得下, 满速产, 点名说明, 点名设备键)}})"""
+        caps, whys = {}, {}
+        for i in par:
+            u = ("d", i)
+            icap, iw = {}, {}
+            for item, full in cout_all[i].items():
+                if full <= EPS:
+                    continue
+                targets, seen_d = [], set()
+                for v, lk in G.out[u]:
+                    if lk.get("items") and item not in lk["items"] or lk.get("layer") and (lk["layer"] == "pipe") != _is_fluid(item):
+                        continue
+                    if v[0] == "d":
+                        if v[1] not in buf_ids and devices[v[1]]["name"] != "仓库存货口" and dev_need(v[1])[0] \
+                                and not any(item in inputs_of(r) for r in recipes_of(v[1])):
+                            continue  # 直接相连、但哪条配方都不吃它的设备（交替配方的原料也看）：推料时也不往那边分
+                        if v in seen_d:
+                            continue  # 两根管子通到同一台：按一个去向算
+                        seen_d.add(v)
+                    targets.append((v, lk))
+                if not targets:
+                    icap[item] = None
+                    continue
+                acc = {"found": False, "why": [], "keys": []}
+                tot = sum(min(_cap(lk), eat(v, item, i, acc, (u,))) for v, lk in targets)
+                if tot == float("inf"):
+                    continue
+                if tot <= EPS and not acc["found"]:
+                    icap[item] = None
+                    continue
+                icap[item] = min(1.0, tot / full)
+                iw[item] = (tot, full, acc["why"], acc["keys"])
+            caps[i] = [1.0 if any(k in icap and icap[k] is None for k in od) else min([icap[k] for k in od if k in icap] or [1.0])
+                       for od in cout[i]]
+            whys[i] = iw
+        return caps, whys
 
     star = defaultdict(list)
-    for it in range(20):
-        sup.clear(); via.clear(); star.clear(); notes.clear()
-        resid[0] = True
-        prod_out.clear()
-        srcs = sources()
-        for u, item, q, path in srcs:  # 先推只有一个去向的，再分几个出料口的：分的时候已经吃饱的下游不再多给
-            if u[0] != "out":          # （应龙关采种机 (349,1161) 原来先各给 15，另一台又单独给 (349,1332) 30，一台 45、一台 15）
-                push(u, item, q, path, frozenset())
-        # 几个出料口要分的：出口少的先分（背压：出口少的没别处可去，先把自己那几台下游填满；出口多的再分剩下的缺口）。
-        # 2026-11-10 武陵城左列：采种机 (326,1463) 两个去向、(361,1123) 三个去向，都通种植机 (361,1294)。
-        # 先分三个去向的那台时三台各 20，两台种植机只有 2/3；游戏里 (361,1294) 吃饱后那条带子堵住、种子只流向另两台，理论满速（作者确认）
-        for u, item, q, path in sorted((s for s in srcs if s[0][0] == "out"), key=lambda s: len(prod_out[(s[0][1], s[1])])):
-            split(prod_out[(u[1], item)], item, q, path, frozenset(), "出料口")
-        resid[0] = False
-        for i, lst in star.items():  # 仓库带 / 暗管：一条带（管）一种物品，先给还没有来源的原料，再给缺得最多的
-            need, _ = dev_need(i)
-            for q, path, unk in sorted(lst, key=lambda z: -z[0]):
-                fit = [k for k in need if _unknown_fits(unk, k)]  # 管子来的只能是流体原料，带子来的只能是固体原料
-                if not fit:
+
+    def _reset():
+        """每一趟内层都从「全部满速」开始：种植机 ↔ 采种机这种互相供料的环从 0 开始永远起不来，
+        外层定池子上限的那几趟也得这样，否则上一趟池子多占清水时环被压低的值会留下来（棘轮）。"""
+        dev_rate.clear()
+        dev_rate.update({i: 1.0 for i in range(len(devices))})
+        out_cap.clear(); struct_cap.clear(); last_scale.clear(); last_sup.clear(); prev_sup.clear()
+        alt_split.clear()
+        alt_split.update({i: (0.5, 0.5) for i in alt})
+        for i in par:
+            chan_rate[i] = [1.0] * len(par[i])
+
+    def inner(limit) -> tuple[int, bool]:
+        """推料 → 每台的开工率 → 背压，迭代到不再变。→ (轮数, 收敛了没有)"""
+        _reset()
+        for it in range(limit):
+            sup.clear(); via.clear(); star.clear(); notes.clear(); not_exo.clear()
+            resid[0] = True
+            prod_out.clear()
+            srcs = sources()
+            for k, (u, item, q, path) in enumerate(srcs):  # 先推只有一个去向的，再分几个出料口的：分的时候已经吃饱的下游不再多给
+                if u[0] != "out":          # （应龙关采种机 (349,1161) 原来先各给 15，另一台又单独给 (349,1332) 30，一台 45、一台 15）
+                    pushing_par[0] = k in par_srcs
+                    push(u, item, q, path, frozenset())
+            # 几个出料口要分的：出口少的先分（背压：出口少的没别处可去，先把自己那几台下游填满；出口多的再分剩下的缺口）。
+            # 2026-11-10 武陵城左列：采种机 (326,1463) 两个去向、(361,1123) 三个去向，都通种植机 (361,1294)。
+            # 先分三个去向的那台时三台各 20，两台种植机只有 2/3；游戏里 (361,1294) 吃饱后那条带子堵住、种子只流向另两台，理论满速（作者确认）
+            for k, (u, item, q, path) in sorted(((k, s) for k, s in enumerate(srcs) if s[0][0] == "out"),
+                                                key=lambda ks: len(prod_out[(ks[1][0][1], ks[1][1])])):
+                pushing_par[0] = k in par_srcs
+                split(prod_out[(u[1], item)], item, q, path, frozenset(), "出料口")
+            pushing_par[0] = False
+            resid[0] = False
+            for i, lst in star.items():  # 仓库带 / 暗管：一条带（管）一种物品，先给还没有来源的原料，再给缺得最多的
+                need, _ = dev_need(i)
+                for q, path, unk in sorted(lst, key=lambda z: -z[0]):
+                    fit = [k for k in need if _unknown_fits(unk, k)]  # 管子来的只能是流体原料，带子来的只能是固体原料
+                    if not fit:
+                        continue
+                    k = min(fit, key=lambda k: (sup[i].get(k, 0.0) > EPS, sup[i].get(k, 0.0) / need[k]))
+                    sup[i][k] += q
+                    not_exo[i][k] += q  # 按缺口分来的：不当成下游「从别处已经拿到的」（它可能本来就是池子的产物）
+                    via[i][k].append(path + [f"当作{k}", f"{q:g}"])
+            prev_sup.clear()
+            prev_sup.update(last_sup)
+            last_sup.clear()
+            last_sup.update({i: dict(v) for i, v in sup.items()})
+            new, new_ch = {}, {}
+            for i in par:  # 并行池子：每条按自己的原料和出料上限，共用原料不够时按各条用量比例分（推断）
+                new_ch[i], last_scale[i] = PM.chan_rates(cneed[i], sup[i], [ecap(i, c) for c in range(len(par[i]))])
+            for i, d in enumerate(devices):
+                need, fuel = dev_need(i)
+                if not need:
+                    new[i] = 0.0
                     continue
-                k = min(fit, key=lambda k: (sup[i].get(k, 0.0) > EPS, sup[i].get(k, 0.0) / need[k]))
-                sup[i][k] += q
-                via[i][k].append(path + [f"当作{k}", f"{q:g}"])
-        prev_sup.clear()
-        prev_sup.update(last_sup)
-        last_sup.clear()
-        last_sup.update({i: dict(v) for i, v in sup.items()})
-        new = {}
-        for i, d in enumerate(devices):
-            need, fuel = dev_need(i)
-            if not need:
-                new[i] = 0.0
-                continue
-            rs = [min(1.0, sup[i].get(k, 0.0) / v) for k, v in need.items() if v > 0]
-            new[i] = min(rs) if rs else 0.0
-            if i in alt:  # 交替配方：两种配方各自的原料够跑多少，按比例分时间（共用的原料只算一次）
-                aneed = {k: per_min(alt[i][0], k) for k in inputs_of(alt[i][0])}
-                shared = [k for k in need if k in aneed]
-                f1 = min((sup[i].get(k, 0.0) / v for k, v in need.items() if k not in shared and v > 0), default=1.0)
-                f2 = min((sup[i].get(k, 0.0) / v for k, v in aneed.items() if k not in shared and v > 0), default=1.0)
-                fs = min((sup[i].get(k, 0.0) / need[k] for k in shared if need[k] > 0), default=1.0)
-                tot = min(1.0, f1 + f2, fs)
-                alt_split[i] = (tot * f1 / (f1 + f2), tot * f2 / (f1 + f2)) if f1 + f2 > EPS else (0.0, 0.0)
-                new[i] = tot
-        if BACKPRESSURE:
-            for i in new:
-                new[i] = min(new[i], out_cap.get(i, 1.0))
-            out_cap.clear()
-            out_cap.update(_backpressure(new))
-        if all(abs(new[i] - dev_rate[i]) < 1e-3 for i in new):
-            break
-        dev_rate = new
+                rs = [min(1.0, sup[i].get(k, 0.0) / v) for k, v in need.items() if v > 0]
+                new[i] = min(rs) if rs else 0.0
+                if i in par:
+                    new[i] = max(new_ch[i])  # 只当「出不出产物」的开关；出多少按每条算（sources）
+                if i in alt:  # 交替配方：两种配方各自的原料够跑多少，按比例分时间（共用的原料只算一次）
+                    aneed = {k: per_min(alt[i][0], k) for k in inputs_of(alt[i][0])}
+                    shared = [k for k in need if k in aneed]
+                    f1 = min((sup[i].get(k, 0.0) / v for k, v in need.items() if k not in shared and v > 0), default=1.0)
+                    f2 = min((sup[i].get(k, 0.0) / v for k, v in aneed.items() if k not in shared and v > 0), default=1.0)
+                    fs = min((sup[i].get(k, 0.0) / need[k] for k in shared if need[k] > 0), default=1.0)
+                    tot = min(1.0, f1 + f2, fs)
+                    alt_split[i] = (tot * f1 / (f1 + f2), tot * f2 / (f1 + f2)) if f1 + f2 > EPS else (0.0, 0.0)
+                    new[i] = tot
+            if BACKPRESSURE:
+                for i in new:
+                    new[i] = min(new[i], out_cap.get(i, 1.0))
+                out_cap.clear()  # 先清再算：drain 按下游满速用量算，不叠上一轮的背压（和原来一样）
+                struct_cap.clear()
+                caps, ch_caps = _backpressure(new)
+                out_cap.update(caps)
+                struct_cap.update(ch_caps)
+            ch_moved = any(abs(a - b) >= 1e-3 for i in par for a, b in zip(new_ch[i], chan_rate[i]))
+            chan_rate.update(new_ch)
+            if all(abs(new[i] - dev_rate[i]) < 1e-3 for i in new) and not ch_moved:
+                return it + 1, True
+            dev_rate.clear()
+            dev_rate.update(new)
+        return limit, False
+
+    # 外层（只有据点里有并行池子时才跑）：定每条配方的下游需求上限 dem_cap。每一轮都从全部满速按「定上限」口径把内层跑到收敛，
+    # 再按收敛后的到手量算新上限（_demand_caps），上限不再变就停；停下后按这次调用自己的口径（主遍 / 能送到多少 / 主路堵死）
+    # 带着上限从满速再跑一趟出结果。「定上限」口径 = 按实际限吃量跑，但任何设备算「别的原料够跑多快」时不把并行池子的产物算进去
+    # （不然下游因为缺池子的产物少吃别的原料，再反过来把池子限住，自己压自己）。合成场景见 tests/test_pool_parallel.py。
+    # 没有并行池子的据点只跑最后那一趟，和原来一模一样。
+    # capping 现在是防护性的（2026-11-19 核实）：四个据点和已收敛的合成场景里关掉它结果都不变（absorb 限吃量滞后两轮，
+    # 内层第 3 轮就停了，轮不到它起作用）；只在内层跑满的场景里决定外层收不收敛（池子 + 种植机环共用 55 清水、芽针粉末 10、
+    # 下游瓶子来自分流器：关掉后外层 8 轮不收敛），测试 test_capping_keeps_outer_converging
+    iters = {"outer": 0, "inner": [], "hit_cap": False}
+    moved = False
+    if par:
+        rl[0], capping[0] = True, True
+        prev_mv = {}
+        for rounds in range(1, OUTER_MAX + 1):
+            n, ok = inner(CAP_INNER_MAX)
+            iters["inner"].append(n)
+            iters["hit_cap"] |= not ok
+            nc, nw = _demand_caps()
+            for i, caps in nc.items():
+                old = dem_cap.get(i, [1.0] * len(caps))  # 「不限」按 1.0 比
+                for c in range(len(caps)):
+                    mv = caps[c] - old[c]
+                    if mv * prev_mv.get((i, c), 0.0) < 0:
+                        # 这一轮的变化方向和上一轮相反（共用清水让给下游别的原料的生产者：上限越松，下游越吃不下）：取中点防来回跳。
+                        # 方向一致不阻尼：三层池子串联时上限一层层单调往上传，每轮取平均会拖成 8 轮还收不拢
+                        caps[c] = (caps[c] + old[c]) / 2
+                        mv = caps[c] - old[c]
+                    if abs(mv) >= 1e-9:
+                        prev_mv[(i, c)] = mv
+            moved = any(abs(caps[c] - dem_cap.get(i, [1.0] * len(caps))[c]) >= 1e-3 for i, caps in nc.items() for c in range(len(caps)))
+            dem_cap.clear()
+            dem_cap.update({i: caps for i, caps in nc.items() if any(x < 1.0 - 1e-3 for x in caps)})
+            dem_why.clear()
+            dem_why.update(nw)
+            iters["outer"] = rounds
+            if not moved:
+                break
+        rl[0], capping[0] = rate_limited_intake, False
+    n, ok = inner(INNER_MAX)
+    iters["inner"].append(n)
+    if iters["hit_cap"] or not ok:
+        notes.append({"kind": "迭代跑满", "msg": f"开工率迭代跑满还在变（各趟轮数 {iters['inner']}），结果取的是最后一轮"})
+    if moved:
+        notes.append({"kind": "池子出料上限没收敛", "msg": f"并行池子按下游需求定出料上限跑了 {OUTER_MAX} 轮还在变，用的是最后一轮的上限"})
+    iters["hit_cap"] |= not ok or moved
+
+    def _par_record(i, need, state, lim, feeds, on_backup, basis):
+        """并行池子的记录：开工率 = 各条按满速用量加权平均；依据前两条「出料受限：」「并行配方：」（插在 basis 前面）。
+        → (rate, state, limit_by, channels, need_capped)。need_capped = 按每条出料上限算的用量，run_base 拿它判「卡在」：
+        武陵城反应池 (1357,1332) 两条都被下游灌装机缺蓝铁瓶限到 50%，清水到手 30 正好够，不能报「卡在清水（30/60）」。"""
+        ts, n = chan_rate[i], len(par[i])
+        caps = [ecap(i, c) for c in range(n)]
+        w = [sum(nd.values()) for nd in cneed[i]]
+        rate = sum(t * x for t, x in zip(ts, w)) / sum(w) if sum(w) > EPS else 0.0
+        capped = [c for c in range(n) if caps[c] < 1.0 - 1e-3 and ts[c] >= caps[c] - 1e-3]
+        # 每条都贴着自己的出料上限：是出料受限，不是缺原料（limit_by 不写原料；全被截到 0 也写间歇，不写没料）
+        all_capped = bool(capped) and all(ts[c] >= caps[c] - 1e-3 for c in range(n))
+        if feeds:
+            if min(ts) >= 0.995:
+                state = "满速"
+            elif max(ts) <= EPS and not all_capped:
+                state = "溢流位/平时空闲" if on_backup else "没料"
+            else:
+                state = "间歇"
+        if all_capped:
+            lim = None
+        need_capped = {k: round(sum(nd.get(k, 0.0) * caps[c] for c, nd in enumerate(cneed[i])), 3) for k in need}
+        sh = [k for k in need if k in shared_of[i]]
+        short_sh = [k for k in sh if sup[i].get(k, 0.0) + 1e-3 < need_capped[k]]
+        chk = PM.check(devices[i]["name"], [m for c in par[i] for m in c["members"]])
+        basis.insert(0, "并行配方（官方：池子能同时跑几条配方，各自 2 秒一份）："
+                     + "；".join(f"{c['recipe']} 跑 {ts[k]:.0%}" + (f"（{'、'.join(c['members'])} 首尾相接，按一条净配方算）"
+                                                                    if len(c["members"]) > 1 else "") for k, c in enumerate(par[i]))
+                     + ("；共用的" + "、".join(f"{k} 到手 {sup[i].get(k, 0.0):g}/满速要 {need[k]:g}"
+                                             + (f"（按出料上限只要 {need_capped[k]:g}）" if need_capped[k] < need[k] - 1e-3 else "") for k in sh)
+                        + ("，不够时按各条用量比例分（推断）" if short_sh else "") if sh else "")
+                     + f"（{par_note.get(i, '')}）" + "".join(f"；{x}" for x in chk["warn"]))
+        named = [set() for _ in range(n)]  # 每条点了名的下游设备（run_base 判它们「卡在」时不再反过来列这条的产物）
+        if capped:
+            ws = []
+            for item, (tot, full, why, keys) in dem_why.get(i, {}).items():
+                if tot >= full - 1e-3:
+                    continue
+                more = f" 等 {len(why)} 台" if len(why) > 3 else ""
+                ws.append(f"{item} 下游实际吃得下 {tot:g}/满速产 {full:g}" + (f"（{'；'.join(why[:3])}{more}）" if why else ""))
+                for c in capped:
+                    if item in cout[i][c]:
+                        named[c] |= set(keys)
+            basis.insert(0, "出料受限：" + "；".join(f"{par[i][c]['recipe']} 最多跑 {caps[c]:.0%}" for c in capped)
+                         + ("。" + "；".join(ws) if ws else "（背压，主路顶住）")
+                         + "（推断：游戏里下游堵 → 池内这种产物攒满 → 那条配方停，按稳态折成只跑下游吃得下的那几成）")
+        chans = [{"recipe": c["recipe"], "members": c["members"], "src": c["src"], "rate": round(ts[k], 3), "out_cap": round(caps[k], 3),
+                  "struct_cap": round(struct_cap[i][k], 3) if i in struct_cap else None,
+                  "demand_cap": round(dem_cap[i][k], 3) if i in dem_cap else None, "named": sorted(named[k])}
+                 for k, c in enumerate(par[i])]
+        return rate, state, lim, chans, need_capped
+
+    # 池子配方从哪来（行上的 pool_src）、候选组合（行上的 candidates）、「池子配方」待确认（审计第 3 项，2026-11-19）
+    panel_keys = {(q["name"], q["x"], q["y"]) for q in recipes if "→" in (q.get("recipe") or "") or (q.get("recipe") or "").startswith("池产物")}
+    guessed = {(f["device"], f["x"], f["y"]) for f in fixes if "相邻" in f.get("how", "") or "why" in f}
+
+    def pool_src_of(i):
+        """作者 / 面板 / 邻居推断 / 照抄同类（配方表里没有这台，按同类借的：皇帝产线武陵城扩容反应池 (1768,1174)）/ 不明（配方未知）。"""
+        k = (devices[i]["name"], devices[i]["x"], devices[i]["y"])
+        if i in by_author:
+            return "作者"
+        if i in par:
+            return par[i][0]["src"]
+        if i in unknown:
+            return "不明"
+        return "邻居推断" if k in guessed else "面板" if k in panel_keys else "照抄同类"
+    raw_pool_fix = fx.get("pool_recipes") or {}
+    known = {j for j in range(len(devices)) if "→" in rec[j][0] and j not in unknown and j not in pool_unused}
+    pool_cand = {}
+    for i, d in enumerate(devices):
+        if d["name"] not in POOLS:
+            continue
+        key = f"{d['name']}@{d['x']},{d['y']}"
+        card = i in unknown or key in raw_pool_fix  # 作者回答过的卡片留着（标 applied），能撤销、能改
+        if not (card or pool_src_of(i) in ("邻居推断", "照抄同类")):
+            continue
+        links = _pool_links(i, G, devices, dev_canvas, recipes_of, known, pitem, gate)
+        pool_cand[i] = _pool_candidates(d["name"], links)
+        if not card:
+            continue
+
+        def side(dirn):
+            return [{"item": L["sup" if dirn == "in" else "dem"][0] if len(L["sup" if dirn == "in" else "dem"]) == 1 else None,
+                     "items": L["sup" if dirn == "in" else "dem"], "layer": L["layer"], "unclear": L["wild_in"] or L["wild_out"],
+                     "from" if dirn == "in" else "to": "、".join(L["ends"][:3]) or "（没追到设备）", "at": L["at"]}
+                    for L in links if L["dir"] == dirn]
+        ans = raw_pool_fix.get(key)
+        # 坐标和设计分析表、依据里的点名一样四舍五入（2026-11-20 核对安装包：卡片写 [2586, 217]、点名写 (2587,218)，作者按坐标对不上）
+        cc = [round(v) for v in dev_canvas[i]]
+        pending.append({"kind": "池子配方", "key": key, "device": f"{d['name']}[{cc[0]}, {cc[1]}]",
+                        "c": cc, "recipe": rec[i][0], "slots": PM.SLOTS[d["name"]],
+                        "msg": (f"{d['name']}机身没有产物图标，读不出它在跑哪几条配方。池子能同时跑几条（官方），"
+                                f"按进出的连线勾上这台在跑的配方（物品种类不超过 {PM.SLOTS[d['name']]} 格），或者说这台没在用。")
+                        if i in unknown else f"{d['name']}的配方是你在这里指定的；要改可以重新勾，或者撤销。",
+                        "ins": side("in"), "outs": side("out"), "combos": pool_cand[i], "answer": ans,
+                        "applied": i in pool_fix})
 
     # 每台设备的记录
     rows = []
@@ -1269,6 +1808,8 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         rc, inferred = rec[i]
         need, fuel = dev_need(i)
         if not need:
+            if i in pool_unused or i in unknown:  # 先判「没在用」：作者说没在用的池子配方也是空的，不能算成配方未知
+                rows.append(_blank_row(i, d, rc, dev_canvas, G, unused=i in pool_unused))
             continue
         u = ("d", i)
         feeds = G.inn[u]
@@ -1292,6 +1833,9 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         else:
             state = "间歇"
         zero = [k for k in need if abs(sup[i].get(k, 0.0) - need[k]) < 1e-3 and need[k] > 0]
+        chans = need_capped = None
+        if i in par:
+            r, state, lim, chans, need_capped = _par_record(i, need, state, lim, feeds, on_backup, basis)
         if i in alt:
             ar, anote = alt[i]
             agot = {k: round(sup[i].get(k, 0.0), 3) for k in inputs_of(ar) if k not in need}
@@ -1337,6 +1881,16 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                      "state": state, "zero_margin": zero, "feeds": len(feeds), "basis": basis[:8],
                      "fuel": {"need": fuel, "got": round(fuel_got, 3)} if fuel else None,
                      "loop": any(v[0] == "n" and v[1] in loop_nodes for v, _ in feeds)})
+        if chans:  # 只有并行池子有这两个键：别的设备行的字段不变
+            rows[-1].update(channels=chans, need_capped=need_capped)
+    dev_at = {(d["name"], d["x"], d["y"]): i for i, d in enumerate(devices)}
+    for r in rows:  # 只有池子行有 pool_src；算了候选的池子行带 candidates
+        i = dev_at[(r["device"], r["x"], r["y"])]
+        if r["device"] in POOLS:
+            r["pool_src"] = pool_src_of(i)
+            if i in pool_cand:
+                r["candidates"] = pool_cand[i]
+    _name_unknown_upstream(rows, G, devices, dev_canvas, unknown, buf_ids)
 
     # 准入口 ↔ 下游需求
     gates = []
@@ -1376,8 +1930,21 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
                 nm = lambda x: (devices[x[1]]["name"] + str([round(t) for t in dev_canvas[x[1]]])) if x[0] == "d" else f"{nodes[x[1]]['type']}{nodes[x[1]]['c']}"  # noqa: E731
                 inferred.append({"from": nm(u), "to": nm(v), "layer": lk.get("layer"), "basis": [b for b in lk.get("basis") or []][-2:],
                                  "path": lk.get("path", [])[:1] + lk.get("path", [])[-1:]})
-    out = {"devices": rows, "gates": gates, "ports": ports, "recipe_fixes": fixes, "tunnels": len(tpairs), "notes": notes + plant_notes, "issues": flow.get("issues", []),
-           "inferred_links": inferred, "reread": reread, "pending": pending}
+    n_tun = sum(1 for d in devices if "暗管入口" in d["name"] or "暗管出口" in d["name"])
+    miss = tunnel_files_missing(bd) if n_tun else []
+    if miss:
+        # 2026-11-19：别人的武陵城反馈包里没有 bp/<蓝图>/links.json，本地重算暗管配对是 0 对，暗管出口全按「物品不明、按缺口分」算，
+        # 结论可能偏乐观，界面上却看不出来。只加一条说明，不改任何设备的结果（皇帝产线三个据点有暗管的蓝图文件都齐、配对非空，不会出这条）。
+        # 按蓝图逐张看、点名是哪张：只看整个据点有没有配对，一张蓝图配上了、另一张缺 links.json 就提示不到
+        notes.append({"kind": "暗管配对缺失", "msg": f"{'、'.join(miss)} 没读到暗管配对（这个据点底账里有 {n_tun} 个暗管入口 / 出口）——"
+                                                  "请重读这几张蓝图（如果这份数据是从反馈包导入的，可能是包里没带蓝图数据）；经过暗管的来料现在是按缺口估的"})
+    elif n_tun and not tpairs:
+        # 文件都齐但一对都没有：暗管全是外接的（read_blueprints 不点、不写 links.json，issue #1 武陵城那种外接暗管入口），
+        # 或者是玩家在蓝图外自己摆的。重读也配不出来，不叫用户重读、不进 summary 的 warnings（2026-11-19）
+        notes.append({"kind": "暗管未配对", "msg": f"这个据点底账里的 {n_tun} 个暗管入口 / 出口没有配对（外接的、蓝图外自己摆的暗管不配对），"
+                                                "经过它们的来料按缺口估"})
+    out = {"devices": rows, "gates": gates, "ports": ports, "recipe_fixes": fixes, "tunnels": len(tpairs), "notes": notes + plant_notes + pool_notes, "issues": flow.get("issues", []),
+           "inferred_links": inferred, "reread": reread, "pending": pending, "iters": iters}
     analyze.last_graph = (G, devices, nodes, dict(sup), buf_ids)  # 调试用：最近一次的图
     return out
 
@@ -1458,7 +2025,8 @@ def _glyph_dirs(G, flow, devices, dev_canvas, bd) -> list:
 
 def load_fixes(base_dir: Path) -> dict:
     """作者在设计分析页「待确认」里做的修正（<项目>/fixes.json 里这个据点的那一段）：
-    {"feeds": {设备键: "to:<另一头设备键>" / "none" / "unused"}, "recipes": {设备键: 配方}}。设备键 = 设备名@底账远景坐标（同确认记录）。"""
+    {"feeds": {设备键: "to:<另一头设备键>" / "none" / "unused"}, "recipes": {设备键: 配方},
+     "pool_recipes": {池子的设备键: [原始配方…]（[] = 这台没在用；2026-11-19）}}。设备键 = 设备名@底账远景坐标（同确认记录）。"""
     pj = base_dir.parent.parent / "fixes.json"
     if not pj.exists():
         return {}
@@ -1468,7 +2036,7 @@ def load_fixes(base_dir: Path) -> dict:
         return {}
 
 
-def _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=None) -> tuple[list, list]:
+def _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=None, extra=None) -> tuple[list, list]:
     """自相矛盾：一台生产设备连着带子，但没有一条是进料（全被读成出口）。在生产的设备不可能没有进料，一定是哪条带子读错了。
     先看这台设备自己的口格折角（`glyph_sides`：朝里 = 进口）：带子接在它的进口边上、却被读成往外出 → 这条读错了。
       - 另一头的口格没说话，或也说方向反了 → 把方向改过来；
@@ -1527,7 +2095,7 @@ def _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=None) -> tu
         G.out[nu].append((nv, nl)); G.inn[nv].append((nu, nl))
         return nl
     makers = [i for i in range(len(devices)) if devices[i]["name"] not in PORT_NAMES and devices[i]["name"] not in BUFFERS
-              and any(not _is_fluid(k) for k in inputs_of(rec[i][0]))]
+              and any(not _is_fluid(k) for r in _recipes_of(rec, i, extra) for k in inputs_of(r))]  # 哪条配方吃固体都算（extra 见 _recipes_of）
     fixed, ask = [], []
 
     def dkey(i):
@@ -1603,7 +2171,7 @@ def _starved_by_reading(G, flow, devices, dev_canvas, rec, bd, feeds=None) -> tu
     return fixed, ask
 
 
-def _orphan_feeds(G, flow, devices, dev_canvas, rec) -> list:
+def _orphan_feeds(G, flow, devices, dev_canvas, rec, extra=None) -> list:
     """方向两边都说得通、没定下来的设备直连带（种植机 ↔ 采种机：种植机产砂叶给采种机，采种机产种子给种植机）：
     一头那台设备一条进料都没有、另一头的产物正好是它的原料 → 按「另一头 → 它」接上（它总得有料进来）。
     2026-11-10 武陵城种植机 (157,781)：唯一的设备邻居是下面的采种机 (120,987)。"""
@@ -1617,7 +2185,7 @@ def _orphan_feeds(G, flow, devices, dev_canvas, rec) -> list:
         for u, v in ((a, b), (b, a)):
             if devices[v[1]]["name"] in BUFFERS + PORT_NAMES or devices[u[1]]["name"] in BUFFERS:
                 continue
-            items = set(outputs_of(rec[u[1]][0])) & set(inputs_of(rec[v[1]][0]))
+            items = {k for r in _recipes_of(rec, u[1], extra) for k in outputs_of(r)} & {k for r in _recipes_of(rec, v[1], extra) for k in inputs_of(r)}
             if items and not G.inn[v]:
                 nl = dict(lk, dir="a->b", basis=[f"{devices[v[1]]['name']}没有别的进料，按配方推断 {devices[u[1]]['name']} 往它送{'、'.join(sorted(items))}"])
                 G.out[u].append((v, nl)); G.inn[v].append((u, nl))
@@ -1626,10 +2194,14 @@ def _orphan_feeds(G, flow, devices, dev_canvas, rec) -> list:
     return added
 
 
-def _buffer_dirs(G, flow, devices, dev_canvas, rec, alt, depth=6) -> list:
+def _buffer_dirs(G, flow, devices, dev_canvas, rec, extra=None, depth=6) -> list:
     """设备 ↔ 储存箱（中转）的带子没票、方向没定（Graph 里没收）：看储存箱往下送给谁 / 从谁那拿。
     储存箱下游有设备吃这台设备的产物 → 设备 → 储存箱；储存箱上游有设备产这台设备的原料 → 储存箱 → 设备；两样都有或都没有就不定。
-    2026-11-10 武陵城：芽针粉碎机 (1793,1669) → 储存箱 (1636,1669) → 汇流器 → 反应池（作者说那台反应池游戏里在转）。"""
+    2026-11-10 武陵城：芽针粉碎机 (1793,1669) → 储存箱 (1636,1669) → 汇流器 → 反应池（作者说那台反应池游戏里在转）。
+    extra：主配方以外在跑的配方（交替配方、并行池子的其余几条，见 _recipes_of）。"""
+    def recipes_of(i):
+        return _recipes_of(rec, i, extra)
+
     def reach(u, out):
         items, seen, front = set(), {u}, [u]
         for _ in range(depth):
@@ -1642,15 +2214,11 @@ def _buffer_dirs(G, flow, devices, dev_canvas, rec, alt, depth=6) -> list:
                     if v[0] == "n" or devices[v[1]]["name"] in BUFFERS:
                         nxt.append(v)
                     else:
-                        rc = rec.get(v[1], ("", False))[0]
-                        rcs = [rc] + ([alt[v[1]][0]] if v[1] in alt else [])
-                        for r in rcs:
+                        for r in recipes_of(v[1]):
                             items |= set(inputs_of(r)) if out else set(outputs_of(r))
             front = nxt
         return items
     added = []
-    def recipes_of(i):
-        return [rec.get(i, ("", False))[0]] + ([alt[i][0]] if i in alt else [])
     cand = []
     und = defaultdict(set)  # 储存箱 → 方向没定的那几台邻居设备（两边都没定时互相等，一起看）
     for lk in flow["links"]:
@@ -1686,7 +2254,7 @@ def _buffer_dirs(G, flow, devices, dev_canvas, rec, alt, depth=6) -> list:
     return added
 
 
-def _outlet_touch(G, flow, devices, dev_canvas, rec=None, gray=None) -> list:
+def _outlet_touch(G, flow, devices, dev_canvas, rec=None, gray=None, extra=None) -> list:
     """物流件的进料边直接贴着暗管出口这类只出不进的设备（中间没有管子）：暗管图标外框是浅蓝细线，flow 按外框找不到它。
     进料边没接任何东西、正前方 0.5–3.2 格内、横向 ≤1.5 格有这种设备 → 接上（应龙关多口暗管出口 4 号 → 汇流器 6 号，2026-11-09）。"""
     DIRV = {"E": (1, 0), "W": (-1, 0), "S": (0, 1), "N": (0, -1)}
@@ -1697,7 +2265,9 @@ def _outlet_touch(G, flow, devices, dev_canvas, rec=None, gray=None) -> list:
         if lk.get("b") is not None:
             used.add((lk["b"], lk.get("b_side")))
     # 只出不进的设备 + 生产设备（有配方产物）：武陵城精炼炉顶上的出料口直接贴着汇流器 → 塑形机（2026-11-09）
-    outs = [i for i, d in enumerate(devices) if d["name"] in OUTLETS or (TOUCH_PRODUCERS and rec and outputs_of(rec[i][0]))]
+    def prods(i):  # 这台设备所有在跑配方的产物（extra 见 _recipes_of）
+        return {k for r in _recipes_of(rec, i, extra) for k in outputs_of(r)}
+    outs = [i for i, d in enumerate(devices) if d["name"] in OUTLETS or (TOUCH_PRODUCERS and rec and prods(i))]
     added = []
     for n in flow["nodes"]:
         if n["type"] in ("物流桥", "管道桥"):
@@ -1737,8 +2307,8 @@ def _outlet_touch(G, flow, devices, dev_canvas, rec=None, gray=None) -> list:
             if devices[i]["name"] not in OUTLETS and G.inn[("n", n["id"])]:
                 continue  # 生产设备只补「上游完全没接东西」的物流件：已经有来源的再加一条会把产物分走（景玉谷种植机 ↔ 采种机互供环被分塌）
             if devices[i]["name"] not in OUTLETS:  # 生产设备：产物得是这一层的（管道物流件只接流体产物，传送带物流件只接物品）
-                fl_out = [k for k in outputs_of(rec[i][0]) if "气" in k or "液" in k or k in ("清水", "污水", "沉积酸")]
-                if (pipe_node and not fl_out) or (not pipe_node and len(fl_out) == len(outputs_of(rec[i][0]))):
+                fl_out = [k for k in prods(i) if "气" in k or "液" in k or k in ("清水", "污水", "沉积酸")]
+                if (pipe_node and not fl_out) or (not pipe_node and len(fl_out) == len(prods(i))):
                     continue
             if any(v == ("n", n["id"]) for v, _ in G.out[("d", i)]) or any(v == ("d", i) for v, _ in G.out[("n", n["id"])]):
                 continue  # 这台设备和这个物流件已经连着（从别的边）：不重复加，否则同一个来源会被当成两份
@@ -1819,6 +2389,35 @@ def tunnel_pairs(bd: Path, devices: list[dict], dev_canvas: list) -> list[tuple[
     return sorted(set(out))
 
 
+def tunnel_files_missing(bd: Path) -> list[str]:
+    """这个据点里本该有暗管配对、却读不到的蓝图名单（tunnel_pairs 读不出东西的那几张）。
+    bp/<蓝图>/anchors.json 不在 → 算缺（别人的武陵城反馈包整个没有 bp/）；在的话，有可点的暗管（不带 open）而 links.json 或 mosaic.png
+    不在、或者 partner 一对都没有 → 算缺。只有外接暗管（全带 open）或没有暗管的蓝图不算：read_blueprints 本来就不点外接暗管、
+    不写 links.json，重读也生不出来，按「缺文件、请重读」提示永远消不掉（2026-11-19 评审：景玉谷两张蓝图的暗管都标成外接后误报）。"""
+    tp = bd / "transform.json"
+    if not tp.exists():                      # 还没拼合过：不知道据点里有哪几张蓝图，不提示（analyze 不能因为这个抛异常）
+        return []
+    tf = json.loads(tp.read_text(encoding="utf-8"))
+    proj = bd.parent.parent
+    out = []
+    for bp_name in tf.get("bps", {}):
+        d = proj / "bp" / bp_name
+        if not (d / "anchors.json").exists():
+            out.append(bp_name)
+            continue
+        anc = json.loads((d / "anchors.json").read_text(encoding="utf-8")) or {}
+        if not any(a.get("name") in V.PIPE_NAMES and not a.get("open") for a in anc.get("anchors", [])):
+            continue
+        lp = d / "links.json"
+        if not lp.exists() or not (d / "mosaic.png").exists():
+            out.append(bp_name)
+            continue
+        part = (json.loads(lp.read_text(encoding="utf-8")) or {}).get("partner") or {}
+        if not any(v is not None for v in part.values()):
+            out.append(bp_name)
+    return out
+
+
 def _gate_items(bd: Path, nodes: list[dict], rec: dict, inputs: list[dict] | None = None) -> dict:
     """准入口没标物品的（作者还没在界面里标）→ {节点 id: {item, how}}。
     1. 准入口图标早按长相分了组（icon_group）：作者确认过物品的输入端在哪组，整组都是那种物品（应龙关 5/6 号息壤气那组）。
@@ -1876,10 +2475,11 @@ def _gate_items(bd: Path, nodes: list[dict], rec: dict, inputs: list[dict] | Non
     return {k: v for k, v in out.items() if v}
 
 
-def _fix_recipes_by_ports(G, devices, rec, recipes, pitem) -> list[dict]:
+def _fix_recipes_by_ports(G, devices, rec, recipes, pitem, skip=()) -> list[dict]:
     """配方来自历史巡检面板、按同名最近配对（±30 px），同类设备挨着时会配错台（2026-11-09 景玉谷：
     「砂叶 → 砂叶粉末」配到了一台由源矿取货口喂料的粉碎机上）。仓库取货口认出了物品后反过来核对：
-    喂进来的物品一个都不在配方原料里，就换成同类设备在本据点出现过的、原料包含这些物品的配方（标推断）。"""
+    喂进来的物品一个都不在配方原料里，就换成同类设备在本据点出现过的、原料包含这些物品的配方（标推断）。
+    skip：并行池子（2026-11-19）。只看主配方的原料，取货口喂的是第二条配方的原料时会把它换成一条。"""
     known = defaultdict(set)
     for d in recipes:
         if d.get("recipe") and "→" in d["recipe"]:
@@ -1887,7 +2487,7 @@ def _fix_recipes_by_ports(G, devices, rec, recipes, pitem) -> list[dict]:
     out = []
     for i, d in enumerate(devices):
         rc, inf = rec[i]
-        if not rc or d["name"] in PORT_NAMES:
+        if not rc or d["name"] in PORT_NAMES or i in skip:
             continue
         fed = set()
         for v, _ in G.inn[("d", i)] + G.out[("d", i)]:
@@ -1921,9 +2521,162 @@ def _first_gate_item(G, u, gate, depth=0, stop=()):
     return ""
 
 
+# 同一进程里的设计分析一次只跑一个（2026-11-19）。计算模式已经改成参数（见 RATE_LIMITED_INTAKE 上面的说明），这把锁是第二道保险：
+# 以后再有人加模块级的状态也不会串台；同时两次写同一个据点的 design.json 也排上队。设计分析本来就是重计算，排队没有损失。
+# 加锁顺序：api 的任务锁（Api._lock）只在开任务时拿一下、不在计算期间持有；这里的锁在外，flow._BUILD_LOCK 在内。
+# design 现在不调 flow.build（拼合是先 flow.run_base、再 design.run_base，前后两次），flow 里也不许反过来调 design.run_base，
+# 两把锁不会互相等。用可重入锁：同一个线程里嵌套调用（以后有人在 run_base 里再调 run_base）不会把自己锁死
+_RUN_LOCK = threading.RLock()
+
+
+def _can_make(machine: str) -> list[str]:
+    """这种机器按配方库能做的产物（配方未知的设备拿它去对下游缺的料）。"""
+    return sorted({k for r in _machine_recipes(machine) for k in outputs_of(r)})
+
+
+def _blank_row(i, d, rc, dev_canvas, G, unused=False) -> dict:
+    """没有配方的生产设备也出一行（审计第 3 项，2026-11-19）：配方未知，或作者说这台池子没在用。
+    开工率记 0.0（数字，界面和 summary 都按数字读），但状态单独一类，不算成「没料」：别人的武陵城 7 台池子原来整台不在结果里。"""
+    u = ("d", i)
+    nin, nout = len(G.inn[u]), len(G.out[u])
+    if unused:
+        state, basis = "没在用（作者说）", ["作者说这台没在用：不算开工率，也不往下游送料", f"物流图上进料 {nin} 条、出料 {nout} 条"]
+    else:
+        pool = d["name"] in POOLS
+        if rc.startswith("池产物"):
+            why = f"池产物没还原出配方（{rc[:40]}）"
+        elif rc:
+            why = f"配方文字认不出（{rc[:40]}）"
+        else:
+            why = "没读到配方，机身也认不出产物" + ("（池子机身没有产物图标）" if pool else "")
+        state = "配方未知"
+        basis = [f"配方未知：{why}。开工率没算；它的产物没往下游送（下游可能偏低）；它吃的原料也没从共用管网里扣（同网别的设备可能偏乐观）",
+                 f"这种机器能做：{'、'.join(_can_make(d['name']))}",
+                 f"物流图上进料 {nin} 条、出料 {nout} 条" + ("，去待确认里选配方" if pool else "")]  # 池子有「池子配方」待确认卡
+    row = {"device": d["name"], "x": d["x"], "y": d["y"], "c": [round(v) for v in dev_canvas[i]], "recipe": "", "env_required": None,
+           "via_inferred": False, "recipe_inferred": False, "need": {}, "got": {}, "rate": 0.0, "limit_by": None, "state": state,
+           "zero_margin": [], "feeds": nin, "outs": nout, "basis": basis, "fuel": None, "loop": False}
+    if not unused:
+        row.update(recipe_unknown=True, can_make=_can_make(d["name"]))
+    return row
+
+
+def _name_unknown_upstream(rows, G, devices, dev_canvas, unknown, buf_ids, depth=8, most=3):
+    """下游点名（审计第 3 项，2026-11-19）：开工率不满的设备，缺的那种原料沿进料往上游找（穿过物流件、储存箱、暗管，
+    不穿过配方已知的生产设备，最多 depth 层），碰到配方未知、而且这种机器能做这种料的设备 → 依据开头点名，写 blocked_by_unknown。
+    只改依据，不动数字。例：别人的武陵城封装机 (1505,948) 缺的料该由上游没配方的扩容反应池送，原来只写「没料」，看不出是池子的缘故。"""
+    if not unknown:
+        return
+    idx = {(r["device"], r["x"], r["y"]): r for r in rows}
+    can = {}
+    for i, d in enumerate(devices):
+        r = idx.get((d["name"], d["x"], d["y"]))
+        if r is None or not r["need"] or r["rate"] >= 0.995:
+            continue
+        short = [k for k, v in r["need"].items() if r["got"].get(k, 0.0) + 1e-6 < v]
+        if not short:
+            continue
+        hits = {}
+        seen, front = {("d", i)}, [("d", i)]
+        for _ in range(depth):
+            nxt = []
+            for x in front:
+                for v, _lk in G.inn[x]:
+                    if v in seen:
+                        continue
+                    seen.add(v)
+                    if v[0] == "n" or v[1] in buf_ids:
+                        nxt.append(v)
+                    elif v[1] in unknown:
+                        nm = devices[v[1]]["name"]
+                        can.setdefault(nm, set(_can_make(nm)))
+                        ks = [k for k in short if k in can[nm]]
+                        if ks:
+                            hits[v[1]] = ks
+            front = nxt
+        if not hits:
+            continue
+        r["blocked_by_unknown"] = [f"{devices[j]['name']}@{devices[j]['x']},{devices[j]['y']}" for j in hits]
+        names = "、".join(f"{devices[j]['name']}({round(dev_canvas[j][0])},{round(dev_canvas[j][1])})（能做{'、'.join(ks)}）"
+                         for j, ks in list(hits.items())[:most])
+        more = f" 等 {len(hits)} 台" if len(hits) > most else ""
+        r["basis"].insert(0, f"上游配方未知：{names}{more}。这一路的料没算进来，缺的料可能就是{'它们' if len(hits) > 1 else '它'}的")
+
+
+def _pool_links(i, G, devices, dev_canvas, recipes_of, known, pitem, gate, depth=6) -> list[dict]:
+    """池子 i 的每根进出连线通到什么（给候选配方打分、给待确认卡片画「进来 / 出去」，审计第 3 项，2026-11-19）。
+    进料往上游、出料往下游走：穿过物流件和储存箱（最多 depth 层），碰到别的设备就停。配方已知的设备（known）记它的产物 / 原料；
+    输入端准入口记作者填的物品；认准了物品的仓库口记那种物品；暗管、没认准的仓库口物品不明（wild）。
+    推料时按缺口分出来的物品不当证据（那是拿配方反推的）。→ [{layer, dir, sup, dem, wild_in, wild_out, ends, at}]
+    例：别人的武陵城扩容反应池 (1571,1729) 的进料管通到另一台池子和取货口，出料管通到提纯机（吃惰性壤晶废液）。"""
+    u = ("d", i)
+    cx, cy = dev_canvas[i]
+    out = []
+    for dirn, edges, step in (("in", G.inn[u], G.inn), ("out", G.out[u], G.out)):
+        for v, lk in edges:
+            sup, dem, ends, wild = set(), set(), [], False
+            seen, front = {u, v}, [v]
+            for _ in range(depth):
+                nxt = []
+                for x in front:
+                    if x[0] == "d" and devices[x[1]]["name"] not in BUFFERS:
+                        j, nm = x[1], devices[x[1]]["name"]
+                        ends.append(nm)
+                        if "暗管" in nm:
+                            wild = True
+                        elif nm in PORT_NAMES:
+                            it = pitem.get(j) or {}
+                            if it.get("sure") and it.get("item"):
+                                (sup if dirn == "in" else dem).add(it["item"])
+                            else:
+                                wild = True
+                        elif j in known:
+                            for r in recipes_of(j):
+                                sup |= set(outputs_of(r))
+                                dem |= set(inputs_of(r))
+                        continue
+                    if x[0] == "n":
+                        g = gate.get(x[1]) or {}
+                        if dirn == "in" and g.get("input") and g.get("item"):
+                            sup.add(g["item"])
+                            ends.append(f"输入端{g['input'].get('no')}号")
+                    for y, _lk in step[x]:
+                        if y not in seen:
+                            seen.add(y)
+                            nxt.append(y)
+                front = nxt
+            fl = lk.get("layer") == "pipe"
+            pts = lk.get("path") or []
+            at = min(([p[0], p[1]] for p in (pts[:1] + pts[-1:])), key=lambda p: np.hypot(p[0] - cx, p[1] - cy), default=[cx, cy])
+            out.append({"layer": "pipe" if fl else "belt", "dir": dirn, "sup": sorted(k for k in sup if PM.is_fluid(k) == fl),
+                        "dem": sorted(k for k in dem if PM.is_fluid(k) == fl), "wild_in": wild and dirn == "in",
+                        "wild_out": wild and dirn == "out", "ends": list(dict.fromkeys(ends)), "at": [int(at[0]), int(at[1])]})
+    return out
+
+
+def _pool_candidates(machine: str, links: list[dict], most: int = 5) -> list[dict]:
+    """这种池子放得下的配方组合按连线打分，取前 most 个 → [{recipes, label, score, items, why}]（推断，只给作者参考）。
+    只列连警告都没有的组合（管出口 2 种液体、带出口 1 种固体、管入口 2 种流体），和 scratchpad 试验 score_pools 同一套分值。
+    不自动套用（2026-11-19 定）：别人的武陵城物流图至少有 4 处漏连或连错，推出来的配方会把噪声带进下游的结果。"""
+    sc = sorted(((PM.score(c, links), k, c) for k, c in enumerate(PM.combos(machine, strict=True))), key=lambda t: (-t[0][0], t[1]))
+    return [{"recipes": list(c), "label": " + ".join("、".join(outputs_of(r)) for r in c), "score": round(s, 1),
+             "items": PM.check(machine, c)["items"], "why": why} for (s, why), _k, c in sc[:most]]
+
+
 def run_base(bd: Path, archive: Path | None, area: str, ledger: Path | None = None) -> dict:
     """bd = 项目 base/<据点>/；archive = 蓝图档案目录（data/blueprints/<档案>，配方表、准入口限速从这里读，可以没有）；
     ledger = 底账（不给就用档案里的）。写 design.json、design.jpg。"""
+    with _RUN_LOCK:
+        return _run_base(bd, archive, area, ledger)
+
+
+def _head(r: dict) -> int:
+    """run_base 往依据开头补话的位置：点了上游配方未知设备名的那条留在最前面（2026-11-19：别人的武陵城提纯机 (1592,443)
+    先看到「上游配方未知」，再看「卡在：」，不然以为是物流图漏连）。"""
+    return 1 if r.get("blocked_by_unknown") else 0
+
+
+def _run_base(bd: Path, archive: Path | None, area: str, ledger: Path | None) -> dict:
     led = json.loads((ledger or archive / "ledger" / f"{area}.json").read_text(encoding="utf-8"))
     rp = archive / "ledger" / f"{area}_recipes.json" if archive else None
     recipes = json.loads(rp.read_text(encoding="utf-8"))["devices"] if rp and rp.exists() else []
@@ -1935,42 +2688,45 @@ def run_base(bd: Path, archive: Path | None, area: str, ledger: Path | None = No
         from .pipenet import load_inputs
         icon_recipes = RI.derive(bd, led, known=recipes, inputs=load_inputs(bd))
         recipes = recipes + icon_recipes
-        (bd / "recipes_icon.json").write_text(json.dumps({"area": area, "from": "机身产物图标（recipe_icons）", "devices": icon_recipes},
-                                                         ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic.write_json(bd / "recipes_icon.json", {"area": area, "from": "机身产物图标（recipe_icons）", "devices": icon_recipes})
     glp = archive / "ledger" / "gate_limits" / f"{area}.json" if archive else None
     gl = json.loads(glp.read_text(encoding="utf-8")) if glp and glp.exists() else None
-    global RATE_LIMITED_INTAKE, MAIN_BLOCKED
-    RATE_LIMITED_INTAKE = False  # 第二遍：不管别的原料够不够，每种原料「能送到多少」→ 报真正卡住的是哪种
-    pot = analyze(bd, led, recipes, gl)
-    RATE_LIMITED_INTAKE = True
+    pot = analyze(bd, led, recipes, gl, rate_limited_intake=False)  # 第二遍：不管别的原料够不够，每种原料「能送到多少」→ 报真正卡住的是哪种
     res = analyze(bd, led, recipes, gl)
     if any(r["state"].startswith("溢流位") for r in res["devices"]):
         # 第三遍（情景）：设备出料口的主路全堵死（下游爆仓、塑形机出料堵住…），备路上的设备能拿到多少
-        MAIN_BLOCKED = True
-        try:
-            blk = analyze(bd, led, recipes, gl)
-        finally:
-            MAIN_BLOCKED = False
+        blk = analyze(bd, led, recipes, gl, main_blocked=True)
         bm = {(r["device"], tuple(r["c"])): r for r in blk["devices"]}
         for r in res["devices"]:
             b = bm.get((r["device"], tuple(r["c"])))
             if r["state"].startswith("溢流位") and b is not None and b["rate"] > EPS:
                 r["if_main_blocked"] = {"rate": b["rate"], "got": b["got"]}
-                r["basis"].insert(0, f"主路堵住时（下游爆仓）能拿到 " + "、".join(f"{k} {v:g}/分" for k, v in b["got"].items())
+                r["basis"].insert(_head(r), f"主路堵住时（下游爆仓）能拿到 " + "、".join(f"{k} {v:g}/分" for k, v in b["got"].items())
                                   + f"，开工率 {b['rate']:.0%}")
     potm = {(r["device"], tuple(r["c"])): r["got"] for r in pot["devices"]}
+    # 出料受限的并行池子点了名的下游设备 → 这几条配方的产物：下游的「卡在」不再列它们（2026-11-19 审计第 3 项）。
+    # 武陵城灌装机 (1069,1124) 缺蓝铁瓶，反应池 (1357,1332) 的芽针溶液那条因此只跑 50%，灌装机能送到的芽针溶液也就 15；
+    # 再写「卡在：芽针溶液」就成了两台互相指认。只改这句话，available 的数不动
+    by_pool = defaultdict(set)
+    for r in res["devices"]:
+        for ch in r.get("channels") or []:
+            for key in ch.get("named") or []:
+                by_pool[key] |= set(outputs_of(ch["recipe"]))
     for r in res["devices"]:
         pg = potm.get((r["device"], tuple(r["c"])))
         if pg is None:
             continue
         r["available"] = pg
         if r["rate"] < 0.995 and r["need"]:
-            short = sorted((k for k in r["need"] if pg.get(k, 0.0) + 1e-6 < r["need"][k]), key=lambda k: pg.get(k, 0.0) / r["need"][k])
+            base = r.get("need_capped") or r["need"]  # 并行池子按出料上限要的量比：出料受限的不报「卡在」原料
+            skip = by_pool.get(f"{r['device']}@{r['x']},{r['y']}", ())
+            short = sorted((k for k in r["need"] if pg.get(k, 0.0) + 1e-6 < base[k] and k not in skip),
+                           key=lambda k: pg.get(k, 0.0) / r["need"][k])
             r["limit_by"] = short[0] if short else r.get("limit_by")
             if short:
-                r["basis"].insert(0, "卡在：" + "、".join(f"{k}（能送到 {pg.get(k, 0):g}/{r['need'][k]:g}）" for k in short))
+                r["basis"].insert(_head(r), "卡在：" +"、".join(f"{k}（能送到 {pg.get(k, 0):g}/{r['need'][k]:g}）" for k in short))
     res["summary"] = summary(res)
-    (bd / "design.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_json(bd / "design.json", res)  # 原子写：界面（api.bpa_design）随时会来读，原来先清空再写，压测里 15% 的读拿到空文件
     try:
         image(V.rd(bd / "composite.png"), res).save(bd / "design.jpg", quality=88)
     except Exception as e:  # 出图失败不影响结果
@@ -2000,7 +2756,10 @@ def cut_impact(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | 
     return out
 
 
-STATE_COLORS = [("满速", (40, 170, 60)), ("间歇", (240, 150, 0)), ("溢流位", (140, 140, 140)), ("没接上", (200, 0, 200)), ("没料", (220, 30, 30))]
+# 「配方未知」「没在用」（审计第 3 项，2026-11-19）排在「没料」前面：_state_key 按前缀找、找不到才归没料，这两种不能被算成没料
+STATE_COLORS = [("满速", (40, 170, 60)), ("间歇", (240, 150, 0)), ("溢流位", (140, 140, 140)), ("没接上", (200, 0, 200)),
+                ("配方未知", (90, 120, 170)), ("没在用", (190, 190, 190)), ("没料", (220, 30, 30))]
+NO_RATE = ("配方未知", "没在用")  # 这两种行的开工率没算（记 0.0 只为了是数字），图上写「?」
 
 
 def _state_key(state: str) -> str:
@@ -2015,11 +2774,13 @@ def summary(res: dict) -> dict:
     return {"states": cnt, "devices": len(res["devices"]), "inferred_links": len(res.get("inferred_links", [])),
             "via_inferred": sum(1 for d in res["devices"] if d.get("via_inferred")),
             "recipe_inferred": sum(1 for d in res["devices"] if d.get("recipe_inferred")),
-            "env_required": sum(1 for d in res["devices"] if d.get("env_required")), "recipe_fixes": len(res.get("recipe_fixes", []))}
+            "env_required": sum(1 for d in res["devices"] if d.get("env_required")), "recipe_fixes": len(res.get("recipe_fixes", [])),
+            "warnings": [n["msg"] for n in res.get("notes", []) if isinstance(n, dict) and n.get("kind") == "暗管配对缺失"]}
 
 
 def image(canvas, res):
-    """设计分析图：每台设备一个圈，颜色 = 状态（绿满速 / 橙间歇 / 红没料 / 紫没接上 / 灰溢流位），旁边写开工率；
+    """设计分析图：每台设备一个圈，颜色 = 状态（绿满速 / 橙间歇 / 红没料 / 紫没接上 / 灰溢流位 / 灰蓝配方未知 / 浅灰没在用），旁边写开工率
+    （配方未知、没在用写「?」）；
     来料路径里有推断连线的画虚线外圈。"""
     import cv2
     from PIL import Image, ImageDraw, ImageFont
@@ -2038,7 +2799,7 @@ def image(canvas, res):
         if d.get("via_inferred"):
             for a in range(0, 360, 30):
                 dr.arc([x - r - 7, y - r - 7, x + r + 7, y + r + 7], a, a + 15, fill=(30, 90, 220), width=3)
-        txt = f"{d['rate']:.0%}" + ("*" if d.get("recipe_inferred") else "")
+        txt = ("?" if _state_key(d["state"]) in NO_RATE else f"{d['rate']:.0%}") + ("*" if d.get("recipe_inferred") else "")
         dr.text((x + r + 3, y - 9), txt, fill=col, font=F, stroke_width=2, stroke_fill=(255, 255, 255))
     for lk in res.get("inferred_links", []):
         if lk.get("path"):

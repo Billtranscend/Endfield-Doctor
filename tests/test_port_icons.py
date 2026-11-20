@@ -24,6 +24,8 @@ from bpa import logistics as LG  # noqa: E402
 from bpa import pipenet as PN  # noqa: E402
 from bpa import vision as V  # noqa: E402
 
+from _testkit import run, skip  # noqa: E402
+
 DATA = ROOT / "tests" / "data" / "port_icons"
 CAND = {"源矿", "致密源石粉末", "源石粉末", "赤铜矿", "赤铜块", "砂叶粉末", "砂叶", "蓝铁粉末", "息壤", "中容武陵电池"}  # 他那个据点配方里的固体（一部分）
 
@@ -54,7 +56,7 @@ def test_upright_undoes_composite_rotation():
 
 def test_ore_port_is_read_right_only_when_turned_back():
     if not has_icons():
-        return
+        skip("没有 AKEData 物品图标缓存（.cache）")
     for s in ("源矿_a", "源矿_b", "源矿_c"):
         raw = ranked(LG.ake_candidates(icon(s), top=999))
         assert raw[0][0] == "致密源石粉末", (s, raw[:3])  # 不转：认错（这就是他那 18 个口）
@@ -65,7 +67,7 @@ def test_ore_port_is_read_right_only_when_turned_back():
 def test_other_ports_keep_their_item():
     """反例：转回来以后别的物品不能被带成源矿。真的致密源石粉末还是致密源石粉末，赤铜矿、砂叶粉末也一样，而且分数更高。"""
     if not has_icons():
-        return
+        skip("没有 AKEData 物品图标缓存（.cache）")
     for s in ("致密源石粉末", "赤铜矿", "砂叶粉末"):
         raw = dict(ranked(LG.ake_candidates(icon(s), top=999)))
         up = ranked(LG.ake_candidates_upright(icon(s), [90], top=999))
@@ -76,7 +78,7 @@ def test_other_ports_keep_their_item():
 def test_several_rotations_take_the_best_per_item():
     """分不清在哪张蓝图里（给了几个角度）：每种物品取最高分；不给角度 = 不转。"""
     if not has_icons():
-        return
+        skip("没有 AKEData 物品图标缓存（.cache）")
     ic = icon("源矿_a")
     both = ranked(LG.ake_candidates_upright(ic, [0, 90], top=999))
     assert both[0][0] == "源矿" and both[0][1] >= 0.8
@@ -116,14 +118,14 @@ def test_local_gates_found_in_library_after_turning_back():
     """本机皇帝产线武陵城（转 90° 放，有数据才跑）：四个物品准入口直接查图标库一个都配不上，转回来是重息壤、赤铜耐压罐、芽针、锦草。"""
     bd = ROOT / "debug" / "bpa" / "实测-皇帝产线" / "base" / "武陵城"
     if not (bd / "composite.png").exists() or not (bd / "flow.json").exists() or not LG._lib(LG.ITEM_DIR):
-        return
+        skip("本机没有实测项目武陵城的拼合结果，或者图标库是空的")
     img = V.rd(bd / "composite.png")
     nodes = {n["id"]: n for n in json.loads((bd / "flow.json").read_text(encoding="utf-8"))["nodes"]}
     rots = D._rots_fn(bd)
     for nid, want in ((49, "重息壤"), (53, "赤铜耐压罐"), (85, "芽针"), (86, "锦草")):
         n = nodes.get(nid)
         if n is None or n["type"] != "准入口":
-            return  # 项目重新拼合过，编号变了
+            skip(f"实测项目武陵城重新拼合过，物流件编号 {nid} 不是准入口了")
         ic = LG.gate_icon(img, n["p"])
         assert rots(*n["p"]) == [90]
         assert LG.lookup_item(ic, None)[1] == "", nid
@@ -171,7 +173,4 @@ def test_load_inputs_without_candidates_is_empty():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过")
+    sys.exit(run([v for k, v in list(globals().items()) if k.startswith("test_")]))

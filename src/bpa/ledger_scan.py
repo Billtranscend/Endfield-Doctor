@@ -27,6 +27,7 @@ import cv2
 import numpy as np
 
 from paths import ROOT
+from . import atomic
 
 TICKS = 7  # 滚入几格：标签显示全名的一档
 ZOOM_NEAR = 1.73  # 滚入 TICKS 格后相对最远缩放的放大倍数（实测 1.728–1.731）
@@ -1110,8 +1111,9 @@ def save_ledger(archive: str, area: str, near: list[dict], scan_dir: Path, bound
     else:
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(json.dumps({"area": area, "zoom": "far", "updated": time.strftime("%Y%m%d-%H%M%S"),
-                                    "devices": [vars(x) for x in led.devices]}, ensure_ascii=False, indent=1), encoding="utf-8")
+        # 项目自己的底账 <项目>/ledger/<据点>.json：界面的项目状态（bpa_status）随时在读，原子写（2026-11-19，见 atomic.py）
+        atomic.write_json(dest, {"area": area, "zoom": "far", "updated": time.strftime("%Y%m%d-%H%M%S"),
+                                 "devices": [vars(x) for x in led.devices]})
         p = dest
     body = json.loads(p.read_text(encoding="utf-8"))
     body["coords"] = "最远缩放坐标（go_corner 原点）；由近景 7 格扫描换算（scale/C 见 scan）"
@@ -1123,7 +1125,7 @@ def save_ledger(archive: str, area: str, near: list[dict], scan_dir: Path, bound
     except ValueError:
         rel = str(scan_dir)
     body["scan"] = {"dir": rel, "scale": scan_rec["scale"], "C": scan_rec["C"], "screens": len(scan_rec["screens"])}
-    p.write_text(json.dumps(body, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_json(p, body)
     log(f"  底账已存 {p.name}：{len(inside)} 台" + (f"（线外 {len(outside)}、压线 {len(on_line)} 不收）" if boundary else ""))
     return p
 

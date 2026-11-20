@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "src" / "tools")]
 
 from bpa import vision as V  # noqa: E402
+from _testkit import run, skip  # noqa: E402
 
 P = V.GRID_PITCH
 
@@ -139,16 +140,16 @@ def test_local_bases_align_within_a_pixel():
     proj = ROOT / "debug" / "bpa" / "实测-皇帝产线"
     tfp = proj / "base" / "景玉谷" / "transform.json"
     if not tfp.exists():
-        return
+        skip("本机没有实测项目景玉谷的拼合结果")
     tf0 = json.loads(tfp.read_text(encoding="utf-8"))
     items = []
     for bp, b in tf0["bps"].items():
         f = proj / "bp" / bp / "mosaic.png"
         if not f.exists():
-            return
+            skip(f"实测项目里没有 {bp} 的拼图")
         items.append({"bp": bp, "mosaic": V.rd(f), "rot": b["rot"], "t": b.get("t_fit", b["t"])})
     if len(items) < 2:
-        return
+        skip("实测项目景玉谷不到两张蓝图，没有可对齐的")
     _, tf = V.composite(items)
     rot = {0: None, 90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
     q = []
@@ -161,7 +162,4 @@ def test_local_bases_align_within_a_pixel():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过")
+    sys.exit(run([v for k, v in list(globals().items()) if k.startswith("test_")]))

@@ -192,7 +192,10 @@ def _seed(S, P, v, t0=2, t1=16, lat=9):
     best = None
     for t in range(t0, t1 + 1):
         for l in sorted(range(-lat, lat + 1), key=abs):
-            x, y = int(round(P[0] + v[0] * t + vx * l)), int(round(P[1] + v[1] * t + vy * l))
+            # 取整用 floor(v+0.5)，不用 round：Python 的 round 遇 .5 取偶，而种子点横向对中后（_cross 量出来的偏移）常落在 .5 上，
+            # 这时 ±l 横向扫描的每一个点都被取到偶数行/列，1 px 宽的中心线正好在奇数行上就永远碰不到（2026-11-19 审计：
+            # 别人的武陵城种植机 (2473,1192) 那一圈锦草线就是这样追不出来，种植机、采种机 (2302,1192) 没料，粉碎机 (2473,1056) 跟着没料）
+            x, y = int(np.floor(P[0] + v[0] * t + vx * l + 0.5)), int(np.floor(P[1] + v[1] * t + vy * l + 0.5))
             if 0 <= x < W and 0 <= y < H and S[y, x]:
                 return np.array([x, y], float)
         if best is not None:

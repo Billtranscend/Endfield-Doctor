@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src")]
 
 import paths as P  # noqa: E402
+from _testkit import run, skip  # noqa: E402
 
 
 def mark(f: Path) -> bool:
@@ -37,7 +38,7 @@ def test_unblock_marked_files():
         skipped = base / "_internal" / "debug" / "shot.png"
         skipped.write_bytes(b"x")
         if not mark(files[0]):
-            return
+            skip("临时目录不是 NTFS，打不上下载标记")
         mark(files[1])
         mark(skipped)
         assert P.unblock_downloaded(base) == 2
@@ -52,7 +53,4 @@ def test_missing_dir_is_quiet():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
-    for t in tests:
-        t()
-    print(f"{len(tests)}/{len(tests)} 通过")
+    sys.exit(run([v for k, v in list(globals().items()) if k.startswith("test_")]))
