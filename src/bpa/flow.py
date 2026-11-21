@@ -598,6 +598,84 @@ def _touching_device(P, d, ledger_pts, rects, tol=(-4, 9)):
     return None
 
 
+TUNNELS = ("暗管入口", "暗管出口", "多口暗管入口", "多口暗管出口")
+
+
+def _touching_tunnel(P, d, ledger_pts, tol_along=0.55, tol_lat=0.55):
+    """管道物流件 d 边外面没有管子、_touching_device 也没认出贴着的设备时：正前方是不是一台暗管的口。
+    暗管只有一圈浅蓝细框，_rects 和端口布局（ports.all_ports）都认不出它的外框；物流件直接贴在暗管口上、
+    中间一格管子都没有时就接不上。2026-11-20 issue #1 第五轮：别人的武陵城左列清水准入口后面的汇流器贴着两个暗管入口，
+    反馈包第一次带上暗管配对后，对面的暗管出口出不来水，种植机、精炼炉、天有洪炉 9 台没料（没配对时暗管出口按缺口估，盖住了）。
+    按游戏数据（building_ports.json）里这台暗管的尺寸和口的位置，四个朝向都试：有一个口朝着物流件（口在 d 的反方向那条边上），
+    口的外缘离物流件这条边沿走向 ≤ tol_along 格、横向 ≤ tol_lat 格 → 那台。底账标签当设备中心：量过五个样本 70 台暗管，
+    标签离浅蓝框中心多口暗管最多约 0.46 格、单口约 0.33 格，所以容差取 0.55（离隔壁一格还远；从 0.4/0.45 放到 0.55 只多接上一条
+    真连接：应龙关多口暗管出口 (627,544) → 汇流器 (711,577)）。
+    只认唯一一台。→ {name, c, how, port}（port：这个口是 in 还是 out，调用方拿它和物流件这条边的进出核对）或 None。
+    口在哪条边是猜的（四个朝向都试）：连线依据写「贴着暗管口…推断」，设计分析按推断连线标〔推断连线〕。"""
+    from . import ports as PT
+    lays = PT.layouts()
+    P = np.asarray(P, float)
+    E = P + _v(d) * C / 2
+    hits = {}
+    for k, p in enumerate(ledger_pts):
+        L = lays.get(p["name"]) if p["name"] in TUNNELS else None
+        if not L:
+            continue
+        for rot in (0, 90, 180, 270):
+            for q in L["ports"]:
+                if not q["pipe"] or PT._rot_side(q["side"], rot) != BACK[d]:
+                    continue
+                x, y, w, h = PT._rot_cell(q["x"], q["y"], L["w"], L["d"], rot)
+                edge = np.array(p["c"], float) + (np.array([x + 0.5 - w / 2, y + 0.5 - h / 2]) + _v(BACK[d]) * 0.5) * C
+                dx, dy = edge - E
+                along, lat = dx * _v(d)[0] + dy * _v(d)[1], dx * _v(d)[1] - dy * _v(d)[0]
+                if abs(along) <= tol_along * C and abs(lat) <= tol_lat * C:
+                    hits.setdefault(k, q["role"])
+    if len(hits) != 1:
+        return None
+    (k, role), = hits.items()
+    p = ledger_pts[k]
+    return {"name": p["name"], "c": p["c"], "how": TUNNEL_HOW, "port": role}
+
+
+TUNNEL_HOW = "贴着暗管口（游戏数据尺寸）"
+
+
+def _drop_ambiguous_tunnel_touch(links, nodes, ledger_pts):
+    """_touching_tunnel 四个朝向都试，3×3 的暗管四条边正中都对得上，认不出口到底在哪条边（拼合图上口的小凸台用模板、深色像素都
+    判不稳，2026-11-20 拿 68 台已接线的暗管试过，最好 56/68）。暗管的口都在同一条边上：同一台暗管还有别的边像是口时，贴着认的这条不接。
+    别的边像是口 = 有别的管道物流件（含准入口）正贴着那条边的口位置，或者已经有连线（追出来的管子、设备直连的管子、
+    按最近标签挂上的）从那条边接进来。所以要等设备直连的管子追完再调。
+    皇帝武陵城 (965,714) 那台暗管入口：口在西边、直接贴着准入口 55，底边正中贴着一个分流器，不加这一步会把分流器接上。
+    顺带：同一个物流件已经从另一条边连着这台暗管时（应龙关汇流器 (93,1601) 东边按最近标签挂着多口暗管出口 (112,1673)），
+    贴着认的这条也丢掉，不会同一来源接两条、算两份（design.Graph 不去重）。代价是那条按最近标签认错了边的连线留着。"""
+    touch = {id(r) for r in links if r.get("touch") and (r.get("device") or {}).get("how") == TUNNEL_HOW}
+    if not touch:
+        return links
+
+    def key(dv):
+        return dv["name"], round(dv["c"][0]), round(dv["c"][1])
+    sides = {}  # 暗管 → 接进来的走向（物流件 / 管子头朝暗管走的方向）
+    for r in links:
+        if r["layer"] != "pipe":
+            continue
+        for dv, s in ((r.get("device"), r.get("dev_side")), (r.get("a_dev"), r.get("a_dev_side"))):
+            if dv and dv.get("name") in TUNNELS and s:
+                sides.setdefault(key(dv), set()).add(s)
+    tun = [p for p in ledger_pts if p["name"] in TUNNELS]
+    for n in nodes:
+        if "pipe" not in layer_of(n):
+            continue
+        for p in tun:
+            if abs(p["c"][0] - n["c"][0]) > 3 * C or abs(p["c"][1] - n["c"][1]) > 3 * C:
+                continue
+            for d in DIRS:
+                if _touching_tunnel(n["c"], d, [p]) is not None:
+                    sides.setdefault(key(p), set()).add(d)
+    bad = {k for k, s in sides.items() if len(s) > 1}
+    return [r for r in links if not (id(r) in touch and key(r["device"]) in bad)]
+
+
 OUTLETS = ("暗管出口", "多口暗管出口", "仓库取货口")  # 只往外出：物流件进料口贴着它就是接上了（应龙关多口暗管出口 M2 → 汇流器 H2 → G5，2026-11-09）
 NOT_PORT = ("息壤供电桩", "供电桩", "中继器", "协议核心", "仓库存取线基段", "仓库存取线源桩", "长距滑索架")  # 不接带子/管子的设备，不当端点
 # 长距滑索架：2026-11-14 别人的武陵城 (1736,370)，精炼炉进料带的另一头本来是取货口 (1768,351)，被按最近标签认成了滑索架
@@ -680,6 +758,12 @@ def _build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None, re
                 none_here = (r is not None and r.get("note") == "边外没有中心线") or                     (r is None and probe(M, lay, P0, d) is None and _adj(nodes, P0, d, lay, me=n) is None)
                 if none_here:
                     dv = _touching_device(P0, d, ledger_pts, rects)
+                    if dv is None and lay == "pipe" and n["type"] != LG.GATE:
+                        # 暗管只有浅蓝细框，外框认不出：按游戏数据尺寸看正前方是不是暗管的口；口的进出要和物流件这条边对得上
+                        # （物流件出口对暗管入口、物流件进料口对暗管出口；说不准的边照旧放行，和按外框认的一样）
+                        dv = _touching_tunnel(P0, d, ledger_pts)
+                        if dv is not None and _end_says(n, d) == dv["port"]:  # 两头都进 / 都出：不是这台
+                            dv = None
                     outlet = dv is not None and dv["name"] in OUTLETS
                     if dv is not None and n["type"] != LG.GATE and (_end_says(n, d) != "in" or outlet):  # 物流件出口直接贴着设备端口（中间没有带子/管子）；进料口贴着设备一般不算（设备外框挡着，多半不是端口），贴着只出不进的设备（暗管出口等）才算
                         raw.append({"end": "device", "path": [P0.copy()], "d": d, "jumps": [], "a": n["id"], "a_side": d,
@@ -701,6 +785,7 @@ def _build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None, re
                 raw.append(r)
     links, issues = _pair(raw, nodes)
     links += _dedupe_free(_stitch(free_segments(M, nodes, links, ledger_pts, rects), M=M, nodes=nodes))
+    links = _drop_ambiguous_tunnel_touch(links, nodes, ledger_pts)  # 设备直连的管子追完再看（它们也算暗管的口在哪边）
     for lk in links:
         lk["arrows"] = arrow_votes(M, lk["layer"], lk["path"], nodes)
     _fix_covered(links, nodes)
@@ -1327,8 +1412,9 @@ def _direction(lk, nodes, M, issues):
         fwd = sa == "out"; basis.append(f"{a['type']}{'出口' if sa == 'out' else '进料口'}")
     if sb:
         fb = sb == "in"
+        guess = lk.get("b") is None and (lk.get("device") or {}).get("how") == TUNNEL_HOW
         basis.append(f"{nodes[lk['b']]['type'] if lk.get('b') is not None else lk['device']['name']}{'进料口' if sb == 'in' else '出口'}"
-                     + ("（端口布局）" if lk.get("b") is None else ""))
+                     + ("（贴着暗管口，中间没有管子，口的位置按游戏数据尺寸推断）" if guess else "（端口布局）" if lk.get("b") is None else ""))
         if fwd is None:
             fwd = fb
         elif fwd != fb:

@@ -2,16 +2,16 @@
  "base": "武陵城",
  "format": 1,
  "meta": {
-  "code": "c462357+dirty",
+  "code": "be48540+dirty",
   "env": {
-   "PIL": "13.0.0",
+   "PIL": "12.0.0",
    "cv2": "5.0.0",
-   "numpy": "2.5.4",
+   "numpy": "2.3.5",
    "python": "3.12.12"
   },
   "fixture_sha256": "3f79d61d5b8236db10cee12ff837254d2e12c05ba5601bf5a61cd654d0180f46",
-  "generated": "2026-11-20T04:14:33",
-  "reason": "初始基线：0.10.11 代码在样本上重算，等于 item3f",
+  "generated": "2026-11-20T23:57:28",
+  "reason": "issue #1 第五轮：flow 认物流件直接贴在暗管口上（_touching_tunnel，口的位置按游戏数据尺寸推断，标推断连线；认不准的丢掉）。应龙关 reflow 多 6 条真连接（逐条看图核对），14 台结论变：分流器(432,1602)南出→暗管入口(440,1674) 6 台、汇流器(950,1396)东出→暗管入口(1025,1401) 2 台离实测近了；分流器(1185,132)北出→暗管入口(1196,65) 是真连接，但程序按分流器平分给赫铜块溢流组 1/3，4 台离实测远了、固转(594,819)(692,879) 和实测相反——分流器优先级用户没测过，记为已知局限，不是连线错。武陵城 reflow 结论 0 变化。用户 2026-11-20 认可。",
   "repo_data_sha1": {
    "data/building_ports.json": "fd55b8583e5cee54bac39d8ded779ff5c5f76dd9",
    "data/item_icons.json": "5539682a58d743030e390107524e515234de8b75",
@@ -104,7 +104,7 @@
    "采种机@723,1173": "同 stored",
    "采种机@743,976": "同 stored"
   },
-  "exact_sha1": "2d8ef78300a57457afc7c10e43e2b1425c151178",
+  "exact_sha1": "fdcae9bcaa7b5fdc79ec28e87744f6d4945cbf36",
   "extra": "同 stored",
   "flow_issues": [
    {"a":56,"a_ref":"管道分流器(1359,606)","b":57,"b_ref":"管道分流器(1086,644)","kind":"单向","layer":"pipe","msg":"从 管道分流器 追到 管道分流器，反过来没追回来"},
@@ -119,6 +119,7 @@
    {"basis":["汇流器贴着精炼炉（中间没有管子）"],"from":"精炼炉[1112, 748]","layer":"belt","path":[],"to":"汇流器[1086, 814]"},
    {"basis":["汇流器贴着精炼炉（中间没有管子）"],"from":"精炼炉[1489, 679]","layer":"belt","path":[],"to":"汇流器[1495, 746]"},
    {"basis":["汇流器贴着精炼炉（中间没有管子）"],"from":"精炼炉[1385, 748]","layer":"belt","path":[],"to":"汇流器[1359, 814]"},
+   {"basis":["管道分流器进料口","暗管出口出口（贴着暗管口，中间没有管子，口的位置按游戏数据尺寸推断）"],"from":"暗管出口[1886, 1090]","layer":"pipe","path":[[1881,1158],[1881,1158]],"to":"管道分流器[1881, 1158]"},
    {"basis":["端口布局：封装机出口 → 1 格短带 → 协议储存箱进口（按格子补）"],"from":"封装机[139, 185]","layer":"belt","path":[[66,114],[83,99]],"to":"协议储存箱[138, 65]"},
    {"basis":["汇流器贴着精炼炉（中间没有管子）"],"from":"精炼炉[908, 304]","layer":"belt","path":[],"to":"汇流器[885, 234]"},
    {"basis":["汇流器贴着精炼炉（中间没有管子）"],"from":"精炼炉[1012, 237]","layer":"belt","path":[],"to":"汇流器[1024, 167]"},
@@ -136,8 +137,7 @@
    {"basis":["分流器贴着仓库取货口（中间没有管子）"],"from":"仓库取货口[649, 1237]","layer":"belt","path":[],"to":"分流器[681, 1258]"},
    {"basis":["分流器贴着仓库取货口（中间没有管子）"],"from":"仓库取货口[480, 1579]","layer":"belt","path":[],"to":"分流器[442, 1601]"},
    {"basis":["准入口贴着仓库取货口（中间没有管子）"],"from":"仓库取货口[578, 1647]","layer":"belt","path":[],"to":"准入口[575, 1702]"},
-   {"basis":["准入口贴着仓库取货口（中间没有管子）"],"from":"仓库取货口[639, 1647]","layer":"belt","path":[],"to":"准入口[679, 1667]"},
-   {"basis":["管道分流器贴着暗管出口（中间没有管子）"],"from":"暗管出口[1886, 1090]","layer":"pipe","path":[],"to":"管道分流器[1881, 1158]"}
+   {"basis":["准入口贴着仓库取货口（中间没有管子）"],"from":"仓库取货口[639, 1647]","layer":"belt","path":[],"to":"准入口[679, 1667]"}
   ],
   "issues": "同 stored",
   "iters": "同 stored",
@@ -326,6 +326,7 @@
    {"dir":"→","dst":"管道分流器(1640,372)","dst_how":null,"dst_side":"S","dst_type":"node","layer":"pipe","lkey":["pipe",12,19,null,[],null,[],"b->a"],"src":"管道汇流器(2287,338)","src_how":null,"src_side":"W","src_type":"node"},
    {"dir":"→","dst":"管道分流器(1844,307)","dst_how":null,"dst_side":"S","dst_type":"node","layer":"pipe","lkey":["pipe",3,12,null,[],null,[],"b->a"],"src":"管道分流器(1640,372)","src_how":null,"src_side":"E","src_type":"node"},
    {"dir":"→","dst":"管道分流器(1849,611)","dst_how":null,"dst_side":"E","dst_type":"node","layer":"pipe","lkey":["pipe",100,null,null,[],"暗管出口",[590,339],"b->a"],"src":"暗管出口(590,339)","src_how":"最近标签","src_side":"N","src_type":"device"},
+   {"dir":"→","dst":"管道分流器(1881,1158)","dst_how":null,"dst_side":"N","dst_type":"node","layer":"pipe","lkey":["pipe",87,null,null,[],"暗管出口",[1886,1090],"b->a"],"src":"暗管出口(1886,1090)","src_how":"贴着暗管口（游戏数据尺寸）","src_side":"N","src_type":"device"},
    {"dir":"→","dst":"管道分流器(2017,1775)","dst_how":null,"dst_side":"S","dst_type":"node","layer":"pipe","lkey":["pipe",90,94,null,[],null,[],"a->b"],"src":"管道汇流器(2018,1840)","src_how":null,"src_side":"N","src_type":"node"},
    {"dir":"→","dst":"管道分流器(2018,1669)","dst_how":null,"dst_side":"S","dst_type":"node","layer":"pipe","lkey":["pipe",92,94,null,[],null,[],"b->a"],"src":"管道分流器(2017,1775)","src_how":null,"src_side":"N","src_type":"node"},
    {"dir":"→","dst":"管道分流器(2049,202)","dst_how":null,"dst_side":"N","dst_type":"node","layer":"pipe","lkey":["pipe",7,18,null,[],null,[],"b->a"],"src":"管道分流器(2253,235)","src_how":null,"src_side":"N","src_type":"node"},
