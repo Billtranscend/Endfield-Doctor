@@ -2,16 +2,16 @@
  "base": "景玉谷",
  "format": 1,
  "meta": {
-  "code": "be48540+dirty",
+  "code": "7464064+dirty",
   "env": {
-   "PIL": "12.0.0",
+   "PIL": "13.0.0",
    "cv2": "5.0.0",
-   "numpy": "2.3.5",
+   "numpy": "2.5.4",
    "python": "3.12.12"
   },
   "fixture_sha256": "3f79d61d5b8236db10cee12ff837254d2e12c05ba5601bf5a61cd654d0180f46",
-  "generated": "2026-11-20T23:57:28",
-  "reason": "issue #1 第五轮：flow 认物流件直接贴在暗管口上（_touching_tunnel，口的位置按游戏数据尺寸推断，标推断连线；认不准的丢掉）。应龙关 reflow 多 6 条真连接（逐条看图核对），14 台结论变：分流器(432,1602)南出→暗管入口(440,1674) 6 台、汇流器(950,1396)东出→暗管入口(1025,1401) 2 台离实测近了；分流器(1185,132)北出→暗管入口(1196,65) 是真连接，但程序按分流器平分给赫铜块溢流组 1/3，4 台离实测远了、固转(594,819)(692,879) 和实测相反——分流器优先级用户没测过，记为已知局限，不是连线错。武陵城 reflow 结论 0 变化。用户 2026-11-20 认可。",
+  "generated": "2026-11-21T03:10:51",
+  "reason": "issue #1 第五轮续：design 推配方不把兄弟设备（同一分流器出口 / 汇流器进口 / 只进不出的储存箱）的产物当原料，景玉谷天有洪炉(855,896) 重息壤→息壤（实测做息壤，↗；仍缺清水是另一处漏接）；池子待确认卡顺着配对暗管走，武陵城扩容反应池(1313,1114) 只有候选配方分数变。flow 两处改动在皇帝产线不触发。图标比对缓存按 .venv（numpy 2.5.4）重录，修正 7464064 用错解释器录的缓存。用户 2026-11-21 看图后认可。",
   "repo_data_sha1": {
    "data/building_ports.json": "fd55b8583e5cee54bac39d8ded779ff5c5f76dd9",
    "data/item_icons.json": "5539682a58d743030e390107524e515234de8b75",
@@ -83,7 +83,7 @@
    "采种机@1216,581": {"available":{"芽针":30.0},"basis":["种植机产 芽针 60/分 → 出料口主路 1/3 → 〔推断连线〕 → 20","种植机产 芽针 60/分 → 出料口主路 1/3 → 10","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[1586.0,440.0],"device":"采种机","env_required":false,"feeds":2,"fuel":null,"got":{"芽针":30.0},"limit_by":"芽针","loop":false,"need":{"芽针":30.0},"rate":1.0,"recipe":"芽针×1 → 芽针种子×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.7,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 2 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":true,"zero_margin":["芽针"]},
    "采种机@1216,877": "同 stored"
   },
-  "exact_sha1": "f9b27cceb5e4903bd664286c2fb903a93e7e1e95",
+  "exact_sha1": "5ace9a246de51b4c467709dd754d1c99eb82b228",
   "extra": "同 stored",
   "flow_issues": [
    {"a":null,"at":[270,269],"b":null,"kind":"端口布局存疑","layer":"belt","msg":"端口布局说 a->b，小三角 -7 票相反，不定方向（[198, 166] … [272, 443]）"}
@@ -382,9 +382,9 @@
   ],
   "summary": {
    "devices": 56,
-   "env_required": 7,
+   "env_required": 8,
    "inferred_links": 25,
-   "recipe_fixes": 3,
+   "recipe_fixes": 2,
    "recipe_inferred": 19,
    "states": {"没在用":0,"没接上":0,"没料":5,"溢流位":0,"满速":44,"配方未知":0,"间歇":7},
    "via_inferred": 13,
@@ -399,7 +399,7 @@
    "天有洪炉@855,423": {"available":{"清水":30.0,"碳块":30.0},"basis":["精炼炉产 碳块 60/分 → 出料口主路 1/2 → 30","输入端3号 清水 60/分 → 管道分流器主路 1/2 → 管道分流器主路 1/3 → 15","输入端2号 清水 60/分 → 管道分流器主路 1/2 → 管道分流器主路 1/2 → 管道分流器主路 1/3 → 15","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[962.0,167.0],"device":"天有洪炉","env_required":true,"feeds":2,"fuel":null,"got":{"清水":30.0,"碳块":30.0},"limit_by":"碳块","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":1.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 6 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":false,"zero_margin":["碳块","清水"]},
    "天有洪炉@855,581": {"available":{"清水":30.0,"碳块":0.0},"basis":["卡在：碳块（能送到 0/30）","输入端3号 清水 60/分 → 管道分流器主路 1/2 → 管道分流器主路 1/3 → 15","输入端2号 清水 60/分 → 管道分流器主路 1/2 → 管道分流器主路 1/2 → 管道分流器主路 1/3 → 5","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[962.0,440.0],"device":"天有洪炉","env_required":true,"feeds":2,"fuel":null,"got":{"清水":20.0,"碳块":0.0},"limit_by":"碳块","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":0.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":false,"state":"没料","truth":{"cat":"有料","confidence":0.8,"depends_on":null,"derived_from_program_recipe":false,"env_required":null,"mismatch":["有没有料"],"note":"简报息壤 360/360 只有 12 台洪炉全满速才凑得上，三次近景都没有标记；程序判没料（碳块 0/30）是物流图漏追。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"不一致"},"via_inferred":false,"zero_margin":[]},
    "天有洪炉@855,738": {"available":{"清水":30.0,"碳块":0.0},"basis":["卡在：碳块（能送到 0/30）","输入端1号 清水 60/分 → 管道分流器主路 1/3 → 20","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[962.0,711.0],"device":"天有洪炉","env_required":true,"feeds":2,"fuel":null,"got":{"清水":20.0,"碳块":0.0},"limit_by":"碳块","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":0.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":false,"state":"没料","truth":{"cat":"有料","confidence":0.8,"depends_on":null,"derived_from_program_recipe":false,"env_required":null,"mismatch":["有没有料"],"note":"简报息壤 360/360 只有 12 台洪炉全满速才凑得上，三次近景都没有标记；程序判没料（碳块 0/30）是物流图漏追。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"不一致"},"via_inferred":false,"zero_margin":[]},
-   "天有洪炉@855,896": {"available":{"壤晶废液":0.0,"息壤":0.0},"basis":["卡在：壤晶废液（能送到 0/30）、息壤（能送到 0/60）"],"c":[962.0,984.0],"device":"天有洪炉","env_required":false,"feeds":1,"fuel":null,"got":{"壤晶废液":0.0,"息壤":0.0},"limit_by":"壤晶废液","loop":false,"need":{"壤晶废液":30.0,"息壤":60.0},"rate":0.0,"recipe":"壤晶废液×5 + 息壤×10 → 重息壤×1（10秒）","recipe_inferred":true,"state":"没料","truth":{"cat":"有料","confidence":0.75,"depends_on":null,"derived_from_program_recipe":false,"env_required":null,"mismatch":["有没有料","配方"],"note":"实际做息壤、在转；程序按邻居推断成重息壤、判没料，配方和状态都不对。","rate":1.0,"recipe":"碳块×1 + 清水×1 → 息壤×1","recipe_dispute":false,"recipe_source":"代码侧","role":"未知","user_confirmed":false,"verdict":"不一致"},"via_inferred":false,"zero_margin":[]},
+   "天有洪炉@855,896": {"available":{"清水":0.0,"碳块":30.0},"basis":["卡在：清水（能送到 0/30）","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[962.0,984.0],"device":"天有洪炉","env_required":true,"feeds":1,"fuel":null,"got":{"清水":0.0,"碳块":0.0},"limit_by":"清水","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":0.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":true,"state":"没料","truth":{"cat":"有料","confidence":0.75,"depends_on":null,"derived_from_program_recipe":false,"env_required":null,"mismatch":["有没有料"],"note":"实际做息壤、在转；程序按邻居推断成重息壤、判没料，配方和状态都不对。","rate":1.0,"recipe":"碳块×1 + 清水×1 → 息壤×1","recipe_dispute":false,"recipe_source":"代码侧","role":"未知","user_confirmed":false,"verdict":"不一致"},"via_inferred":false,"zero_margin":[]},
    "天有洪炉@993,423": {"available":{"清水":30.0,"碳块":30.0},"basis":["精炼炉产 碳块 60/分 → 出料口主路 1/2 → 30","输入端3号 清水 60/分 → 管道分流器主路 1/2 → 30","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[1200.0,167.0],"device":"天有洪炉","env_required":true,"feeds":3,"fuel":null,"got":{"清水":30.0,"碳块":30.0},"limit_by":"碳块","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":1.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 9 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":false,"zero_margin":["碳块","清水"]},
    "天有洪炉@993,581": {"available":{"清水":30.0,"碳块":0.0},"basis":["卡在：碳块（能送到 0/30）","输入端4号 清水 60/分 → 管道分流器主路 1/2 → 20","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[1200.0,440.0],"device":"天有洪炉","env_required":true,"feeds":2,"fuel":null,"got":{"清水":20.0,"碳块":0.0},"limit_by":"碳块","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":0.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":false,"state":"没料","truth":{"cat":"有料","confidence":0.8,"depends_on":null,"derived_from_program_recipe":false,"env_required":null,"mismatch":["有没有料"],"note":"简报息壤 360/360 只有 12 台洪炉全满速才凑得上，三次近景都没有标记；程序判没料（碳块 0/30）是物流图漏追。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"不一致"},"via_inferred":false,"zero_margin":[]},
    "天有洪炉@993,738": {"available":{"清水":30.0,"碳块":30.0},"basis":["精炼炉产 碳块 60/分 → 〔推断连线〕 → 30","输入端1号 清水 60/分 → 管道分流器主路 1/3 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准","这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方"],"c":[1200.0,711.0],"device":"天有洪炉","env_required":true,"feeds":3,"fuel":null,"got":{"清水":30.0,"碳块":30.0},"limit_by":"碳块","loop":false,"need":{"清水":30.0,"碳块":30.0},"rate":1.0,"recipe":"碳块×1 + 清水×1 → 息壤×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 11 次有料 / 0 次没料，简报 息壤 当前=理论（12 台天有洪炉（景玉谷 8 + 武陵城 4）× 30 = 360）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":true,"zero_margin":["碳块","清水"]},
@@ -452,7 +452,7 @@
    "采种机@1216,581": {"available":{"芽针":30.0},"basis":["种植机产 芽针 60/分 → 出料口主路 1/2 → 〔推断连线〕 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[1586.0,440.0],"device":"采种机","env_required":false,"feeds":2,"fuel":null,"got":{"芽针":30.0},"limit_by":"芽针","loop":false,"need":{"芽针":30.0},"rate":1.0,"recipe":"芽针×1 → 芽针种子×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.7,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 2 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":true,"zero_margin":["芽针"]},
    "采种机@1216,877": {"available":{"芽针":30.0},"basis":["种植机产 芽针 60/分 → 出料口主路 1/2 → 〔推断连线〕 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[1586.0,952.0],"device":"采种机","env_required":false,"feeds":1,"fuel":null,"got":{"芽针":30.0},"limit_by":"芽针","loop":false,"need":{"芽针":30.0},"rate":1.0,"recipe":"芽针×1 → 芽针种子×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.8,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 4 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":true,"zero_margin":["芽针"]}
   },
-  "exact_sha1": "0014facc2a3ca2aac832bd5bf3d08f0256f4e0c8",
+  "exact_sha1": "5c15f71cc0adefa2bae171e9d91a4010fab44b6b",
   "extra": {},
   "gates": [
    {"author_rate":null,"c":[1534,1054],"count":{"limit":60.0,"passed":60.0},"downstream":0.0,"gate":31,"gate_ref":"准入口(1534,1054)","input_no":null,"item":"芽针","item_how":"图标库","limit":null,"msg":["限制通过数量 60（累计 60）：放满后不再放行，按一次性备料算"]},
@@ -542,15 +542,14 @@
   ],
   "recipe_fixes": [
    {"device":"粉碎机","from":"源矿×1 → 源石粉末×1（2秒）","to":"砂叶×1 → 砂叶粉末×3（2秒）","why":"机身图标是砂叶粉末（0.91）","x":507,"y":581},
-   {"device":"粉碎机","from":"砂叶×1 → 砂叶粉末×3（2秒）","to":"源矿×1 → 源石粉末×1（2秒）","why":"机身图标是源石粉末（0.88）","x":507,"y":640},
-   {"device":"天有洪炉","from":"碳块×1 + 清水×1 → 息壤×1（2秒）","how":"按相邻设备推断（原料有人产/产物有人吃 1 项）","to":"壤晶废液×5 + 息壤×10 → 重息壤×1（10秒）","x":855,"y":896}
+   {"device":"粉碎机","from":"砂叶×1 → 砂叶粉末×3（2秒）","to":"源矿×1 → 源石粉末×1（2秒）","why":"机身图标是源石粉末（0.88）","x":507,"y":640}
   ],
   "reread": [],
   "summary": {
    "devices": 56,
-   "env_required": 7,
+   "env_required": 8,
    "inferred_links": 22,
-   "recipe_fixes": 3,
+   "recipe_fixes": 2,
    "recipe_inferred": 19,
    "states": {"没在用":0,"没接上":0,"没料":11,"溢流位":0,"满速":43,"配方未知":0,"间歇":2},
    "via_inferred": 9,

@@ -94,12 +94,42 @@ def _recipes_of(rec, i, extra=None) -> list[str]:
     return [rec.get(i, ("", False))[0]] + list((extra or {}).get(i, ()))
 
 
-def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None, par=None) -> list[dict]:
+SPLIT_T = ("分流器", "管道分流器")
+ICON_GUARD_SCORE, ICON_GUARD_MARGIN = 0.55, 0.25  # 机身图标认准了产物（= recipe_icons.SURE_SCORE / SURE_MARGIN）时，按邻居推配方不换成产物不同的配方
+# （见 _infer_by_neighbors）。2026-11-21 评审：原来领先 0.10 就护，正好落在 recipe_icons「没把握、标推断、交给邻居重挑」的区间里
+# （低容 / 中容武陵电池 0.81 对 0.63 那种认错），等于把邻居推断在这个区间里关掉了；改成只护认准了、只是同产物几条配方还没挑定的。
+
+
+def _junction_role(n: dict, side) -> str | None:
+    """物流件 n 的 side 那一边是进口还是出口（'in' / 'out'）：分流器一进多出、汇流器多进一出（flow 认出的 in / outs、out / ins）。
+    别的物流件（桥、准入口）、方向没认出来的 → None。模板和明暗说法不一致（covered）、又没被小三角改过（fixed_by_arrows）的
+    也当没认准 → None，不分兄弟（2026-11-21 评审：朝向猜反时真正送料的那台会被当成兄弟，它的产物就不算了）。"""
+    if n.get("covered") and not n.get("fixed_by_arrows"):
+        return None
+    if n.get("type") in SPLIT_T and n.get("in"):
+        return "in" if side == n["in"] else "out" if side in (n.get("outs") or ()) else None
+    if n.get("type") in MERGE_T and n.get("out"):
+        return "out" if side == n["out"] else "in" if side in (n.get("ins") or ()) else None
+    return None
+
+
+def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None, par=None, icon=None) -> list[dict]:
     """配方是推断出来的设备（配方表里没有：没读到 / 池子只记了池产物）：按物流图上相邻的、配方可信的设备重挑。
     从这台设备顺着连线（不管方向；穿过物流件和储存箱，不穿过别的生产设备）找邻居：邻居产的东西可能是原料，邻居吃的东西可能是产物；
     输入端准入口的物品（作者填的清水等）也算原料。每个候选配方：原料有人产 +1，产物有人吃 +1；唯一最高分且高过现在的才换。
     2026-11-10 武陵城：粉碎机 (1572,1292) 配方表里没有，按本据点最常见的猜成砂叶 → 砂叶粉末；它下面接着芽针种植机，
-    其实是芽针 → 芽针粉末（→ 储存箱 → 反应池做芽针溶液，作者说那台反应池游戏里在转）。"""
+    其实是芽针 → 芽针粉末（→ 储存箱 → 反应池做芽针溶液，作者说那台反应池游戏里在转）。
+    兄弟设备的产物不算「有人产」（2026-11-21 issue #1 第五轮续）：挂在同一个分流器的几个出口、同一个汇流器的几个进口、
+    同一个只进不出的储存箱的几个进口上的设备是兄弟，路上在这几处「拐到另一个出口 / 进口」走到的设备和输入端都是兄弟那一路，
+    它们产的东西送不到这台（兄弟吃的照旧算：只管「有人产」这一边）。同一台设备另有不拐弯的路走得到的，照常算。
+    别人的武陵城天有洪炉 (698,582) 做息壤（机身图标息壤 0.69），它和隔壁天有洪炉 (538,562) 共用一个清水分流器（拼合图 405,507），
+    息壤又都送进同一个只进不出的协议储存箱（底账 613,563）；两条路都把隔壁产的息壤算成了它的原料，它被改成「壤晶废液 + 息壤 → 重息壤」，
+    成了没料。只按层（管子只算流体）或只排除储存箱都不够：两条路同一深度，堵掉一条另一条照样到。
+    皇帝产线景玉谷天有洪炉 (855,896) 是同一个毛病（实测做息壤、在转），改完按息壤算。
+    icon：{设备序号: (机身图标认的产物, 分, 领先第二像多少)}（只有按机身图标推配方的据点才有，recipe_icons.derive 的 product / score / margin）。
+    分 ≥ICON_GUARD_SCORE 且领先 ≥ICON_GUARD_MARGIN（认准了，和 recipe_icons 同一个门槛）时，邻居推断不换成产物里没有它的配方
+    （同一种产物换原料的那一步不受影响）。上面那台天有洪炉图标领先只有 0.17，没认准，这道保险不管它，靠兄弟规则留住息壤
+    （第一轮兄弟路上没人产东西，不换；第二轮精炼炉 (448,622) 的配方改好了，碳块有人产，现在的配方得分，不换）。"""
     def dev_of(dv):
         best, bd_ = None, 1e9
         for i, (d, c) in enumerate(zip(devices, dev_canvas)):
@@ -113,12 +143,37 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
         """邻居 j 在跑的配方：主配方 + 交替配方 / 并行池子的其余几条（这一趟里 alt 会被改，现查）。"""
         more = [c["recipe"] for c in (par or {}).get(j, [])[1:]] + ([alt[j][0]] if alt and j in alt else [])
         return _recipes_of(rec, j, {j: more})
-    adj = defaultdict(set)
+    nodes = {n["id"]: n for n in flow["nodes"]}
+    ends, into_box = [], defaultdict(list)
     for lk in flow["links"]:  # 只看物流图的连线，不管方向（在建图之前做：方向没定的带子要靠改好的配方定方向）
         a = dev_of(lk["a_dev"]) if lk.get("a_dev") else (("n", lk["a"]) if lk.get("a") is not None else None)
         b = dev_of(lk["device"]) if lk.get("device") else (("n", lk["b"]) if lk.get("b") is not None else None)
+        ends.append((lk, a, b))
+        for x, inward in ((a, lk.get("dir") == "b->a"), (b, lk.get("dir") == "a->b")):
+            if x and x[0] == "d" and devices[x[1]]["name"] in BUFFERS:
+                into_box[x[1]].append(inward)
+    # 只进不出的储存箱 / 储气罐：连着它的线方向全定了、全往里送（有一根往外或方向没定的都不算）
+    sink = {j for j, v in into_box.items() if v and all(v)}
+
+    def role(x, lk, side_key, node_key):
+        """这根线在 x 这头接的是进口还是出口：分流器 / 汇流器按边认，只进不出的储存箱都是进口，别的 None。"""
+        if x[0] == "n":
+            return _junction_role(nodes.get(lk.get(node_key), {}), lk.get(side_key))
+        return "in" if x[1] in sink else None
+
+    def turned(x, r1, r2):
+        """从 r1 那根线进到 x、从 r2 那根线出去，是不是拐到兄弟那边：分流器出口 → 出口，汇流器 / 只进不出的储存箱进口 → 进口。"""
+        if r1 is None or r1 != r2:
+            return False
+        if x[0] == "d":
+            return x[1] in sink
+        t = nodes.get(x[1], {}).get("type")
+        return t in SPLIT_T if r1 == "out" else t in MERGE_T
+    adj = defaultdict(set)  # 顶点 → {(邻居, 这根线在自己这头的口, 在邻居那头的口)}
+    for lk, a, b in ends:
         if a and b and a != b:
-            adj[a].add(b); adj[b].add(a)
+            ra, rb = role(a, lk, "a_side", "a"), role(b, lk, "b_side", "b")
+            adj[a].add((b, ra, rb)); adj[b].add((a, rb, ra))
     gate_item = {}
     for m in marks or []:
         if m.get("item"):
@@ -142,25 +197,34 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                 continue
             made, eaten = set(), set()
             makers = defaultdict(list)  # 物品 → 产它的邻居的配方（输入端准入口记空串）
-            seen, frontier = {("d", i)}, [("d", i)]
+            # 走到过的状态：(顶点, 进来那根线在它这头的口（只有分流器 / 汇流器 / 只进不出的储存箱要记）, 是不是兄弟那一路)。
+            # 兄弟那一路先走到的顶点，后来又有不拐弯的路走到，再算一遍（这回它产的算数）；反过来不用再走
+            start = ("d", i)
+            seen, frontier = set(), [(start, None, False)]
             for _ in range(depth):
                 nxt = []
-                for u in frontier:
-                    for v in adj[u]:
-                        if v in seen:
+                for u, r_in, sib in frontier:
+                    for v, r_u, r_v in adj[u]:
+                        if v == start:
                             continue
-                        seen.add(v)
+                        s = sib or turned(u, r_in, r_u)
+                        rk = r_v if v[0] == "n" or v[1] in sink else None
+                        if (v, rk, False) in seen or (v, rk, s) in seen:
+                            continue
+                        seen.add((v, rk, s))
                         if v[0] == "n":
-                            if v[1] in gate_item:
+                            if v[1] in gate_item and not s:
                                 made.add(gate_item[v[1]])
                                 makers[gate_item[v[1]]].append("")
-                            nxt.append(v)
+                            nxt.append((v, rk, s))
                         elif devices[v[1]]["name"] in BUFFERS:
-                            nxt.append(v)
+                            nxt.append((v, rk, s))
                         elif not rec.get(v[1], ("", True))[1] or v[1] in fixed:  # 配方可信的邻居（含上一轮按邻居改好的）
                             for r in nb_recipes(v[1]):  # 邻居同时跑 / 交替跑的几条配方都算
-                                made |= set(outputs_of(r))
                                 eaten |= set(inputs_of(r))
+                                if s:  # 兄弟产的送不到这台
+                                    continue
+                                made |= set(outputs_of(r))
                                 for k in outputs_of(r):
                                     makers[k].append(r)
                 frontier = nxt
@@ -169,13 +233,19 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                 return len(set(inputs_of(r)) & made) + len(set(outputs_of(r)) & eaten)
             sc = sorted(((score(r), r) for r in cands), reverse=True)
             best, cur = sc[0], score(rc) if rc else 0
+            ic = (icon or {}).get(i)
+            sure = ic[0] if ic and ic[1] >= ICON_GUARD_SCORE and ic[2] >= ICON_GUARD_MARGIN else None
+
+            def icon_says_no(rs):
+                """机身图标认准了产物，换过去的几条配方都不产它 → 不换。"""
+                return sure is not None and not any(sure in outputs_of(r) for r in rs)
             if _INFER_DEBUG and _INFER_DEBUG(d, dev_canvas[i]):
-                print("INFER", d["name"], dev_canvas[i], "cur", cur, rc, "made", made, "eaten", eaten, sc[:4])
+                print("INFER", d["name"], dev_canvas[i], "cur", cur, rc, "made", made, "eaten", eaten, sc[:4], "icon", ic)
             # 只换「现在这个推断配方一点邻居支持都没有」的：有支持的不动（反向配方——气→固、粉末→块——原料产物邻居里都有，分数会更高）
             if alt is not None and i not in alt and cur == 0 and len(sc) >= 2 and sc[0][0] == sc[1][0] >= 1                     and (len(sc) < 3 or sc[2][0] < sc[0][0]):
                 r1, r2 = sc[0][1], sc[1][1]
                 own1, own2 = set(inputs_of(r1)) - set(inputs_of(r2)), set(inputs_of(r2)) - set(inputs_of(r1))
-                if own1 & made and own2 & made:  # 两种配方各自的原料都有人送进来：池子两种都做（扩容反应池吃芽针粉末和锦草粉末）
+                if own1 & made and own2 & made and not icon_says_no((r1, r2)):  # 两种配方各自的原料都有人送进来：池子两种都做（扩容反应池吃芽针粉末和锦草粉末）
                     if par is not None and d["name"] in POOLS:
                         # 池子两条同时跑（官方：池子能同时跑几条配方；2026-11-19 审计第 3 项，原来按轮流做算）。
                         # 皇帝产线武陵城扩容反应池 (1313,1114)：芽针粉末、锦草粉末两边都有粉碎机送
@@ -191,7 +261,8 @@ def _infer_by_neighbors(flow, devices, dev_canvas, rec, marks, depth=4, alt=None
                     changed = True
                     continue
             reverse = rc and set(inputs_of(best[1])) <= set(outputs_of(rc)) and set(outputs_of(best[1])) <= set(inputs_of(rc))
-            if best[0] >= 1 and (len(sc) < 2 or sc[1][0] < best[0]) and cur == 0 and best[1] != rc and not reverse:  # 正反两个方向的配方（固气转化机）靠邻居分不出
+            if best[0] >= 1 and (len(sc) < 2 or sc[1][0] < best[0]) and cur == 0 and best[1] != rc and not reverse \
+                    and not icon_says_no((best[1],)):  # 正反两个方向的配方（固气转化机）靠邻居分不出
                 fixes.append({"device": d["name"], "x": d["x"], "y": d["y"], "from": rc, "to": best[1],
                               "how": f"按相邻设备推断（原料有人产/产物有人吃 {best[0]} 项）"})
                 rec[i] = (best[1], True)
@@ -959,7 +1030,15 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         if len(gs) >= 2:
             par[i] = [dict(g, src="作者") for g in gs]
             par_note[i] = "作者指定了几条互不相干的配方：几条同时跑（并行）"
-    icon_fixes += _infer_by_neighbors(flow, devices, dev_canvas, rec, inputs if inputs is not None else load_inputs(bd), alt=alt, par=par)
+    # 按机身图标推的配方（recipe_icons.derive，只有档案里没有配方表的据点才有）认出的产物和把握，给邻居推断把关（2026-11-21）
+    at = {(d["name"], d["x"], d["y"]): i for i, d in enumerate(devices)}
+    body_icon = {}
+    for q in recipes:
+        k = (q.get("name"), q.get("x"), q.get("y"))
+        if q.get("product") and "score" in q and "margin" in q and k in at:
+            body_icon[at[k]] = (q["product"], q["score"], q["margin"])
+    icon_fixes += _infer_by_neighbors(flow, devices, dev_canvas, rec, inputs if inputs is not None else load_inputs(bd), alt=alt, par=par,
+                                      icon=body_icon)
     for i in par:
         par_note.setdefault(i, "相邻设备送进来几种原料：几条配方同时跑（并行，推断）")
     plant_notes = _plant_alternation(flow, devices, dev_canvas, rec, alt)
@@ -2603,10 +2682,13 @@ def _name_unknown_upstream(rows, G, devices, dev_canvas, unknown, buf_ids, depth
         r["basis"].insert(0, f"上游配方未知：{names}{more}。这一路的料没算进来，缺的料可能就是{'它们' if len(hits) > 1 else '它'}的")
 
 
-def _pool_links(i, G, devices, dev_canvas, recipes_of, known, pitem, gate, depth=6) -> list[dict]:
+def _pool_links(i, G, devices, dev_canvas, recipes_of, known, pitem, gate, depth=12) -> list[dict]:
     """池子 i 的每根进出连线通到什么（给候选配方打分、给待确认卡片画「进来 / 出去」，审计第 3 项，2026-11-19）。
     进料往上游、出料往下游走：穿过物流件和储存箱（最多 depth 层），碰到别的设备就停。配方已知的设备（known）记它的产物 / 原料；
-    输入端准入口记作者填的物品；认准了物品的仓库口记那种物品；暗管、没认准的仓库口物品不明（wild）。
+    输入端准入口记作者填的物品；认准了物品的仓库口记那种物品；没认准的仓库口物品不明（wild）。
+    暗管：有配对（G 里 tunnel 的边，读蓝图时点开确认的）当中转，接着往对面走；没配对的、对面再走不下去的物品不明（2026-11-21）。
+    别人的武陵城扩容反应池 (1798,454) 右上进液口的污水从精炼炉 (1278,424) 经四对暗管过来，原来卡片写「物品不明，来自暗管出口」；
+    四对暗管中间夹着两段管子和一个管道分流器，从池子往上游要走 10 层才到精炼炉，原来的 6 层走不到，层数改成 12。
     推料时按缺口分出来的物品不当证据（那是拿配方反推的）。→ [{layer, dir, sup, dem, wild_in, wild_out, ends, at}]
     例：别人的武陵城扩容反应池 (1571,1729) 的进料管通到另一台池子和取货口，出料管通到提纯机（吃惰性壤晶废液）。"""
     u = ("d", i)
@@ -2615,16 +2697,27 @@ def _pool_links(i, G, devices, dev_canvas, recipes_of, known, pitem, gate, depth
     for dirn, edges, step in (("in", G.inn[u], G.inn), ("out", G.out[u], G.out)):
         for v, lk in edges:
             sup, dem, ends, wild = set(), set(), [], False
+            via = []  # 穿过的配对暗管
             seen, front = {u, v}, [v]
             for _ in range(depth):
                 nxt = []
                 for x in front:
                     if x[0] == "d" and devices[x[1]]["name"] not in BUFFERS:
                         j, nm = x[1], devices[x[1]]["name"]
-                        ends.append(nm)
                         if "暗管" in nm:
+                            paired = any(l2.get("tunnel") for _y, l2 in G.out[x] + G.inn[x])
+                            if paired and step[x]:  # 配上对的暗管：不算终点，接着走（入口 → 出口那条边也在 step 里）
+                                via.append(nm)
+                                for y, _lk in step[x]:
+                                    if y not in seen:
+                                        seen.add(y)
+                                        nxt.append(y)
+                                continue
+                            ends.append(nm)  # 没配对，或者对面那头什么都没接
                             wild = True
-                        elif nm in PORT_NAMES:
+                            continue
+                        ends.append(nm)
+                        if nm in PORT_NAMES:
                             it = pitem.get(j) or {}
                             if it.get("sure") and it.get("item"):
                                 (sup if dirn == "in" else dem).add(it["item"])
@@ -2645,6 +2738,11 @@ def _pool_links(i, G, devices, dev_canvas, recipes_of, known, pitem, gate, depth
                             seen.add(y)
                             nxt.append(y)
                 front = nxt
+            if via and (front or not ends):
+                # 穿过配对暗管以后层数用完还没走到头，或者一台设备 / 输入端都没碰到：物品不明，记那台暗管
+                # （2026-11-21 评审：原来这两种既不记不明也不记终点，卡片显示「没追到设备」，打分按「解释不了」扣分）
+                wild = True
+                ends.append(via[0])
             fl = lk.get("layer") == "pipe"
             pts = lk.get("path") or []
             at = min(([p[0], p[1]] for p in (pts[:1] + pts[-1:])), key=lambda p: np.hypot(p[0] - cx, p[1] - cy), default=[cx, cy])

@@ -346,10 +346,11 @@ def _under_exit(M, nodes, n, d, layer):
     return ex[0] if len(ex) == 1 else None
 
 
-def _under_hop(M, nodes, start, P, d, layer, path):
+def _under_hop(M, nodes, start, P, d, layer, path, first=False):
     """带子要在这里停下、正前方一格是只在管道层的物流件：看它底下穿过去从哪边出来。→ (那格中心, 出去的方向) 或 None。
-    只在要停下时才看（带子在这格拐走时不会走到这里）；前面那格的格边常被盖在管子底下，看不到黄带，所以不要求。"""
-    if layer != "belt" or len(path) < 2:
+    只在要停下时才看（带子在这格拐走时不会走到这里）；前面那格的格边常被盖在管子底下，看不到黄带，所以不要求。
+    first：第一步（还没走过一格）也看，只有 _build 按 _under_first 核过的物流件边才给（见那里的说明）；原来第一步一律不看。"""
+    if layer != "belt" or (len(path) < 2 and not first):
         return None
     n2 = node_at(nodes, np.asarray(P) + _v(d) * C, d=d)
     if n2 is None or n2 is start:
@@ -358,8 +359,24 @@ def _under_hop(M, nodes, start, P, d, layer, path):
     return None if e is None else (np.array(n2["c"], float), e)
 
 
-def trace(M, nodes, start, d, layer, maxn=400) -> dict:
-    """从物流件 start 的 d 边出发沿 layer 走到头。→ {end: node|device|fork|long, node, side, path, d, jumps}"""
+def _under_first(M, nodes, n, P0, d, layer) -> bool:
+    """物流件 n 的 d 边正前方紧贴着一格只在管道层的物流件，带子从它底下穿过去：这条边不整边跳过，追线第一步就从底下穿。
+    2026-11-21 issue #1 第五轮（续）：别人的武陵城，息壤物品准入口 (拼合图 2418,1600) 北边正前方一格就是壤晶废液管道准入口
+    (2420,1565)，带子从管道准入口底下穿过去，进扩容反应池（底账 (1729,1156)）南边的进料口。原来 _build 一见 _blocked 就整边跳过，
+    _under_hop 又要求至少走过一格，这条带子追不出来，扩容反应池缺息壤、没料。
+    条件要严，四条都要：这一层是传送带、n 自己在传送带层；挡着的那格只在管道层（管道准入口、管道分流器…，不是两层都占的准入口）；
+    不是管道桥；从它底下穿过去只有一边露出带子（_under_exit 找得到唯一出口）。"""
+    if layer != "belt" or not fits(n, layer):
+        return False
+    n2 = node_at(nodes, np.asarray(P0, float) + _v(d) * C, d=d)
+    if n2 is None or n2 is n or layer_of(n2) != ["pipe"] or n2["type"] in BRIDGES:
+        return False
+    return _under_exit(M, nodes, n2, d, layer) is not None
+
+
+def trace(M, nodes, start, d, layer, maxn=400, hop0=False) -> dict:
+    """从物流件 start 的 d 边出发沿 layer 走到头。→ {end: node|device|fork|long, node, side, path, d, jumps}
+    hop0：start 这条边正前方紧贴着只在管道层的物流件、带子从底下穿过（_build 用 _under_first 核过），第一步就穿过去。"""
     P = np.array(start["c"], float)
     path, jumps = [P.copy()], []
     for _ in range(maxn):
@@ -386,7 +403,7 @@ def trace(M, nodes, start, d, layer, maxn=400) -> dict:
             path.append(P.copy()); jumps.append([int(P[0]), int(P[1])])
             continue
         if off is None:
-            hop = _under_hop(M, nodes, start, P, d, layer, path)
+            hop = _under_hop(M, nodes, start, P, d, layer, path, first=hop0)
             if hop is not None:
                 P, d = hop
                 path.append(P.copy()); jumps.append([int(P[0]), int(P[1])])
@@ -752,10 +769,16 @@ def _build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None, re
         for lay in layer_of(n):
             for d in DIRS:
                 P0 = np.array(n["c"], float)
+                hop0 = False
                 if _blocked(nodes, P0, d, lay, me=n):
-                    continue
+                    # 正前方紧贴着另一层的物流件：一般整边跳过；带子从只在管道层的物流件底下穿过去的除外
+                    # （2026-11-21 别人的武陵城息壤准入口 → 管道准入口底下 → 扩容反应池，见 _under_first）
+                    hop0 = _under_first(M, nodes, n, P0, d, lay)
+                    if not hop0:
+                        continue
                 r = CL.walk(M, nodes, n, d, lay) if USE_CENTERLINE and lay == "pipe" else None  # 传送带仍按格子走（宽、规整，箭头会打断中心线）
-                none_here = (r is not None and r.get("note") == "边外没有中心线") or                     (r is None and probe(M, lay, P0, d) is None and _adj(nodes, P0, d, lay, me=n) is None)
+                none_here = not hop0 and ((r is not None and r.get("note") == "边外没有中心线") or
+                                          (r is None and probe(M, lay, P0, d) is None and _adj(nodes, P0, d, lay, me=n) is None))
                 if none_here:
                     dv = _touching_device(P0, d, ledger_pts, rects)
                     if dv is None and lay == "pipe" and n["type"] != LG.GATE:
@@ -770,7 +793,7 @@ def _build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None, re
                                     "layer": lay, "dev_side": d, "device": dv, "touch": True})
                     continue
                 if r is None:
-                    r = trace(M, nodes, n, d, lay)
+                    r = trace(M, nodes, n, d, lay, hop0=hop0)
                 r.update(a=n["id"], a_side=d, layer=lay)
                 if r["end"] == "device":
                     r["dev_side"], r["device"] = _end_info(M, lay, r, ledger_pts, rects)
@@ -784,7 +807,8 @@ def _build(img: np.ndarray, items: list[dict], ledger_pts: list[dict] | None, re
                             r = r2
                 raw.append(r)
     links, issues = _pair(raw, nodes)
-    links += _dedupe_free(_stitch(free_segments(M, nodes, links, ledger_pts, rects), M=M, nodes=nodes))
+    # 重叠的两截管子拼回一根要在 _dedupe_free 前面：短的那截 ≥80% 落在长的上时会被丢掉，留下的那截一头还挂着远认的错设备
+    links += _dedupe_free(_merge_overlap(_stitch(free_segments(M, nodes, links, ledger_pts, rects), M=M, nodes=nodes), nodes))
     links = _drop_ambiguous_tunnel_touch(links, nodes, ledger_pts)  # 设备直连的管子追完再看（它们也算暗管的口在哪边）
     for lk in links:
         lk["arrows"] = arrow_votes(M, lk["layer"], lk["path"], nodes)
@@ -1156,14 +1180,7 @@ def free_segments(M, nodes, links, ledger_pts, rects, step=12) -> list[dict]:
 def _dedupe_free(free, tol=8, frac=0.8) -> list[dict]:
     """同一根管子/带子被两个种子各追了一遍：一段的点 ≥80% 都在另一段更长的同层路径上（≤8 px），丢掉短的。
     2026-11-10 武陵城：锦草溶液管从中间又追了一段，一头停在汇流器上被认成了封装机。"""
-    def dense(path):
-        out = []
-        for a, b in zip(path[:-1], path[1:]):
-            a, b = np.asarray(a, float), np.asarray(b, float)
-            n = max(1, int(np.hypot(*(b - a)) // 4))
-            out += [a + (b - a) * t / n for t in range(n)]
-        return np.array(out + [np.asarray(path[-1], float)])
-    pts = [dense(f["path"]) for f in free]
+    pts = [_dense(f["path"]) for f in free]
     lens = [float(sum(np.hypot(*(np.asarray(b, float) - np.asarray(a, float))) for a, b in zip(f["path"][:-1], f["path"][1:]))) for f in free]
     drop = set()
     for i, f in enumerate(free):
@@ -1258,6 +1275,130 @@ def _stitch(free, reach=1.6 * C, M=None, nodes=()) -> list[dict]:
             if changed:
                 break
     return [f for f in free if f.get("a_dev") or f.get("device")]
+
+
+FAR_HOW = "最近标签（远）"
+
+
+def _loose_end(dv) -> bool:
+    """设备直连管子的一头没认出设备，或只按「最近标签（远）」认的（离标签 2.5–3.5 格，_device_at 最后一档）。
+    注意和 _stitch 用的 _weak 不是一回事：_weak 把 2.5 格内的最近标签、线框也算弱；这里只有远认的算弱，近的最近标签、线框算认准了
+    （2026-11-21：别人的武陵城那根管子进反应池 (804,1215) 那头就是 2.2 格内的最近标签，按 _weak 算两截就拼不上）。别把两个合成一个。"""
+    return dv is None or dv.get("how") == FAR_HOW
+
+
+def _dense(path, step=4) -> np.ndarray:
+    """折线按 step px 加密成点（含两头）。"""
+    out = []
+    for a, b in zip(path[:-1], path[1:]):
+        a, b = np.asarray(a, float), np.asarray(b, float)
+        n = max(1, int(np.hypot(*(b - a)) // step))
+        out += [a + (b - a) * t / n for t in range(n)]
+    return np.array(out + [np.asarray(path[-1], float)])
+
+
+def _plen(path) -> float:
+    return float(sum(np.hypot(*(np.asarray(b, float) - np.asarray(a, float))) for a, b in zip(path[:-1], path[1:])))
+
+
+def _foot(p, path):
+    """点 p 到折线 path 最近的那一段 → (距离, 段号 k（path[k]–path[k+1]）, 垂足)。"""
+    p = np.asarray(p, float)
+    if len(path) < 2:
+        q = np.asarray(path[0], float)
+        return float(np.hypot(*(q - p))), 0, q
+    best = None
+    for k, (a, b) in enumerate(zip(path[:-1], path[1:])):
+        a, b = np.asarray(a, float), np.asarray(b, float)
+        ab = b - a
+        L2 = float(ab @ ab)
+        t = 0.0 if L2 < 1e-6 else min(1.0, max(0.0, float((p - a) @ ab) / L2))
+        q = a + t * ab
+        dd = float(np.hypot(*(q - p)))
+        if best is None or dd < best[0]:
+            best = (dd, k, q)
+    return best
+
+
+def _on_poly(pts, path, tol) -> float:
+    """pts 里落在折线 path 上（≤ tol px）的点占多少。"""
+    return float(np.mean([_foot(p, path)[0] <= tol for p in pts])) if len(pts) else 0.0
+
+
+def _merge_overlap(free, nodes=(), tol=10.0, along_tol=8.0, min_overlap=C, bridge_r=20.0) -> list[dict]:
+    """同一根管子被两个种子各追了一截、两截中间重叠，各自的断头又被「最近标签（远）」认成了不相干的设备 → 拼回一根。
+    2026-11-21 issue #1 第五轮（续）：别人的武陵城，提纯机 (底账 1454,1136) → 反应池 (804,1215) 的壤晶废液管被追成两截自由段：
+    一截从东北拐角 (拼合图 2005,1160) 起、往西再往南进反应池，拐角那头按远认成了封装机；另一截从西北拐角 (1364,1163) 起、
+    往东再往南进提纯机，拐角那头远认成了粉碎机；两截在 y≈1156 那段横管上重叠约 640 px。两截各算一条连线，提纯机的壤晶废液
+    送不到反应池，反应池 (804,1215) 和它下游的封装机 (655,1284) 没料。_stitch 只拼两个断头挨着的（拐角断开），_dedupe_free 只丢
+    ≥80% 落在另一截上的，这种两头各伸出去一大截的重叠都不管。
+    条件（复核要求加的保险，都要满足）：
+    - 只对管子（传送带并排的真带子多，_dedupe_free 试过误删）；
+    - 两截各有一头认出了设备（外框、端口布局、线框、2.5 格内的最近标签）、另一头没认出或是最近标签（远）。
+      不只认外框 / 端口布局：上面这根管子进反应池那头就是 2.2 格内的最近标签（反应池没认出外框和端口布局）；
+    - A 的弱头落在 B 的路径上、B 的弱头也落在 A 的路径上（≤ tol px）；
+    - 两截共线重叠至少一格：A 从 B 的弱头落点走到自己弱头的那一截、B 从自己弱头走到 A 的弱头落点的那一截，各自 ≥ min_overlap，
+      而且加密后的点 ≥90% 落在对方路径上（≤ along_tol px）——只是十字交叉、或者一头碰到另一截的，不算；
+    - 两个弱头 bridge_r px 内没有管道桥 / 物流桥（桥上是两根管子十字交叉，断在桥边的不一定是同一根）；
+    - 两截认出的设备不是同一台。
+    拼成一条：A 的准头 → A 沿路走到 B 的弱头落点 → B 剩下的路 → B 的准头。方向照旧由 _direction 按端口布局和小三角定。"""
+    free = list(free)
+    bridges = [np.asarray(n["c"], float) for n in nodes if n["type"] in BRIDGES]
+
+    def weak_at(f):
+        """弱头在 path 的哪一头（'head' / 'tail'）；不是「一头准、一头弱」→ None。"""
+        h, t = _loose_end(f.get("a_dev")), _loose_end(f.get("device"))
+        return "head" if h and not t else "tail" if t and not h else None
+
+    def sure(f, weak):
+        """准头那头 → (设备, side, end 类型)。"""
+        return (f.get("device"), f.get("dev_side"), f.get("end")) if weak == "head" else (f.get("a_dev"), f.get("a_dev_side"), f.get("a_end"))
+
+    def key(dv):
+        return dv["name"], round(dv["c"][0]), round(dv["c"][1])
+
+    changed = True
+    while changed:
+        changed = False
+        for i, A in enumerate(free):
+            wa = weak_at(A) if A["layer"] == "pipe" and len(A["path"]) >= 2 else None
+            if wa is None:
+                continue
+            PA = [list(q) for q in (A["path"] if wa == "tail" else A["path"][::-1])]  # A：准头 → 弱头
+            for j, B in enumerate(free):
+                wb = weak_at(B) if j != i and B["layer"] == "pipe" and len(B["path"]) >= 2 else None
+                if wb is None:
+                    continue
+                PB = [list(q) for q in (B["path"] if wb == "head" else B["path"][::-1])]  # B：弱头 → 准头
+                (da, sa, ea), (db, sb, eb) = sure(A, wa), sure(B, wb)
+                if key(da) == key(db):
+                    continue
+                xa, xb = PA[-1], PB[0]  # 两个弱头
+                fa, ka, qa = _foot(xa, PB)
+                fb, kb, qb = _foot(xb, PA)
+                if fa > tol or fb > tol:
+                    continue
+                if any(np.hypot(*(c - np.asarray(x, float))) <= bridge_r for c in bridges for x in (xa, xb)):
+                    continue
+                ov_a = [list(qb)] + PA[kb + 1:]       # A 上的重叠段：B 的弱头落点 → A 的弱头
+                ov_b = PB[:ka + 1] + [list(qa)]       # B 上的重叠段：B 的弱头 → A 的弱头落点
+                if _plen(ov_a) < min_overlap or _plen(ov_b) < min_overlap:
+                    continue
+                if _on_poly(_dense(ov_a), PB, along_tol) < 0.9 or _on_poly(_dense(ov_b), PA, along_tol) < 0.9:
+                    continue
+                path = [[int(round(x)), int(round(y))] for x, y in PA[:kb + 1] + PB]
+                jumps = []
+                for q in A.get("jumps", []) + B.get("jumps", []):
+                    if list(q) not in jumps:
+                        jumps.append(list(q))
+                m = dict(A, path=path, a_dev=da, a_dev_side=sa, a_end=ea, device=db, dev_side=sb, end=eb, jumps=jumps,
+                         stitched=A.get("stitched", 0) + B.get("stitched", 0) + 1, overlap_merged=True)
+                free = [x for k, x in enumerate(free) if k not in (i, j)] + [m]
+                changed = True
+                break
+            if changed:
+                break
+    return free
 
 
 def _through_gates(links, nodes):
