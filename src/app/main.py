@@ -111,7 +111,9 @@ def selftest() -> int:
     import importlib
     mods = {}
     for m in ("near_patrol", "core_ports", "pool_channels", "gate_limits", "combine", "expert", "diagnose", "patrol", "full_patrol",
-              "bpa.design", "bpa.pipenet", "bpa.project", "bpa.importer", "bpa.flow", "bpa.ledger_scan", "bpa.nearmap", "bpa.recipe_icons", "offline_ocr", "strike_scan"):
+              "bpa.design", "bpa.pipenet", "bpa.project", "bpa.importer", "bpa.flow", "bpa.ledger_scan", "bpa.nearmap", "bpa.recipe_icons", "offline_ocr", "strike_scan",
+              # 0.10.12 补全：原来靠 design / flow 的导入间接带进来，有的是函数里才导入（flow 的 ports），漏打包时自检看不出（0.10.11 打包记录）
+              "bpa.pool_model", "bpa.atomic", "bpa.ports", "bpa.centerline", "bpa.inputs", "bpa.placement", "bpa.logistics", "bpa.vision", "bpa.game_ops"):
         try:
             importlib.import_module(m)
             mods[m] = "ok"
@@ -126,7 +128,8 @@ def selftest() -> int:
         ui["cache_control"] = r.get_header("Cache-Control")
         html = (HERE / "ui" / "index.html").read_text(encoding="utf-8")
         js = (HERE / "ui" / "app.js").read_text(encoding="utf-8")
-        ui["markers"] = {k: (k in html or k in js) for k in ("bpaDsPending", "fbProj", "feedbackExport", "bpaPending")}
+        ui["markers"] = {k: (k in html or k in js) for k in ("bpaDsPending", "fbProj", "feedbackExport", "bpaPending",
+                                                             "bpaPoolCard", "bpaPoolFix", "bpaPendPoolCard", "bpaWriteState")}  # 后四个是 0.10.11 的池子配方卡
         e = ui_entry()
         ui["entry"] = e.name
         ui["entry_versioned"] = e.name != "index.html" and "app.js?v=" in e.read_text(encoding="utf-8")
