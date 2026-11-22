@@ -142,6 +142,169 @@ def _ake_icon_b64(item_id: str, size: int = 40) -> str:
     return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
 
 
+def _item_icon(name: str) -> str:
+    """物品名 → 图标小图（_ake_icon_b64）；只用本机缓存里已有的图标（准入口表每次打开都要，缓存里没有就不去下载、不显示）。"""
+    try:
+        import diagnose
+        import panel_recipe as PR
+        iid = diagnose.item_id(name, None)
+        if not iid:
+            return ""
+        icons = json.loads((DATA / "item_icons.json").read_text(encoding="utf-8"))
+        if not (PR.ICON_CACHE / f"{icons.get(iid, iid)}.png").exists():
+            return ""
+        return _ake_icon_b64(iid, 28)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _crop(img, xs, ys, pad: int, longest: int, most: float = 1.6, keep: bool = False):
+    """拼合图裁一块：盖住 xs、ys 这些点，四周各留 pad px，长边缩到 longest（最多放大 most 倍）→ (裁好的图, x0, y0, 比例)。
+    keep：贴着拼合图边时整块往里挪、不切小（准入口表的小图要一样大）。待确认卡的裁图、准入口表的小图和大图都用它。"""
+    import cv2
+    H, W = img.shape[:2]
+    x0, x1, y0, y1 = min(xs) - pad, max(xs) + pad, min(ys) - pad, max(ys) + pad
+    if keep:
+        dx = max(0, -x0) or -max(0, x1 - W)
+        dy = max(0, -y0) or -max(0, y1 - H)
+        x0, x1, y0, y1 = x0 + dx, x1 + dx, y0 + dy, y1 + dy
+    x0, x1, y0, y1 = max(0, int(x0)), min(W, int(x1)), max(0, int(y0)), min(H, int(y1))
+    s = min(most, longest / max(x1 - x0, y1 - y0))
+    c = cv2.resize(img[y0:y1, x0:x1], None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC)
+    return c, x0, y0, s
+
+
+def _pil_url(im, quality: int = 85) -> str:
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=quality)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+GATE_RED = (220, 30, 30)  # 准入口图上的颜色（RGB）：红 = 这个口 / 没说；蓝 = 作者填的；绿 = 游戏里读的。「进」绿、「出」蓝
+GATE_SRC_RGB = {"作者": (30, 90, 230), "游戏": (20, 150, 60)}
+GATE_IN, GATE_OUT = (20, 150, 60), (30, 90, 230)
+
+
+def _gate_ends(row: dict) -> list:
+    """准入口表一行的上下游设备（row 的 from / to，各最多 3 台）→ [(设备, 标签, 颜色)]。一边只有一台写「进」「出」；
+    几台按表里列的顺序写「进1」「进2」…，表里「从哪来 → 到哪去」也这样标：表里写了坐标的设备，小图、大图上都标得出来。"""
+    out = []
+    for side, tag, col in (("from", "进", GATE_IN), ("to", "出", GATE_OUT)):
+        ds = row.get(side) or []
+        out += [(d, tag + (str(k) if len(ds) > 1 else ""), col) for k, d in enumerate(ds, 1)]
+    return out
+
+
+def _gate_pic(img, c, row: dict, size: int, pad: int, names: bool = False, dashed: bool = False) -> str:
+    """准入口的图（data URL jpg）：红圈 = 这个口；绿底「进」= 上游的设备，蓝底「出」= 下游的设备（row 的 from / to，标签见 _gate_ends）。
+    小图（names=False）：以口为中心裁 ±pad、缩到 size，只写「进」「出」；设备不在图里时字块贴着图边、朝它那边放。
+    大图（names=True）：把离口不远（700 px 内）的进、出设备一起框进来，圈出设备，写「进：仓库取货口」「出：扩容反应池」。
+    字块压到口的圈时顺着「口 → 设备」的方向往外推，几块叠在一起时后一块往下挪（原型偶尔压在圈上）。
+    dashed：虚线圈，「对不上的旧设置」按旧位置换到现在拼合图上的地方（那里多半已经不是准入口了）。"""
+    import math
+    import cv2
+    from PIL import Image, ImageDraw
+    from bpa import project as P
+    ends = _gate_ends(row)
+    if names:
+        near = [d["c"] for d, _, _ in ends if abs(d["c"][0] - c[0]) <= 700 and abs(d["c"][1] - c[1]) <= 700]
+        crop, x0, y0, s = _crop(img, [c[0]] + [p[0] for p in near], [c[1]] + [p[1] for p in near], pad, size)
+    else:
+        crop, x0, y0, s = _crop(img, [c[0]], [c[1]], pad, size, keep=True)
+    pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+    dr = ImageDraw.Draw(pil)
+    W, H = pil.size
+    g = ((c[0] - x0) * s, (c[1] - y0) * s)
+    r = max(9.0, 26 * s)
+    box = [g[0] - r, g[1] - r, g[0] + r, g[1] + r]
+    if dashed:
+        for a0 in range(0, 360, 30):
+            dr.arc(box, a0, a0 + 15, fill=GATE_RED, width=3)
+    else:
+        dr.ellipse(box, outline=GATE_RED, width=3)
+    sz = 15 if names else 13
+    F = P._font(sz)
+    placed = [tuple(box)]
+    for d, tag, col in ends:
+        q = ((d["c"][0] - x0) * s, (d["c"][1] - y0) * s)
+        inside = 0 <= q[0] < W and 0 <= q[1] < H
+        if names and inside:
+            rr = max(12.0, 45 * s)
+            dr.ellipse([q[0] - rr, q[1] - rr, q[0] + rr, q[1] + rr], outline=col, width=3)
+        t = f"{tag}：{d['name']}" + ("" if inside else "（图外）") if names else tag
+        bw, bh = dr.textlength(t, font=F) + 8, sz + 8
+        bx, by = q
+        dx, dy = bx - g[0], by - g[1]
+        dist = math.hypot(dx, dy)
+        need = r + max(bw, bh) / 2 + 3
+        if dist < need:
+            dx, dy, dist = (dx, dy, dist) if dist >= 1 else (0.0, -1.0, 1.0)
+            bx, by = g[0] + dx / dist * need, g[1] + dy / dist * need
+        bx, by = min(max(bx, bw / 2 + 1), W - bw / 2 - 1), min(max(by, bh / 2 + 1), H - bh / 2 - 1)
+        for _ in range(4):
+            b = (bx - bw / 2, by - bh / 2, bx + bw / 2, by + bh / 2)
+            if not any(not (b[2] <= p[0] or b[0] >= p[2] or b[3] <= p[1] or b[1] >= p[3]) for p in placed[1:]):
+                break
+            by = by + bh + 2 if by + bh * 1.5 + 2 < H else by - bh - 2
+        b = (bx - bw / 2, by - bh / 2, bx + bw / 2, by + bh / 2)
+        dr.rounded_rectangle(b, 4, fill=col)
+        dr.text((b[0] + 4, b[1] + 1), t, fill="white", font=F)
+        placed.append(b)
+    return _pil_url(pil)
+
+
+def _gate_overview(img, rows: list[dict]) -> str:
+    """准入口总览图：拼合图缩小，rows 里每个口按行号标圈（编号牌照 inputs.numbered_image 的防重叠摆法）：
+    红 = 还没说，蓝 = 作者填的，绿 = 游戏里读的。"""
+    from bpa import inputs as INP
+    sc = min(0.5, 1100 / max(img.shape[:2]))
+    marks = [{"p": r["c"], "no": r["no"], "col": GATE_SRC_RGB.get(r.get("src"), GATE_RED)} for r in rows]
+    return _pil_url(INP.numbered_image(img, marks, sc))
+
+
+def _stale_at(tf: dict, s: dict) -> list | None:
+    """「对不上的旧设置」的旧位置换到现在的拼合图上（那张蓝图还在这个据点里时）；蓝图不在了、记录缺位置 → None（只写字）。"""
+    from bpa import inputs as INP
+    p = s.get("p_bp")
+    if s.get("bp") not in (tf.get("bps") or {}) or not isinstance(p, (list, tuple)) or len(p) != 2:
+        return None
+    try:
+        return INP.from_bp(tf, s["bp"], p)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _tunnel_extra(name: str, base: str, items: list):
+    """「暗管来料」卡（0.10.13 功能二）界面要的几样 → 函数（卡 → {fluids, cap, via, input_no}）：物品下拉先列下游要的液体、气体，
+    再列全部液体、气体（暗管只走管子，不列固体）；每分钟最多 120 × 口数；填了会记成输入端几号（和 project._apply_tunnel_feeds 一样：
+    已经标了的用它的编号，没标的是现在最大号 + 1；存的标记是空的按候选算）。没标的卡不止一张时不知道作者先填哪张，号码说不准，
+    input_no 给 None（界面写「新加一个输入端」，不写号码）。"""
+    from bpa import design as DS, inputs as INP, pool_model as PM, project as P
+    bd = P.pdir(name) / "base" / base
+    marks = ((P._jload(P.pdir(name) / "inputs.json", {}) or {}).get(base) or {}).get("marks") or P._jload(bd / "inputs_auto.json", []) or []
+    nxt = max([int(m.get("no") or 0) for m in marks if str(m.get("no") or 0).isdigit()] + [0]) + 1
+    every = [n for n in INP.item_names() if PM.is_fluid(n)]
+
+    def extra(it: dict) -> dict:
+        ports = it.get("ports") or DS.tunnel_ports(it["key"].split("@")[0])
+        want = list(it.get("suggest") or [])
+        mark = it.get("mark") or {}
+        return {"fluids": want + [n for n in every if n not in want], "cap": DS.PIPE_CAP * ports,
+                "via": "多口暗管" if ports > 1 else "暗管", "input_no": mark.get("no") or (nxt if bare == 1 else None)}
+    bare = sum(1 for it in items if it.get("kind") == "暗管来料" and not it.get("mark"))
+    return extra
+
+
+def _pct(rate) -> str:
+    return "?" if rate is None else f"{rate * 100:.3g}%"
+
+
+def _read_date(stamp) -> str:
+    """档案读数的时间「20261109-011253」→「11-09」（界面写「游戏里读的（11-09）」）；认不出来原样给，没有给空串。"""
+    s = str(stamp or "")
+    return f"{s[4:6]}-{s[6:8]}" if len(s) >= 8 and s[:8].isdigit() else s
+
+
 class Api:
     def __init__(self):
         self._job = Job()
@@ -151,7 +314,7 @@ class Api:
     # ------------------------------------------------------------ 查询
     def version(self) -> dict:
         from paths import ROOT
-        return {"name": "终末地基建诊断", "version": "0.10.12", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
+        return {"name": "终末地基建诊断", "version": "0.10.13", "root": str(ROOT), "debug": str(DEBUG), "frozen": bool(getattr(sys, "frozen", False))}
 
     def blueprints(self) -> list[dict]:
         out = []
@@ -525,7 +688,7 @@ class Api:
                                          "limit_by", "got", "need", "basis", "if_main_blocked")}
             # 审计第 3 项（2026-11-19）的新字段：有才带，没有的行不多出 null（界面按「有没有这个键」分池子行、配方未知行）
             row.update({k: r[k] for k in ("channels", "need_capped", "pool_src", "recipe_unknown", "can_make", "candidates",
-                                          "blocked_by_unknown") if k in r})
+                                          "blocked_by_unknown", "pass_out") if k in r})  # pass_out：作者说了出口送原料的池子（0.10.13 功能三）
             if "pool_src" in r and not r.get("channels") and r.get("recipe"):
                 # 单条池子的净配方由几条并成（界面悬停显示组成）；design.json 里没存，按配方现查（只给界面，不写回 design.json）
                 mem = PM.members_of(r["device"], r["recipe"])
@@ -535,12 +698,55 @@ class Api:
             row["confirm"] = conf.get("devices", {}).get(row["key"])
             rows.append(row)
         links = [dict(lk, key=P.link_key(lk), confirm=conf.get("links", {}).get(P.link_key(lk))) for lk in d.get("inferred_links", [])]
+        pending = self._pending_view(name, base, d)
+        gate_summary, card = self._gate_card(name, base)
+        if card is not None:  # 准入口汇总卡现拼，不进 design.json（0.10.13）
+            pending.append(card)
         return {"ok": True, "summary": d.get("summary") or {}, "devices": rows, "inferred_links": links, "actuals": list(P.ACTUALS),
                 "progress": P.confirm_progress(name, base), "recipe_fixes": d.get("recipe_fixes", []), "gates": d.get("gates", []),
-                "pending": self._pending_view(name, base, d), "reread": d.get("reread", [])}
+                "pending": pending, "reread": d.get("reread", []), "gate_summary": gate_summary}
+
+    @staticmethod
+    def _gate_card(name: str, base: str) -> tuple[dict, dict | None]:
+        """「设计分析」页准入口表折叠标题用的几个数（gate_summary = 准入口表的 counts 加 need_rerun、has_read、read_date），
+        和待确认里的准入口汇总卡（0.10.13）。汇总卡只在这个据点没有游戏读数文件（别人的蓝图）、又有有料经过的口（不算输入端）时出：
+        蓝图预览里看不出准入口开没开限速，这几个口现在都按不限速算，请作者照游戏里填或说都没开。还有没说的口 = open（算进「待确认 N 处」）；
+        都答过了照样出，写「已答：填了几个，说没开的几个」。卡上的小图是只标这几个口的总览图，编号和准入口表的行号一样。"""
+        from bpa import project as P, vision as V
+        t = P.gate_table(name, base)
+        if t is None:
+            return {"need_rerun": True}, None
+        summ = dict(t["counts"], need_rerun=False, has_read=t["has_read"], read_date=_read_date(t["read_time"]))
+        flow = [r for r in t["rows"] if r["group"] == "有料" and r.get("key")]
+        if t["has_read"] or not flow:
+            return summ, None
+        unsaid = [r for r in flow if r.get("src") is None]
+        mine = [r for r in flow if r.get("src") == "作者"]
+        off = sum(1 for r in mine if r.get("limit") is None and r.get("count") is None)
+        n, k = len(flow), len(unsaid)
+        if k:
+            msg = (f"准入口限速：蓝图预览里看不出准入口开没开限速、限制通过数量。设计分析里有料经过的 {n} 个口（不算输入端）"
+                   + ("现在都按不限速算" if k == n else f"还有 {k} 个没说，现在按不限速算")
+                   + f"。游戏里开了的，请到下面「准入口限速」表里照着填；都没开就点「这 {k} 个口都没开」。")
+        else:
+            msg = f"准入口限速：设计分析里有料经过的 {n} 个口都答过了。要改到下面「准入口限速」表里改。"
+        f = P.pdir(name) / "base" / base / "composite.png"
+        card = {"kind": "准入口限速", "key": "准入口限速", "keys": [r["key"] for r in flow], "open_keys": [r["key"] for r in unsaid],
+                "n": n, "n_open": k, "answered": {"filled": len(mine) - off, "off": off}, "open": bool(k), "msg": msg,
+                "image": _gate_overview(V.rd(f), flow) if f.exists() else ""}
+        return summ, card
 
     def _pending_view(self, name: str, base: str, d: dict) -> list:
-        """待确认项：每项配一张小图（设备红圈、几条带子的头按 1、2、3 标号）和这种机器能做的配方。"""
+        """待确认项：每项配一张小图（设备红圈、几条带子的头按 1、2、3 标号）和这种机器能做的配方。
+        open：这张卡还没答（界面「待确认 N 处」只数它，0.10.13）。池子卡的回答可以是 []（这台没在用）、暗管来料卡的回答可以是 rate 0
+        （这台平时不来料），这两种没答 = 回答是 None（暗管来料只填了物品、没填量也是 None）；别的卡（没有进料）没答 = 回答是空的。
+        暗管来料卡（0.10.13 功能二）：小图上按它接出去的几路（outs）标号，标在每一路第一个物流件上；另补 fluids（物品下拉：下游要的
+        液体、气体排前面，再列全部液体、气体）、cap（每分钟最多多少 = 120 × 口数）、via（暗管 / 多口暗管）、input_no（填了会记成
+        输入端几号：已经标了的用它的编号，没标的是现在最大号 + 1；没标的卡不止一张时是 None）。
+        池子卡另带出口送什么（0.10.13 功能三，只在这里拼、不写回 design.json）：outlets = fixes.json 里作者的回答（{belt?, pipe?, at}，
+        没说是 None）；pass_out = design.json 里这台池子那一行的 pass_out（出口转送原料的到手、转出、自己用；没有是 None）；
+        outlet_notes = design.json 说明里点了这台的那几条（出口回答没用上、出口送中间产物、产物没出口、出口转送没收敛）。
+        d 要带 devices、notes 才拼得出后两项（bpa_pool_card 传整份 design.json）。"""
         import cv2
         from bpa import design as DS, project as P, vision as V
         items = d.get("pending") or []
@@ -549,26 +755,33 @@ class Api:
         f = P.pdir(name) / "base" / base / "composite.png"
         img = V.rd(f) if f.exists() else None
         fixes = P.load_fixes(name).get(base, {})
+        tun = _tunnel_extra(name, base, items) if any(it.get("kind") == "暗管来料" for it in items) else None
+        pass_out = {P.device_key(r): r["pass_out"] for r in d.get("devices") or [] if r.get("pass_out")}
         out = []
         for it in items:
             machine = it["device"].split("[")[0]
-            row = dict(it, recipes=DS._machine_recipes(machine), recipe_fix=(fixes.get("recipes") or {}).get(it.get("key")))
+            row = dict(it, recipes=DS._machine_recipes(machine), recipe_fix=(fixes.get("recipes") or {}).get(it.get("key")),
+                       open=it.get("answer") is None if it.get("kind") in ("池子配方", "暗管来料") else not it.get("answer"))
             ends = it.get("links", [])
+            if it.get("kind") == "暗管来料":
+                ends = it.get("outs", [])
+                row.update(tun(it))
             if it.get("kind") == "池子配方":
                 # 池子卡（审计第 3 项，2026-11-19）：这种池子的全部配方各自的原料、产物，界面勾选时现算「物品 n/格数」和出口提示，
                 # 不用每勾一下问一次后端；存的时候 project.save_fix 再校验一遍
                 from bpa import pool_model as PM
                 opts = [{"recipe": r, "ins": sorted(DS.inputs_of(r)), "outs": sorted(DS.outputs_of(r))} for r in PM.recipes(machine)]
-                row.update(options=opts, pool_fix=(fixes.get("pool_recipes") or {}).get(it.get("key")),
-                           fluid=sorted({k for o in opts for k in o["ins"] + o["outs"] if PM.is_fluid(k)}))
+                key = it.get("key")
+                row.update(options=opts, pool_fix=(fixes.get("pool_recipes") or {}).get(key),
+                           fluid=sorted({k for o in opts for k in o["ins"] + o["outs"] if PM.is_fluid(k)}),
+                           outlets=(fixes.get("pool_outlets") or {}).get(key), pass_out=pass_out.get(key),
+                           outlet_notes=[n for n in d.get("notes") or [] if isinstance(n, dict) and key
+                                         and (n.get("key") == key or key in (n.get("keys") or []))])
                 ends = it.get("ins", []) + it.get("outs", [])
             if img is not None:
                 cx, cy = it["c"]
                 pts = [cx, cy] + [t for l in ends for t in l["at"]]
-                x0, x1 = max(0, min(pts[0::2]) - 150), min(img.shape[1], max(pts[0::2]) + 150)
-                y0, y1 = max(0, min(pts[1::2]) - 150), min(img.shape[0], max(pts[1::2]) + 150)
-                s = min(1.6, 560 / max(x1 - x0, y1 - y0))
-                c = cv2.resize(img[y0:y1, x0:x1], None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC)
+                c, x0, y0, s = _crop(img, pts[0::2], pts[1::2], 150, 560)
                 cv2.circle(c, (int((cx - x0) * s), int((cy - y0) * s)), int(60 * s), (30, 30, 230), 3)
                 for k, l in enumerate(ends, 1):  # 池子卡按「进来」「出去」的顺序标号，和卡片上的编号对得上
                     p = (int((l["at"][0] - x0) * s), int((l["at"][1] - y0) * s))
@@ -591,7 +804,8 @@ class Api:
         格数、裁图），但不进 pending，不算进「待确认 N 处」。这台已经有待确认卡（配方未知、作者答过）就用那张；没有的按行上的数据现拼：
         皇帝产线武陵城扩容反应池 (1313,1114) 的两条配方是邻居推断的、(1768,1174) 是照抄同类的，作者要能从行上改，
         又不能让皇帝武陵城的待确认数变。现拼的卡没有进出连线清单（design.json 没存），候选是行上的 candidates，进出看裁图。
-        current = 这台现在按哪几条原始配方算（复选框先勾上它们）。"""
+        current = 这台现在按哪几条原始配方算（复选框先勾上它们）。出口送什么的 outlets、pass_out、outlet_notes 和待确认卡一样
+        （_pending_view 拼，0.10.13 功能三）。"""
         from bpa import atomic, pool_model as PM, project as P
         f = P.pdir(name) / "base" / base / "design.json"
         if not f.exists():
@@ -613,26 +827,87 @@ class Api:
             current = [m for c in row["channels"] for m in (c.get("members") or [c["recipe"]])]
         else:
             current = list(PM.members_of(row["device"], row["recipe"])) if row.get("recipe") else []
-        card = self._pending_view(name, base, {"pending": [it]})[0]
+        card = self._pending_view(name, base, dict(d, pending=[it]))[0]  # 整份 design.json：卡上要拼 pass_out、出口说明
         card.update(current=current, src=src, from_row=True)
         return {"ok": True, "card": card}
+
+    def bpa_gate_table(self, name: str, base: str) -> dict:
+        """「设计分析」页的准入口表（0.10.13 功能一）：project.gate_table 排好的行，每行多一张 140 px 小图 thumb（红圈 = 这个口，
+        「进」「出」= 上下游第一台设备）；stale（对不上的旧设置）每条多 c（旧位置换到现在拼合图上，蓝图不在了是 None）和虚线圈小图；
+        overview = 总览图（作者填过的、游戏里读到开着的、有料经过的口，按行号标）；icons = {物品: 图标}（只用本机缓存）；
+        read_date = 档案读数的日期（「11-09」）。没有 gates_view.json（旧版本算的）→ {ok: False, need_rerun: True, error}，
+        界面给「重算」按钮（= bpa_fix_gates(name, base, {})）。只读。"""
+        from bpa import project as P, vision as V
+        bd = P.pdir(name) / "base" / base
+        if not (bd / "design.json").exists():
+            return {"ok": False, "need_rerun": False, "error": "还没算（先跑「据点拼合」）"}
+        t = P.gate_table(name, base)
+        if t is None:
+            return {"ok": False, "need_rerun": True, "error": "这个据点的设计分析是旧版本算的，点「重算」生成准入口表"}
+        img = V.rd(bd / "composite.png") if (bd / "composite.png").exists() else None
+        tf = P._jload(bd / "transform.json", {}) or {}
+        for r in t["rows"]:
+            r["thumb"] = _gate_pic(img, r["c"], r, 140, 210) if img is not None else ""
+        for s in t["stale"]:
+            s["c"] = _stale_at(tf, s)
+            s["thumb"] = _gate_pic(img, s["c"], {}, 140, 210, dashed=True) if img is not None and s["c"] else ""
+        over = [r for r in t["rows"] if r["seg"] < 2]
+        icons = {it: ic for it in sorted({r["item_name"] for r in t["rows"] if r["item_name"]}) if (ic := _item_icon(it))}
+        return {"ok": True, **t, "overview": _gate_overview(img, over) if img is not None and over else "", "icons": icons,
+                "read_date": _read_date(t["read_time"]), "need_rerun": False}
+
+    def bpa_gate_image(self, name: str, base: str, key: str) -> dict:
+        """准入口表点小图弹出的 480 px 大图：圈出这个口和上下游第一台设备，写「进：…」「出：…」。
+        key 是「对不上的旧设置」里的：按旧位置画虚线圈（那张蓝图不在这个据点了就没有图）。只读。"""
+        from bpa import project as P, vision as V
+        bd = P.pdir(name) / "base" / base
+        gv = P.gates_view(name, base)
+        if gv is None:
+            return {"ok": False, "need_rerun": True, "error": "这个据点的设计分析是旧版本算的，点「重算」生成准入口表"}
+        if not (bd / "composite.png").exists():
+            return {"ok": False, "error": "还没有拼合图（先跑「据点拼合」）"}
+        row = next((r for r in gv.get("gates") or [] if r.get("key") == key), None)
+        if row is not None:
+            return {"ok": True, "image": _gate_pic(V.rd(bd / "composite.png"), row["c"], row, 480, 150, names=True)}
+        st = next((s for s in gv.get("stale") or [] if s.get("key") == key), None)
+        if st is None:
+            return {"ok": False, "error": "这个准入口在准入口表里找不到了（重算过的话刷新一下）"}
+        c = _stale_at(P._jload(bd / "transform.json", {}) or {}, st)
+        if c is None:
+            return {"ok": False, "error": f"蓝图「{st.get('bp')}」不在这个据点里了，图上标不出旧位置"}
+        return {"ok": True, "image": _gate_pic(V.rd(bd / "composite.png"), c, {}, 480, 150, names=True, dashed=True)}
 
     def bpa_fix(self, name: str, base: str, kind: str, key: str, value: str | list | None = None) -> dict:
         """作者修正（待确认里选的）：kind = feeds（哪条带子是进料 / none / unused）或 recipes（配方），value 为空 = 撤销；
         pool_recipes（池子同时跑的几条配方，2026-11-19）：value 是配方列表，[] = 这台没在用，只有 None 是撤销。
         存进项目 fixes.json 后只重算这个据点的设计分析。走任务（2026-11-19）：返回 {ok}，进度在蓝图分析页的任务日志里，跑完界面自己刷新。
-        原来是同步接口，绕过了任务锁：和「据点拼合」任务、「保存并重算」同时跑时两边一起算设计分析、一起写 design.json（审计第 10 项）。"""
+        原来是同步接口，绕过了任务锁：和「据点拼合」任务、「保存并重算」同时跑时两边一起算设计分析、一起写 design.json（审计第 10 项）。
+        0.10.13 起是只带一项改动的 bpa_fix_batch，对界面的返回不变。
+        tunnel_feeds（0.10.13 功能二，「暗管来料」卡）：key = 卡的设备键，value = {item, rate}（rate 0 = 这台平时不来料）或 None（撤销），
+        存成 inputs.json 里标在这台暗管出口上的输入端标记（project.save_tunnel_feed）。
+        pool_outlets（0.10.13 功能三，池子卡的「出口送什么」）：key = 池子的设备键，value = {belt?: [固体], pipe?: [液体]} 或 None（撤销），
+        校验见 project._norm_outlets。配方和出口一起存走 bpa_fix_batch（一批两项），只重算一次。"""
+        return self.bpa_fix_batch(name, base, [{"kind": kind, "key": key, "value": value}])
+
+    def bpa_fix_gates(self, name: str, base: str, entries: dict) -> dict:
+        """作者在准入口表里填的（0.10.13）：entries = {准入口键: {limit: 6 的倍数或 None, count: 1–5000 的整数或 None} 或 None（撤销）}；
+        两项都是 None = 这个口都没开。键要在准入口表里（撤销时也可以是对不上的旧设置）。entries 为空 = 只重算（旧版本算的据点生成准入口表）。"""
+        if not isinstance(entries, dict):
+            return {"ok": False, "error": "准入口的设置要按口给"}
+        return self.bpa_fix_batch(name, base, [{"kind": "gates", "key": k, "value": v} for k, v in entries.items()])
+
+    def bpa_fix_batch(self, name: str, base: str, changes: list) -> dict:
+        """一次存几项作者修正、只重算一次（0.10.13）：changes = [{kind, key, value}]，各类别见 project.save_fixes。
+        先当场校验（不对的不开任务），再走任务：存 fixes.json（暗管来料存 inputs.json）→ 重算这个据点 → 比对前后，结果变了的设备
+        撤掉原来点的「对」、日志点名。"""
         from bpa import project as P
-        if kind not in ("feeds", "recipes", "pool_recipes"):  # 明显不对的参数当场报，不开任务
-            return {"ok": False, "error": f"不认识的修正类别：{kind}"}
-        if kind == "pool_recipes" and value is not None:
-            try:  # 放不下、不是这种池子的配方：当场报，不开任务（任务里 save_fix 还会再查一遍）
-                P._check_pool_fix(key, value)
-            except ValueError as e:
-                return {"ok": False, "error": str(e)}
         if not (P.pdir(name) / "base" / base).exists():
             return {"ok": False, "error": f"没有据点「{base}」的拼合结果（先跑「据点拼合」）"}
-        return self._start("bpa", self._bpa_fix, name, base, kind, key, value, log_kind=FIX_LOG_KIND)
+        try:  # 明显不对的参数当场报，不开任务（任务里 save_fixes 还会再查一遍）
+            P.check_fixes(name, base, changes)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._start("bpa", self._bpa_fix_batch, name, base, changes, log_kind=FIX_LOG_KIND)
 
     def bpa_confirm(self, name: str, base: str, kind: str, entries: dict) -> dict:
         """作者确认（任务计划第 1 项）：kind = devices / links；entries = {键: {verdict: ok/wrong, actual, note} 或 None 撤销}。"""
@@ -743,15 +1018,24 @@ class Api:
         P.fit_bases(name, log=print)
         job.result = P.status(name)
 
-    def _bpa_fix(self, job: Job, name: str, base: str, kind: str, key: str, value: str | list | None) -> None:
+    def _bpa_fix_batch(self, job: Job, name: str, base: str, changes: list) -> None:
         from bpa import project as P
         job.step = "记下修正"
-        P.save_fix(name, base, kind, key, value)
-        if isinstance(value, list):  # 池子配方：[] 是「这台没在用」，不是撤销（2026-11-19）
-            what = f"{len(value)} 条配方同时跑：" + "；".join(value) if value else "这台没在用"
-        else:
-            what = value or "撤销"
-        print(f"已记下：{base} {key} → {what}")
+        before = P.design_state(name, base)
+        done = P.save_fixes(name, base, changes)
+        for c in done:
+            print(f"已记下：{base} {self._fix_words(c)}")
+        if not done:
+            print(f"没有要存的修正，只重算「{base}」")
+
+        def flagged(flag, outlets):  # 存的时候就撤掉「对」（或留着「不对」）的设备，按改了配方 / 只改了出口回答分开点名；同一台只算一次
+            return list(dict.fromkeys(c["key"] for c in done if c.get(flag) and (c["kind"] == "pool_outlets") == outlets))
+        rec_ok, rec_wrong = flagged("revoked", False), flagged("kept_wrong", False)
+        out_ok = [k for k in flagged("revoked", True) if k not in rec_ok]
+        out_wrong = [k for k in flagged("kept_wrong", True) if k not in rec_wrong]
+        for line in self._recipe_lines(rec_ok, rec_wrong, before) + self._recipe_lines(out_ok, out_wrong, before, "出口送什么", "旧回答"):
+            print(line)
+        rec_ok += out_ok
         if job.cancel:  # 设计分析一旦开始算就停不下来（纯计算，中间没有取消点），只能在开始前停
             print("已取消：修正已经存下，设计分析还没按它重算（下次据点拼合或再选一次时会按它算）")
             return
@@ -759,7 +1043,93 @@ class Api:
         print(f"== 按修正重算「{base}」的设计分析（程序启动后第一次算要比图标，大据点一两分钟）")
         sm = P.rerun_design(name, base)
         print(f"   设计分析：{sm['devices']} 台，" + "、".join(f"{k} {v}" for k, v in sm["states"].items() if v))
-        job.result = {"base": base, "summary": sm}
+        rv = P.revoke_changed(name, base, before, P.design_state(name, base))
+        for line in self._change_lines(rv, before):
+            print(line)
+        job.result = {"base": base, "summary": sm, "changed": len(rv["changed"]), "revoked": rec_ok + [k for k in rv["revoked"] if k not in rec_ok],
+                      "wrong": rv["wrong"]}
+
+    @staticmethod
+    def _recipe_lines(revoked: list, kept_wrong: list, before: dict, what: str = "配方", old: str = "旧配方") -> list[str]:
+        """改了配方（或池子出口回答：what = 出口送什么）的设备：原来点的「对」存的时候就撤掉了（save_fixes），「不对」留着。
+        坐标照 _change_lines 写拼合图坐标。"""
+        def at(k):
+            x = before.get(k) or {}
+            c = x.get("c")
+            return f"{x.get('device') or k.split('@')[0]}" + (f" ({round(c[0])},{round(c[1])})" if c else "")
+        out = []
+        if revoked:
+            out.append(f"   改了{what}的 {len(revoked)} 台原来点过「对」（针对的是{old}算的结果），已经撤掉，重算完请重新看一眼："
+                       + "、".join(at(k) for k in revoked))
+        if kept_wrong:
+            out.append(f"   改了{what}的 {len(kept_wrong)} 台原来说过「不对」，说法留着，重算完请再看一眼：" + "、".join(at(k) for k in kept_wrong))
+        return out
+
+    @staticmethod
+    def _fix_words(c: dict) -> str:
+        """修正任务日志里的一项：存了什么。"""
+        from bpa import project as P
+        kind, v = c["kind"], c["value"]
+        if kind == P.TUN_KIND:  # 暗管来料（0.10.13 功能二）：坐标写拼合图的（和设计分析表、卡上一样），说记成输入端几号
+            cc = c["card"]["c"]
+            head = f"{c['key'].split('@')[0]} ({round(cc[0])},{round(cc[1])})"
+            if v is None:
+                rm = c.get("removed") or []
+                return f"{head} 的来料 → 撤销" + (f"（删掉输入端 {'、'.join(str(n) for n in rm)} 号）" if rm else "（本来就没填）")
+            what = "这台平时不来料" if v["rate"] == 0 else f"{v['item'] or '物品没填'} {v['rate']:g}/分"
+            return f"{head} 的来料 → {what}（输入端 {c.get('no')} 号" + ("，新加的" if c.get("added") else "") + "）"
+        if kind == "gates":
+            r = c.get("row")
+            if r is None:  # 只有撤销会这样：对不上的旧设置
+                return f"对不上的旧准入口设置（蓝图「{c['key'].split('@')[0]}」）→ 删掉"
+            it = P.gate_item(r)
+            head = f"{r.get('kind') or ''}准入口 ({round(r['c'][0])},{round(r['c'][1])})" + (f"（{it}）" if it else "")
+            if v is None:
+                return f"{head} → 撤销" + ("，回到游戏里读的" if r.get("read") else "")
+            if v["limit"] is None and v["count"] is None:
+                return f"{head} → 都没开（不限速、不限量）"
+            return f"{head} → " + "，".join([f"限制速度 {v['limit']}/分" if v["limit"] is not None else "不限速",
+                                             f"限制通过数量 {v['count']}（一次性）" if v["count"] is not None else "不限量"])
+        if kind == "pool_outlets":  # 池子出口送什么（0.10.13 功能三）：坐标写拼合图的，不写设备键
+            head = Api._pool_at(c) or f"{c['key'].split('@')[0]}（现在的设计分析里没有这台）"
+            if v is None:
+                return f"{head} 出口送什么 → 撤销"
+            said = [f"{w}出口" + (f"送{'、'.join(v[f])}" if v[f] else "什么都不送") for f, w in (("belt", "带"), ("pipe", "管")) if f in v]
+            return f"{head} 出口：" + "；".join(said)
+        if isinstance(v, list):  # 池子配方：[] 是「这台没在用」，不是撤销（2026-11-19）
+            what = f"{len(v)} 条配方同时跑：" + "；".join(v) if v else "这台没在用"
+        else:
+            what = v or "撤销"
+        drop = "（这台出口送什么的回答一起删了）" if c.get("outlets_dropped") else ""
+        return f"{Api._pool_at(c) or c['key']} → {what}{drop}"
+
+    @staticmethod
+    def _pool_at(c: dict) -> str | None:
+        """池子配方、出口回答那一项日志里的「扩容反应池 (x,y)」：拼合图坐标（check_fixes 带的 design.json 那一行）；没有这一行 → None。"""
+        r = c.get("row") or {}
+        xy = r.get("c")
+        return f"{c['key'].split('@')[0]} ({round(xy[0])},{round(xy[1])})" if xy else None
+
+    @staticmethod
+    def _change_lines(rv: dict, before: dict) -> list[str]:
+        """重算前后比对的日志：结果变了哪几台、撤掉了哪几台原来点的「对」、哪几台原来说「不对」的也变了。坐标是拼合图坐标（和设计分析表一样）。"""
+        def at(x):
+            c = x.get("c")
+            return f"{x['device']} ({round(c[0])},{round(c[1])})" if c else str(x["device"])
+        ch = rv["changed"]
+        if not before:
+            return []  # 第一次算（以前没有结果），没有可比的
+        if not ch:
+            return ["   各设备的开工率和状态都没变"]
+        out = [f"   结果变了 {len(ch)} 台：" + "；".join(f"{at(x)} {x['before']['state']} {_pct(x['before']['rate'])} → "
+                                                     f"{x['after']['state']} {_pct(x['after']['rate'])}" for x in ch[:12])
+               + (f" 等（共 {len(ch)} 台）" if len(ch) > 12 else "")]
+        names = {x["key"]: at(x) for x in ch}
+        if rv["revoked"]:
+            out.append(f"   其中 {len(rv['revoked'])} 台原来点过「对」，结果变了，已经撤掉，请重新看一眼：" + "、".join(names[k] for k in rv["revoked"]))
+        if rv["wrong"]:
+            out.append(f"   其中 {len(rv['wrong'])} 台原来说过「不对」，结果也变了，说法留着，请再看一眼：" + "、".join(names[k] for k in rv["wrong"]))
+        return out
 
     def _bpa_label_gates(self, job: Job, name: str, labels: dict) -> None:
         from bpa import project as P

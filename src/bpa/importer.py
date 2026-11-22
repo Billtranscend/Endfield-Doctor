@@ -5,7 +5,8 @@
   没确认过的设计分析结果只放在 bpa_expect 里当参考，不压问题（作者没核对过，可能是识别错）。
 - tier_rules.json 的 overflow_products（溢流位设备做的东西）和 design_limits（准入口限量的产物）：合并诊断按设计内处理。
 - ledger/<据点>.json 底账、<据点>_recipes.json 配方表、gate_limits/<据点>.json 准入口限速：近景定向巡检用。
-- bpa/：拼合结果（composite、logistics、flow、design、输入端、暗管连接），近景巡检的管网追踪、断水影响范围用。
+- bpa/：拼合结果（composite、logistics、flow、design、输入端、暗管连接）和作者的修正 fixes.json，近景巡检的管网追踪、断水影响范围用。
+  作者填的准入口限速不在 fixes.json 里：导出时已经合进 gate_limits/<据点>.json（标 src=作者）。
 - scan/<据点>/：建底账那次扫描的角落图和 scan.json（远景 ↔ 近景配准）。
 
 zip 格式见 docs/蓝图分析器-设计.md 第 5 节（project.export）。
@@ -13,6 +14,7 @@ zip 格式见 docs/蓝图分析器-设计.md 第 5 节（project.export）。
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 import zipfile
@@ -22,6 +24,30 @@ import cv2
 import numpy as np
 
 IDLE_ACTUALS = ("间歇", "平时空闲（设计如此）", "没在用")
+
+
+def _count_gate_line(b: str) -> bool:
+    """设计分析依据里「上游准入口(x,y) 开了限制通过数量 N：一次性的，…」那句（design._name_count_gates，0.10.13 A2）。
+    几口合计的来料行里也有「N 号开了限制通过数量、不参加分」，那句不算。"""
+    return b.startswith("上游准入口(") and "开了限制通过数量" in b
+
+
+def _count_gate_why(r: dict) -> str | None:
+    """设备行依据里的「上游准入口(x,y) 开了限制通过数量…长期按不送X算」那句，X 又是这台最缺的料（能送到 / 用量最小的那几种之一，
+    按全部原料算、含 fed_blocked 的；「卡在：」那句不列 fed_blocked 里的料，所以和它排第一的不一定相同；有 available 用它，没有用 got）时返回这句，否则 None。
+    设备缺两种料、真正卡到 0 的是另一种跟口无关的料时不取它：原因照旧取第一句「卡在：…」，产物也不记进 design_limits（复审 2026-11-21）。
+    行里没有 need（看不出哪种最缺）时照旧取那句。"""
+    need = r.get("need") or {}
+    have = r.get("available") or r.get("got") or {}
+    ratio = {k: (have.get(k) or 0.0) / v for k, v in need.items() if v}
+    low = min(ratio.values()) if ratio else None
+    for b in r.get("basis", []):
+        if not _count_gate_line(b):
+            continue
+        m = re.search(r"长期按不送(.+)算$", b)
+        if low is None or (m and m.group(1) in ratio and ratio[m.group(1)] <= low + 1e-6):
+            return b
+    return None
 
 
 def _j(z: zipfile.ZipFile, name: str, default=None):
@@ -74,7 +100,10 @@ def expectations(design: dict, confirm: dict, area: str) -> dict:
         if c is None:
             out["unconfirmed"].append(dict(base, rate=rate, state=state, recipe=r.get("recipe", "")))
             continue
-        why = next((b for b in r.get("basis", []) if not b.startswith("来料路径里有推断")), "")
+        # 上游准入口开了限制通过数量那句（0.10.13 A2）加在依据末尾：挡的正是这台最缺的料时拿它当原因，不拿第一句
+        # （多半是另一种原料的来料行）；挡的不是最缺的那种照旧取第一句（「卡在：…」，复审 2026-11-21）
+        cg = _count_gate_why(r)
+        why = cg or next((b for b in r.get("basis", []) if not b.startswith("来料路径里有推断")), "")
         if c["verdict"] == "ok":
             rot = _rotation_of(r)
             if rot:  # 作者确认过的两种植物轮换（计算器 _plant_alternation 推出来的）→ 档案登记轮换对
@@ -87,7 +116,7 @@ def expectations(design: dict, confirm: dict, area: str) -> dict:
             if state.startswith("溢流位"):
                 for p in _outputs(r.get("recipe", "")):
                     out["overflow"].setdefault(p, f"{area} {r['device']} ({r['x']},{r['y']}) 是溢流位：主路堵了才转（蓝图分析，作者确认）")
-            if any("准入口限速" in b for b in r.get("basis", [])):
+            if cg or any("准入口限速" in b for b in r.get("basis", [])):  # 限制通过数量挡住（挡的是最缺的料）的也是设计上的限量
                 for p in _outputs(r.get("recipe", "")):
                     out["limits"].setdefault(p, f"{area} {r['device']} ({r['x']},{r['y']}) 设计开工率 {rate:.0%}：{why}（蓝图分析，作者确认）")
         else:
@@ -181,6 +210,14 @@ def import_zip(path: str | Path, rename: str | None = None, log=print, into: str
             confirm = _j(z, "confirm.json", {}) or {}
             inputs = _j(z, "inputs.json", {}) or {}
             _dump(dest / "bpa" / "inputs.json", inputs)
+            # 作者的修正（池子配方、进料…，0.10.13 起导出时带上，准入口段已经合进各据点的 gate_limits.json）：放在 bpa/ 下，
+            # 断水影响重算（design.load_fixes 按 bpa/base/<据点>/ 往上两层找）就认作者说的。旧 zip 没有它：照常导入；
+            # 合并进已有档案时删掉上次导入留下的那份（bpa/ 的内容以这个 zip 为准）
+            fixes = _j(z, "fixes.json")
+            if fixes is not None:
+                _dump(dest / "bpa" / "fixes.json", fixes)
+            elif (dest / "bpa" / "fixes.json").exists():
+                (dest / "bpa" / "fixes.json").unlink()
             _dump(dest / "bpa" / "project.json", {"name": name, "groups": groups, "archive": name, "imported_from": path.name,
                                                   "author_project": man.get("name"), "generated": man.get("generated")})
             tier = {"doc": f"导入自蓝图分析 zip「{path.name}」（{man.get('generated', '')}）：备路规则来自作者确认过的设计分析",

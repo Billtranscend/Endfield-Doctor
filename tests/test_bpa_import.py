@@ -26,8 +26,10 @@ DESIGN = {"devices": [
 ]}
 
 
-def _zip(path: Path, confirm: dict):
+def _zip(path: Path, confirm: dict, fixes: dict | None = None):
     with zipfile.ZipFile(path, "w") as z:
+        if fixes is not None:  # 0.10.13 起导出带作者的修正（准入口段已去掉）；更早的 zip 没有
+            z.writestr("fixes.json", json.dumps(fixes, ensure_ascii=False))
         z.writestr("manifest.json", json.dumps({"format": "bpa-1", "name": "测试产线", "groups": {"武陵城": ["1.6武陵城1号"]},
                                                 "areas": {"武陵": [{"name": "武陵城", "main": True}]}}, ensure_ascii=False))
         z.writestr("confirm.json", json.dumps(confirm, ensure_ascii=False))
@@ -67,8 +69,33 @@ def test_confirm_import_roundtrip():
             assert (d / "bpa" / "bp" / "1.6武陵城1号" / "links.json").exists()
             assert not list(d.rglob("000.png"))  # 预览原始帧没解出来
             assert json.loads((d / "bpa" / "inputs.json").read_text(encoding="utf-8"))["武陵城"]["marks"][0]["rate"] == 60
+            assert not (d / "bpa" / "fixes.json").exists()  # 0.10.12 以前的 zip 没有作者修正：照常导入
             # 同名再导一次：不覆盖，加日期
             assert importer.import_zip(zp, log=lambda *_: None) != name
+        finally:
+            bp.BLUEPRINTS = old
+
+
+def test_fixes_go_into_archive():
+    """zip 里的 fixes.json（作者的修正，0.10.13）放到 档案/bpa/fixes.json：导入方断水影响重算时 design.load_fixes 从据点目录往上两层读到它。
+    合并进已有档案、新 zip 没带的：上次导入留下的那份删掉（bpa/ 以这个 zip 为准）。"""
+    from bpa import design as D
+    fixes = {"武陵城": {"pool_recipes": {"扩容反应池@1,1": ["清水×1 + 芽针粉末×1 → 芽针溶液×1（2秒）"]}, "feeds": {"天有洪炉@2,2": "none"}},
+             "updated": "2026-11-21 10:00:00"}
+    with tempfile.TemporaryDirectory() as td:
+        old = bp.BLUEPRINTS
+        bp.BLUEPRINTS = Path(td)
+        try:
+            zp = Path(td) / "测试产线.bpa.zip"
+            _zip(zp, {}, fixes)
+            name = importer.import_zip(zp, log=lambda *_: None)
+            d = bp.BLUEPRINTS / name
+            assert json.loads((d / "bpa" / "fixes.json").read_text(encoding="utf-8")) == fixes
+            assert D.load_fixes(d / "bpa" / "base" / "武陵城") == fixes["武陵城"]
+            old_zip = Path(td) / "旧.bpa.zip"
+            _zip(old_zip, {})
+            assert importer.import_zip(old_zip, into=name, log=lambda *_: None) == name
+            assert not (d / "bpa" / "fixes.json").exists() and D.load_fixes(d / "bpa" / "base" / "武陵城") == {}
         finally:
             bp.BLUEPRINTS = old
 
@@ -120,5 +147,6 @@ def test_merge_into_existing():
 
 if __name__ == "__main__":
     test_confirm_import_roundtrip()
+    test_fixes_go_into_archive()
     test_merge_into_existing()
-    print("2/2 通过")
+    print("3/3 通过")

@@ -6,6 +6,9 @@
 - 推断（只当警告、不当硬条件）：池内没有别的配方吃的产物得送出去，管出口 2 个各选一种液体、带出口 1 个选择器只出一种固体；
   要从外面进的流体原料 ≤ 2 种（2 个管入口，一根管一种流体）。
 - 推断：几条配方共用一种原料（清水）、送来的不够时，按各条满速用量的比例分（chan_rates）。
+- 出口送什么（outlets，0.10.13 功能三）：官方「反应池有2个管道取货口，可以分别设定任意池中存在的液体」——出口可以选池里任何物品，
+  原料也行；带出口只有 1 个选择是推断（皇帝产线 5 台池子面板「池产物」都是 3 项、中间那项全是固体，顺序应是 管/带/管）。
+  出口选了原料：出口和配方从池里同一格取料，下游先拿、池子用剩下的（issue #1 作者实测，design 按这个算）。
 
 配方都用文字（「清水×1 + 芽针粉末×1 → 芽针溶液×1（2秒）」，和 pool_channels.recipe_text、design._machine_recipes 一样）。
 首尾相接的几条（一条的产物是另一条的原料）在池内自产自用，按 pool_channels 并成一条净配方（groups）。
@@ -68,6 +71,54 @@ def terminal_io(raw) -> dict:
     ext, term = ins - outs, outs - ins
     return {"ext_fluid": {k for k in ext if is_fluid(k)}, "ext_solid": {k for k in ext if not is_fluid(k)},
             "term_fluid": {k for k in term if is_fluid(k)}, "term_solid": {k for k in term if not is_fluid(k)}}
+
+
+def outlets(machine: str, raw, ans: dict) -> dict:
+    """作者说的这台池子出口送什么（fixes.json 的 pool_outlets：{"belt": [固体，最多 1 个], "pipe": [液体，最多 2 个]}；
+    没有 belt / pipe 字段 = 那种出口没说，空列表 = 什么都不送）按在跑的原始配方 raw 分类
+    → {pass: {原料: "belt" / "pipe"}, mid: [中间产物], stuck: [没出口的终端产物], why: [没用上的原因]}。
+    - 原料（池内不产、要从外面进的）进 pass：design 按「下游先拿、池子用剩下的」算；终端产物和原来一样，哪项都不进；
+    - 中间产物（池里自己做、自己又用的）进 mid：还不会算这种分法，只写说明；
+    - 不在这几条配方里、形态和出口不对（固体只走带出口、液体只走管出口）、超出口数（带 1、管 2）、写了两遍的进 why；
+    - 带、管两个字段都有（三个出口都说了）、还有终端产物哪个出口都没选的进 stuck：只写说明（官方：几条配方都停住时池子清空缓存区，
+      开工率定不了，程序不猜）。
+    machine 只用在说明里；raw 是不是这种池子的配方由 design 那边定（面板、推断来的池子也走这里），这里不查。"""
+    ins, outs = _io(raw)
+    items = ins | outs
+    ext, term = ins - outs, outs - ins
+    res = {"pass": {}, "mid": [], "stuck": [], "why": []}
+    if not items:
+        res["why"].append(f"这台{machine}在跑的配方认不出，出口送什么没用上")
+        return res
+    sel = []
+    for layer, name, most in (("belt", "带", OUT_SOLID), ("pipe", "管", OUT_FLUID)):
+        lst = ans.get(layer) or []
+        lst = [lst] if isinstance(lst, str) else list(lst)  # 老格式（带出口存字符串）也认
+        took = []
+        for x in lst:
+            if x in took:
+                res["why"].append(f"{name}出口选的{x}写了两遍")
+            elif len(took) >= most:
+                res["why"].append(f"{name}出口只有 {most} 个选择，多选的{x}没用上")
+            else:
+                took.append(x)
+                sel.append((layer, x))
+    out_ok = set()  # 真能从出口出去的（形态对、在池里）
+    for layer, x in sel:
+        if x not in items:
+            res["why"].append(f"出口选的{x}不在这台池子在跑的配方里，没用上")
+            continue
+        if is_fluid(x) != (layer == "pipe"):
+            res["why"].append(f"{x}{'是液体，走不了带出口' if layer == 'belt' else '是固体，走不了管出口'}，没用上")
+            continue
+        out_ok.add(x)
+        if x in ext:
+            res["pass"][x] = layer
+        elif x not in term:
+            res["mid"].append(x)
+    if "belt" in ans and "pipe" in ans:
+        res["stuck"] = sorted(term - out_ok)
+    return res
 
 
 def check(machine: str, raw) -> dict:

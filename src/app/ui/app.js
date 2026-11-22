@@ -424,8 +424,9 @@ async function pollJob() {
       // 待确认开的任务（bpaFix 打的标记）只刷新设计分析，不整页 bpaRefresh（2026-11-19）：_bpa_fix 只重写 design.json，
       // 整页刷新会重载输入端表和准入口分组表，作者改了几行流速还没存、就去待确认里点了一项，跑完这些修改就没了。
       // 中途刷新过页面时标记是空的，退回整页刷新，和原来一样
-      const only = bpa.afterJob === 'design'; bpa.afterJob = null;
-      if (only) { await bpaDesign(); if ($('#bpaWhich').value === 'design') bpaShowImage(); } else await bpaRefresh();
+      // 暗管来料（0.10.13）改的是 inputs.json：「输入端」页开着同一个据点时按新存的重新载入，免得拿旧数据一保存把新标记盖掉
+      const only = bpa.afterJob === 'design', inAt = bpa.afterIn; bpa.afterJob = null; bpa.afterIn = null;
+      if (only) { await bpaDesign(); if ($('#bpaWhich').value === 'design') bpaShowImage(); if (inAt) bpaInReload(inAt); } else await bpaRefresh();
     }
     if (j.kind === 'gates' && j.result) $('#patrolResult').innerHTML = renderGateLimits(j.result);
     if (j.kind === 'cores' && j.result) $('#patrolResult').innerHTML = renderCorePorts(j.result);
@@ -730,7 +731,8 @@ async function feedbackExport() {
     <ul class="plain">${r.files.map(f => `<li>${esc(f.name)}　${f.mb} MB${f.note ? `　<b style="color:var(--bad)">${esc(f.note)}</b>` : ''}</li>`).join('')}</ul>
     把这几个文件一起拖进 issue 的评论框就行。`;
 }
-const bpa = { name: localStorage.getItem('bpaProject') || '', status: null, marks: [], scale: 0.6, base: '' };
+// gt / gEdits / gFilter：设计分析页的准入口表（0.10.13）——载入的表、改了还没存的（按准入口键）、筛选
+const bpa = { name: localStorage.getItem('bpaProject') || '', status: null, marks: [], scale: 0.6, base: '', gt: null, gEdits: {}, gEditsFor: '', gFilter: 'show' };
 async function bpaLoad() {
   const list = await api('bpa_projects');
   if (!list.find(p => p.name === bpa.name)) bpa.name = list[0]?.name || '';
@@ -740,7 +742,7 @@ async function bpaLoad() {
   if (!list.length) $('#bpaNewBox').open = true;
   await bpaRefresh();
 }
-function bpaSelect(n) { bpa.name = n; localStorage.setItem('bpaProject', n); bpaRefresh(); }
+function bpaSelect(n) { bpa.name = n; localStorage.setItem('bpaProject', n); bpaGateBtns(); bpaRefresh(); }  // 旧项目的准入口表先不能存
 // 删除项目（用户 2026-11-10）：先确认；挪进备份目录不真删；有档案的近景巡检要用它的拼合结果时先说清楚
 async function bpaDelete() {
   if (!bpa.name) { toast('没有选中的项目'); return; }
@@ -821,9 +823,16 @@ async function bpaRefresh() {
 const DS_COLORS = { '满速': '#1a8a3a', '间歇': '#d98200', '溢流位': '#888', '没接上': '#b000b0', '配方未知': '#5a78aa', '没在用': '#bbb', '没料': '#c22' };
 const dsKey = st => Object.keys(DS_COLORS).find(k => (st || '').startsWith(k)) || '没料';
 async function bpaDesign() {
-  const base = $('#bpaDsBase').value; if (!bpa.name || !base) return;
-  const r = await api('bpa_design', bpa.name, base);
-  if (!r.ok) { bpa.ds = null; $('#bpaDsSummary').innerHTML = `<div class="empty">${esc(r.error)}</div>`; $('#bpaDsTable').innerHTML = ''; $('#bpaDsInf').innerHTML = ''; return; }
+  const base = $('#bpaDsBase').value, name = bpa.name; if (!name || !base) return;
+  bpaGateBtns();  // 换了据点：旧的准入口表等新表载入前不能存（按钮变灰）
+  const r = await api('bpa_design', name, base);
+  if (!r.ok) {
+    bpa.ds = null; bpa.gt = null; $('#bpaDsGates').hidden = true;
+    // 待确认卡、行上打开的改配方卡也清掉：留着的是上一个据点的，点了没反应（bpa.ds 已经空了）
+    $('#bpaDsPending').innerHTML = ''; bpaRowCardClose();
+    $('#bpaDsSummary').innerHTML = `<div class="empty">${esc(r.error)}</div>`; $('#bpaDsTable').innerHTML = ''; $('#bpaDsInf').innerHTML = ''; return;
+  }
+  r.at = { name, base };  // 卡片、行上的键是这个项目、这个据点的：存修正时照它发，不照下拉框现在选的
   bpa.ds = r;
   const sm = r.summary || {}, st = sm.states || {};
   // 池子两项（审计第 3 项，2026-11-19）：summary 里没有，按行数——几条配方同时跑的池子；配方是邻居推断或照抄同类、没核实的池子
@@ -834,6 +843,11 @@ async function bpaDesign() {
     ${(sm.warnings || []).map(w => `<div class="hint" style="color:var(--warn)">${esc(w)}</div>`).join('')}`;
   $('#bpaDsInfN').textContent = (r.inferred_links || []).length;
   bpaPending();
+  // 准入口表（0.10.13）：折叠标题用这里给的几个数；表带小图，展开着才载入，收着就等下次展开再载入
+  const gOpen = $('#bpaDsGates').open;
+  if (!gOpen) bpa.gt = null;
+  $('#bpaDsGates').hidden = false; bpaGateHead(r.gate_summary);
+  if (gOpen) bpaGateLoad();
   bpaRowCardClose();  // 重算过：行上打开的改配方卡是旧数据
   bpaLinksTable();
   bpaDesignTable();
@@ -846,13 +860,17 @@ function bpaPending() {
   const r = bpa.ds, box = $('#bpaDsPending'); if (!r || !box) return;
   const items = r.pending || [], auto = r.reread || [];
   if (!items.length && !auto.length) { box.innerHTML = ''; return; }
-  // 「待确认 N 处」只数没回答的：池子卡的回答可以是 []（这台没在用），按 null 判断；进料卡照旧（2026-11-19）
-  const open = items.filter(p => p.kind === '池子配方' ? p.answer == null : !p.answer).length;
+  // 「待确认 N 处」只数没回答的（0.10.13）：每种卡答没答由接口的 open 字段说（池子卡回答 [] = 这台没在用也算答了、
+  // 准入口汇总卡还有没说的口才算没答……），界面不再各写一套
+  const open = items.filter(p => p.open).length;
   const autoHtml = auto.length ? `<div class="pend-auto">程序按设备口格的箭头自己改过 ${auto.length} 处（已标成推断，在下面「推断出来的连线」里可以说对不对）：
     <ul>${auto.map(a => `<li>${esc(a.device)}：${esc(a.basis || a.kind)}</li>`).join('')}</ul></div>` : '';
   box.innerHTML = `<div class="pend-head">${open ? `<b>待确认 ${open} 处</b>：这些地方程序定不下来，需要你看一眼` : (items.length ? '待确认的都答过了' : '')}</div>${autoHtml}
     ${items.map((p, i) => {
+      // 按卡的种类分开画；下面剩下的是「没有进料」卡
       if (p.kind === '池子配方') return bpaPoolCard(p, i);
+      if (p.kind === '准入口限速') return bpaGateCard(p, i);
+      if (p.kind === '暗管来料') return bpaTunCard(p, i);
       const ans = typeof p.answer === 'string' ? p.answer : '';
       const btn = (val, label) => `<button class="btn sm${ans === val ? '' : ' ghost'}" onclick="bpaFix('feeds',${i},'${val}')">${label}</button>`;
       const links = (p.links || []).map((l, k) => btn('to:' + l.key, `${k + 1} 号带子是进料（另一头是${esc(l.to)}）`)).join('');
@@ -889,14 +907,20 @@ function bpaPoolCard(p, i) {
   const boxes = (p.options || []).map((o, k) => `<label class="pend-pool-opt"><input type="checkbox" data-k="${k}"${ticked.includes(o.recipe) ? ' checked' : ''}
       onchange="bpaPoolCount('${i}')"> ${esc(short(o.recipe))}</label>`).join('');
   const said = ans == null ? '' : `<div class="muted">已选：${ans.length ? esc(ans.map(short).join('；')) : '这台没在用'}${p.applied ? '' : '（没用上，看上面的说明）'}</div>`;
+  // 出口回答（0.10.13 功能三）：存下的回答和按它算出来的转送量；没用上的说明红字（产物没出口那条不在这里写，出口一块里按勾的现算）
+  const ow = bpaPoolOutWords(p.outlets), pw = (p.pass_out || []).map(po => bpaPoolPassWords(po)).join('；');
+  const saidOut = ow ? `<div class="muted">出口：${esc(ow)}${pw ? `；${esc(pw)}` : ''}</div>` : '';
+  const notes = (p.outlet_notes || []).filter(n => n.kind !== '产物没出口').map(n => `<div class="pend-rec po-bad">${esc(bpaPoolNoteText(p, n))}</div>`).join('');
+  const undoTip = p.outlets ? '撤销这台的配方；出口送什么的回答也一起删' : '撤销这台的配方';
   return `<div class="pend-item${ans != null ? ' done' : ''}" id="pendPool${i}">${p.image ? `<img src="${p.image}" alt="">` : ''}
     <div class="pend-body"><div class="pend-msg">${esc(p.msg)}</div>${io}
-      ${combos ? `<div class="pend-rec">按连线猜的（推断，点一下勾上，再点「按这几条算」）：</div><div class="pend-opts">${combos}</div>` : ''}
+      ${combos ? `<div class="pend-rec">按连线猜的（推断，点一下勾上，再点「按这样算」）：</div><div class="pend-opts">${combos}</div>` : ''}
       <div class="pend-pool-list">${boxes}</div>
       <div class="pend-rec pend-pool-count"></div>
-      <div class="pend-opts"><button class="btn sm pend-pool-go" onclick="bpaPoolFix('${i}','set')">按这几条算</button>
-        <button class="btn sm${ans && !ans.length ? '' : ' ghost'}" onclick="bpaPoolFix('${i}','unused')">这台没在用</button>
-        ${ans != null ? `<a class="undo" onclick="bpaPoolFix('${i}','undo')">撤销</a>` : ''}${p.from_row ? ` <a class="undo" onclick="bpaRowCardClose()">关上</a>` : ''}</div>${said}</div></div>`;
+      <div class="pend-outlets"></div>
+      <div class="pend-opts"><button class="btn sm pend-pool-go" onclick="bpaPoolFix('${i}','set')">按这样算</button>
+        <button class="btn sm${ans && !ans.length ? '' : ' ghost'}"${p.outlets ? ' title="出口送什么的回答也一起删"' : ''} onclick="bpaPoolFix('${i}','unused')">这台没在用</button>
+        ${ans != null ? `<a class="undo" title="${undoTip}" onclick="bpaPoolFix('${i}','undo')">撤销</a>` : ''}${p.from_row ? ` <a class="undo" onclick="bpaRowCardClose()">关上</a>` : ''}</div>${said}${saidOut}${notes}</div></div>`;
 }
 function bpaPoolChecked(i) {
   const p = bpaPoolItem(i), el = $(`#pendPool${i}`);
@@ -919,7 +943,8 @@ function bpaPoolCount(i) {
     + (over ? '：超格了，放不下' : '') + (warn.length ? `<div class="muted">${esc(warn.join('；'))}（推断，只提示）</div>` : '') : '一条都没勾';
   const go = el.querySelector('.pend-pool-go');
   go.disabled = over || !sel.length;
-  go.title = over ? '物品种类超过格数，放不下' : (!sel.length ? '先勾上这台在跑的配方' : '');
+  go.title = over ? '物品种类超过格数，放不下' : (!sel.length ? '先勾上这台在跑的配方' : '配方和出口一起存，后台只重算这个据点');
+  bpaPoolOutRender(i);  // 出口能选什么跟着勾的配方变
 }
 function bpaPoolPick(i, k) {
   const p = bpaPoolItem(i), el = $(`#pendPool${i}`);
@@ -927,16 +952,198 @@ function bpaPoolPick(i, k) {
   el.querySelectorAll('.pend-pool-list input').forEach(b => { b.checked = c.recipes.includes((p.options[+b.dataset.k] || {}).recipe); });
   bpaPoolCount(i);
 }
-// mode：set = 按勾的这几条算；unused = 这台没在用（存 []）；undo = 撤销（存 null）
+// mode：set = 按勾的配方和出口一起算；unused = 这台没在用（存 []）；undo = 撤销配方（存 null）；后两种后台会把这台的出口回答一起删。
+// undoOut = 只撤销出口回答。都走修正任务 bpa_fix_batch（0.10.13），配方和出口一批存、只重算一次：
+// set 时配方和现在按的一样（作者存的，或面板、推断来的）、只改了出口 → 只存出口，不把面板、推断来的配方固定成作者指定；
+// 出口没改 → 照原来只存配方（点一下也就是把配方定成作者指定）
 function bpaPoolFix(i, mode) {
   const p = bpaPoolItem(i); if (!p) return;
-  let value = null;
+  const at = (bpa.ds && bpa.ds.at) || {};  // 卡片的键是载入设计分析那次的项目、据点的（见 bpaSendFix）
+  const send = ch => bpaFixJob('bpa_fix_batch', at.base || $('#bpaDsBase').value, [ch], undefined, at.name || bpa.name);
+  if (mode === 'undoOut') return send([{ kind: 'pool_outlets', key: p.key, value: null }]);
+  if (mode !== 'set') return send([{ kind: 'pool_recipes', key: p.key, value: mode === 'unused' ? [] : null }]);
+  const sel = bpaPoolChecked(i) || [];
+  if (!sel.length) return toast('先勾上这台在跑的配方');
+  const value = sel.map(o => o.recipe);
+  const out = bpaPoolOutRead(i), outV = out && (out.belt || out.pipe) ? out : null;  // 两种出口都没说 = 没回答（存过的就是撤销）
+  // 出口一块没画出来（读不到）就当没改，免得把存下的回答当成撤销
+  const outMoved = !!out && JSON.stringify(bpaPoolOutNorm(outV)) !== JSON.stringify(bpaPoolOutNorm(p.outlets));
+  const now = Array.isArray(p.answer) ? p.answer : p.current;  // 现在按哪几条算：作者存的；没存过的是行上的（面板、推断来的）
+  const same = Array.isArray(now) && now.length === value.length && value.every(r => now.includes(r));
+  const ch = [];
+  if (!(same && outMoved)) ch.push({ kind: 'pool_recipes', key: p.key, value });
+  if (outMoved) ch.push({ kind: 'pool_outlets', key: p.key, value: outV });
+  send(ch);
+}
+// ---- 池子出口送什么（0.10.13 功能三）：作者照游戏说这台池子的带出口、管出口各选了什么。选的是原料时下游先拿、池子用剩下的
+// （后台按这个算）；选池里自己做、自己用的只记下来。能选什么按勾的配方现算（原料 = 池内不产的，中间产物 = 自己做又自己用的，
+// 其余是产物），「可能在送原料」的提示、产物没出口的红字也只在这里现算，不进 design.json。物品名只 esc 后写进 value，不拼进 onclick
+const sig3 = v => String(+(+v || 0).toPrecision(3));  // 21.4286 → 21.4、8.5714 → 8.57、30 → 30（和依据里的写法一样）
+const bpaPoolList = v => v == null ? undefined : Array.isArray(v) ? v : v ? [v] : [];  // 存下的回答里一种出口的选择；没说 = undefined
+// 出口回答 → 「带出口送息壤，管出口送惰性壤晶废液、壤晶废液」（只写说了的那种出口）
+const bpaPoolOutWords = o => [['belt', '带'], ['pipe', '管']].filter(([f]) => bpaPoolList((o || {})[f]))
+  .map(([f, w]) => { const l = bpaPoolList(o[f]); return l.length ? `${w}出口送${l.join('、')}` : `${w}出口什么都不送`; }).join('，');
+// 比较用：不比存的时间，管出口不比先后
+const bpaPoolOutNorm = o => { const b = bpaPoolList((o || {}).belt), p = bpaPoolList((o || {}).pipe);
+  return b || p ? { belt: b ? [...b].sort() : null, pipe: p ? [...p].sort() : null } : null; };
+// 行上的 pass_out 一项 → 「息壤到手 30/分，从带出口转给下游 21.4，池子自己用 8.57」；brief 是表格悬停用的短说法。
+// 出口经分流器绕回池子自己时有 back（到手里含这份）：转出的不全给了下游，分开写
+function bpaPoolPassWords(po, brief) {
+  const down = sig3(po.out - (po.back || 0)), w = po.layer === 'pipe' ? '管' : '带';
+  if (po.back) {
+    return brief ? `${po.item}到手 ${sig3(po.arrive)}/分，转给下游 ${down}（另有 ${sig3(po.back)} 绕回自己），自己用 ${sig3(po.own)}`
+      : `${po.item}到手 ${sig3(po.arrive)}/分，从${w}出口转出 ${sig3(po.out)}（绕回这台自己 ${sig3(po.back)}、给下游 ${down}），池子自己用 ${sig3(po.own)}`;
+  }
+  return brief ? `${po.item}到手 ${sig3(po.arrive)}/分，转给下游 ${down}，自己用 ${sig3(po.own)}`
+    : `${po.item}到手 ${sig3(po.arrive)}/分，从${w}出口转给下游 ${down}，池子自己用 ${sig3(po.own)}`;
+}
+// 出口说明是按底账坐标点名的（会进导入方的巡检说明），卡上已经有图、红圈就是这台：开头的「扩容反应池 (1798,454)」去掉，句中的换成「这台」
+function bpaPoolNoteText(p, n) {
+  const [name, xy] = (p.key || '').split('@'), me = `${name} (${xy})`;
+  let m = n.msg || '';
+  if (xy && m.startsWith(me)) m = m.slice(me.length).replace(/^\s*的?/, '');
+  return xy ? m.split(me + ' ').join('这台').split(me).join('这台') : m;
+}
+// 现在页面上选的出口 → {belt?: [], pipe?: []}（没说的那种出口没有这一项）。出口一块还没画过 → null
+function bpaPoolOutRead(i) {
+  const box = $(`#pendPool${i} .pend-outlets`), o = {};
+  if (!box || !box.hasAttribute('data-ready')) return null;
+  const b = box.querySelector('.po-belt input:checked');
+  if (b && !b.classList.contains('po-unsaid')) o.belt = b.classList.contains('po-empty') ? [] : [b.value];
+  const ps = [...box.querySelectorAll('.po-pipe input.po-item:checked')].map(x => x.value);
+  if (ps.length) o.pipe = ps;
+  else if (box.querySelector('.po-pipe input.po-empty:checked')) o.pipe = [];
+  return o;
+}
+// 管出口：「什么都不送」和物品互斥；带出口是单选，浏览器自己管。改完重画（灰掉、提示跟着变）
+function bpaPoolOutPick(i, el) {
+  const box = $(`#pendPool${i} .pend-outlets`); if (!box || !el) return;
+  if (el.type === 'checkbox' && el.checked) {
+    const empty = el.classList.contains('po-empty');
+    box.querySelectorAll('.po-pipe input').forEach(b => { if (b !== el && (empty || b.classList.contains('po-empty'))) b.checked = false; });
+  }
+  bpaPoolOutRender(i);
+}
+// 画「出口送什么」一块（勾配方、改出口选择时都重画）：选择从页面上读，第一次画用存下的回答 p.outlets
+function bpaPoolOutRender(i) {
+  const p = bpaPoolItem(i), el = $(`#pendPool${i}`); if (!p || !el) return;
+  const box = el.querySelector('.pend-outlets'); if (!box) return;
+  const cur = box.hasAttribute('data-ready') ? bpaPoolOutRead(i) : { belt: bpaPoolList((p.outlets || {}).belt), pipe: bpaPoolList((p.outlets || {}).pipe) };
+  const sel = bpaPoolChecked(i) || [];
+  const ins = new Set(sel.flatMap(o => o.ins)), outs = new Set(sel.flatMap(o => o.outs)), fluid = new Set(p.fluid || []);
+  // 0 原料、1 池里自己做又自己用、2 产物、3 选着但不在勾的配方里（不悄悄丢掉作者的选择，标出来让他自己取消）
+  const rank = x => !ins.has(x) && !outs.has(x) ? 3 : ins.has(x) && outs.has(x) ? 1 : ins.has(x) ? 0 : 2;
+  const TAG = ['原料', '池里自己做、自己用', '', '不在勾的配方里'];
+  const all = [...new Set([...ins, ...outs])];
+  const opts = (mine, picked) => [...new Set([...mine, ...(picked || [])])].sort((a, b) => rank(a) - rank(b));
+  const beltOpts = opts(all.filter(x => !fluid.has(x)), cur.belt), pipeOpts = opts(all.filter(x => fluid.has(x)), cur.pipe);
+  const name = x => `${esc(x)}${TAG[rank(x)] ? `<span class="muted">（${TAG[rank(x)]}）</span>` : ''}`;
+  const on = `onchange="bpaPoolOutPick('${i}',this)"`;
+  const bv = cur.belt === undefined ? null : cur.belt.length ? cur.belt[0] : '';
+  const radio = (cls, label, chk, val = '') => `<label><input type="radio" name="poBelt${i}" class="${cls}"${val ? ` value="${esc(val)}"` : ''}${chk ? ' checked' : ''} ${on}> ${label}</label>`;
+  const pv = cur.pipe || [], full = pv.length >= 2;
+  const box2 = x => { const c = pv.includes(x), off = full && !c;
+    return `<label${off ? ' class="off" title="管出口只有 2 个，先取消一个再选"' : ''}><input type="checkbox" class="po-item" value="${esc(x)}"${c ? ' checked' : ''}${off ? ' disabled' : ''} ${on}> ${name(x)}</label>`; };
+  // 出口在图上的编号：进来的排 1–nIn，出去的接着排（和卡上「出去」的清单、小图一样）。行上打开的卡没有进出连线清单
+  const nIn = (p.ins || []).length, ends = p.outs || [];
+  const nos = layer => ends.map((l, k) => l.layer === layer ? nIn + k + 1 : 0).filter(Boolean);
+  const noIo = p.from_row && !nIn && !ends.length;
+  const where = (layer, w) => noIo ? '看图上红圈这台的带子和管子' : nos(layer).length ? `图上 ${nos(layer).join('、')} 号` : `图上没追到接出去的${w}`;
+  // 「可能在送原料」（按连线现算，这种出口还没说时才提示）：出口通到的下游要的东西里，没有勾的配方的同形态产物、但有同形态原料 X
+  const hints = [];
+  for (const [layer, fl, form, w] of [['belt', false, '固体', '带子'], ['pipe', true, '液体', '管子']]) {
+    if (cur[layer] !== undefined || !sel.length) continue;
+    const prods = [...outs].filter(x => fluid.has(x) === fl), raws = [...ins].filter(x => !outs.has(x) && fluid.has(x) === fl);
+    const by = new Map();
+    ends.forEach((l, k) => {
+      const want = l.items || [];
+      if (l.layer !== layer || want.some(x => prods.includes(x))) return;
+      want.filter(x => raws.includes(x)).forEach(x => { const h = by.get(x) || { nos: [], to: new Set() }; h.nos.push(nIn + k + 1); h.to.add(l.to); by.set(x, h); });
+    });
+    for (const [x, h] of by) {
+      // 一个出口的去向本身可能是「A、B」（一个口接了几台），按拆开后的设备数定「它 / 它们」
+      const tos = [...new Set([...h.to].flatMap(t => String(t || '').split('、')).filter(Boolean))];
+      const it = tos.length > 1 ? '它们' : '它', many = h.nos.length > 1;
+      hints.push(`${h.nos.join('、')} 号出口是${w}，通到${tos.join('、')}，${it}要${x}。勾的这 ${sel.length} 条配方`
+        + (prods.length ? `做的${form}（${prods.join('、')}）${it}不要，${x}是池里的原料` : `没有${form}产物，池里的${form}${raws.length > 1 ? `原料有${raws.join('、')}` : `只有原料${x}`}`)
+        + `——${many ? '这几个口' : '这个口'}可能在送${x}。去游戏里点开这台池子看一眼，是的话在上面选上。`);
+    }
+  }
+  // 三个出口都说了、还有产物哪个出口都没选：游戏里会停（官方），程序没按这个算
+  const chosen = new Set([...(cur.belt || []), ...pv]);
+  const stuck = cur.belt !== undefined && cur.pipe !== undefined ? [...outs].filter(x => !ins.has(x) && !chosen.has(x)) : [];
+  const it = stuck.length > 1 ? '它们' : '它';
+  box.setAttribute('data-ready', '');
+  box.innerHTML = `<div><b>出口送什么</b><span class="muted">（游戏里点开这台池子，看出口各选了什么；没看过可以不填）</span>
+      ${p.outlets ? `<a class="undo" onclick="bpaPoolFix('${i}','undoOut')">撤销出口回答</a>` : ''}</div>
+    <div class="po-row po-belt"><span class="po-l">带出口（${where('belt', '带子')}，几个带出口共用一个选择）：</span>
+      ${radio('po-unsaid', '没说', bv === null)}${radio('po-empty', '什么都不送', bv === '')}${beltOpts.map(x => radio('po-item', name(x), bv === x, x)).join('')}</div>
+    <div class="po-row po-pipe"><span class="po-l">管出口（${where('pipe', '管子')}，两个口各选一种液体，最多 2 种；都不勾 = 没说）：</span>
+      <label><input type="checkbox" class="po-empty"${cur.pipe && !pv.length ? ' checked' : ''} ${on}> 什么都不送</label>${pipeOpts.map(box2).join('')}</div>
+    <div class="muted po-note">${sel.length ? '' : '先勾上这台在跑的配方，这里才列得出池里有什么。'}出口选的是原料时，下游先拿，池子用剩下的。选的是池里自己做、自己用的东西，程序还不会算，只记下来。</div>
+    ${hints.map(h => `<div class="po-hint">${esc(h)}</div>`).join('')}
+    ${stuck.length ? `<div class="po-bad">${esc(stuck.join('、'))}三个出口都没选：游戏里${it}在池里攒满以后，做${it}的那条配方会停；几条配方都停住时，池子会清空缓存区（官方）。程序没按这个算，这台按${it}能送出去算，以实际为准。</div>` : ''}`;
+}
+// 暗管来料卡（0.10.13 功能二）：外接暗管出口（另一头不在这套蓝图里）送进来什么、每分钟多少，程序读不到，作者填。
+// 存成 inputs.json 里标在这台暗管出口上的输入端标记，后台只重算这个据点。接口给的：outs 它接出去的几路（小图上按 1、2… 标在
+// 每一路第一个物流件上）、fluids 物品下拉（下游要的排前面，只有液体、气体）、suggest 下游要的、cap 每分钟最多多少（120 × 口数）、
+// input_no 记成输入端几号、answer 填了量才有（只填了物品的照没填算：还是按满管估，物品在 mark 里）。
+// 按钮只带卡片序号，选的物品、填的数由 bpaTunFix 从页面上读（不把物品名拼进 onclick）
+function bpaTunCard(p, i) {
+  const ans = p.answer, mark = p.mark || {}, cap = +p.cap || 120, ports = +p.ports || 1;
+  const fl = p.fluids || [], want = new Set(p.suggest || []);
+  const cur = ans ? ans.item || '' : mark.item || '';  // 填过的、只在「输入端」页填了物品的：预选它
+  const opt = n => `<option${n === cur ? ' selected' : ''}>${esc(n)}</option>`;
+  const mine = fl.filter(n => want.has(n)), rest = fl.filter(n => !want.has(n));
+  const sel = `<select class="tun-item"><option value=""${fl.includes(cur) ? '' : ' selected'}>选液体或气体</option>`
+    + (mine.length ? `<optgroup label="下游要的">${mine.map(opt).join('')}</optgroup>` : '')
+    + `<optgroup label="${mine.length ? '其他液体、气体' : '液体、气体'}">${rest.map(opt).join('')}</optgroup></select>`;
+  const outs = p.outs || [];
+  // 「去哪几台」后面跟括号说明：接口写的「（没追到设备）」去掉括号，免得两对括号挨着
+  const to = o => `${esc(o.to.replace('（没追到设备）', '没追到设备'))}<span class="muted">（管${(o.items || []).length ? `，${o.to.includes('、') ? '这几台' : '这台'}要用${esc(o.items.join('、'))}` : ''}`
+    + `${o.unclear ? '，下游有一路物品不明' : ''}）</span>`;
+  const io = `<div class="pend-io"><div>它接到${outs.length > 1 ? `（图上 1–${outs.length} 号）` : outs.length ? '（图上 1 号）' : ''}：
+    <ol>${outs.map(o => `<li>${to(o)}</li>`).join('') || '<li class="muted">没追到它接出去的管子</li>'}</ol></div></div>`;
+  // 只填了物品（液体、气体）：上面的说明已经写了现在怎么估（每一路按满管），这里只说缺什么。填的不是液体、气体的，extra 里有提醒
+  const half = !ans && mark.item && fl.includes(mark.item) ? `<div class="pend-rec tun-warn">输入端 ${esc(mark.no)} 号只填了物品「${esc(mark.item)}」，`
+    + `没填每分钟多少：补上每分钟多少再点「按这个算」。</div>` : '';
+  // 一台标了两个、几口合计、填的不是液体或气体（接口给的 extra）
+  const extra = (p.extra || []).map(t => `<div class="pend-rec tun-warn">${esc(t)}</div>`).join('');
+  const top = ports > 1 ? `（${ports} 个口合计，最多 ${gnum(cap)}）` : `（一根管子最多 ${gnum(cap)}）`;
+  const said = ans ? `<div class="muted">已填：${ans.rate > 0 ? `${esc(ans.item || '物品没填（按下游缺什么当什么）')} ${gnum(ans.rate)}/分` : '这台平时不来料'}
+    <a class="undo tun-undo" onclick="bpaTunFix(${i},'undo')">撤销</a></div>` : '';
+  const img = p.image ? `<img class="zoomable" src="${p.image}" alt="红圈 = 这台暗管出口；1、2… = 它接出去的几路（标在每一路第一个物流件上）">` : '';
+  return `<div class="pend-item${p.open ? '' : ' done'}" id="pendTun${i}">${img}
+    <div class="pend-body"><div class="pend-msg">${esc(p.msg)}</div>${io}${extra}${half}
+      <div class="pend-rec tun-in"><span class="tun-f">送进来的物品 ${sel}</span><span class="tun-f">每分钟 <input class="tun-rate" inputmode="decimal" size="5"
+        placeholder="0–${gnum(cap)}" value="${ans && ans.rate > 0 ? gnum(ans.rate) : ''}"> <span class="muted">${top}</span></span></div>
+      <div class="pend-opts"><button class="btn sm" onclick="bpaTunFix(${i},'set')">按这个算</button>
+        <button class="btn sm${ans && !(ans.rate > 0) ? '' : ' ghost'}" onclick="bpaTunFix(${i},'none')">这台平时不来料</button></div>${said}
+      <div class="muted tun-note">${ans ? `这是输入端 ${esc(p.input_no)} 号` : p.input_no != null ? `填的会记成输入端 ${esc(p.input_no)} 号`
+        : '填的会新加一个输入端（这个据点有几张暗管来料卡没填，号码按先填的排）'}，在「输入端」页也能看到、能改；拼合图变了，它会跟着这台暗管走。</div></div></div>`;
+}
+// mode：set = 按选的物品、填的每分钟多少算；none = 这台平时不来料（存 rate 0）；undo = 撤销（删掉这台暗管上的输入端标记）。
+// 走修正任务（bpa_fix_batch，类别 tunnel_feeds），接口当场校验；跑完「输入端」页要按新存的重新载入（pollJob 看 bpa.afterIn）
+async function bpaTunFix(i, mode) {
+  const p = ((bpa.ds || {}).pending || [])[i], el = $(`#pendTun${i}`); if (!p || !el) return;
+  const cap = +p.cap || 120, many = (+p.ports || 1) > 1;
+  let value = null, msg = '已撤销';
   if (mode === 'set') {
-    const sel = bpaPoolChecked(i) || [];
-    if (!sel.length) return toast('先勾上这台在跑的配方');
-    value = sel.map(o => o.recipe);
-  } else if (mode === 'unused') value = [];
-  bpaSendFix('pool_recipes', p.key, value);
+    const item = el.querySelector('.tun-item').value, raw = el.querySelector('.tun-rate').value.trim(), rate = Number(raw);
+    if (!raw || !Number.isFinite(rate) || rate < 0 || rate > cap)
+      return toast(`每分钟多少要填 0–${gnum(cap)} 的数${many ? `（${p.ports} 个口合计）` : ''}；不来料就点「这台平时不来料」`);
+    if (!item && rate > 0) return toast('先选送进来的是哪种液体或气体');
+    value = { item, rate }; msg = rate > 0 ? `已记下：${item} ${gnum(rate)}/分` : '已记下：这台平时不来料';
+  } else if (mode === 'none') { value = { item: '', rate: 0 }; msg = '已记下：这台平时不来料'; }
+  if (bpaJobBusy()) return;
+  const at = (bpa.ds && bpa.ds.at) || { name: bpa.name, base: $('#bpaDsBase').value };
+  // 「输入端」页开着同一个据点、又有没存的改动：跑完那一页要重新载入，没存的会丢，先问
+  if (bpaInSame(at) && bpaInDirty() && !(await uiConfirm('「输入端」页还有没存的改动。暗管来料也记在输入端里，跑完以后那一页会按新存的重新载入，'
+    + '没存的改动会丢掉。\n\n要留着的话先点「取消」，去「输入端」页点「保存」，再回来点。', { ok: '不要了，继续', title: '暗管来料' }))) return;
+  bpa.afterIn = { name: at.name, base: at.base, sig: bpaInSame(at) ? bpaInSig() : '' };  // sig：发出去时那一页的样子，跑完比一下有没有又改
+  const ok = await bpaFixJob('bpa_fix_batch', at.base, [[{ kind: 'tunnel_feeds', key: p.key, value }]],
+    `${msg}，正在重算这个据点（进度看上面的任务日志；程序启动后第一次算较慢）`, at.name);
+  if (!ok) bpa.afterIn = null;
 }
 // 待确认里选了以后走任务（2026-11-19）：进度在上面的任务日志里，跑完 pollJob 只刷新设计分析（bpa.afterJob 标记）。
 // 原来同步等结果，和据点拼合任务、「保存并重算」能同时跑，两边一起写 design.json
@@ -946,14 +1153,24 @@ async function bpaFix(kind, i, value) {
   bpaSendFix(kind, p.key, value || null);
 }
 async function bpaSendFix(kind, key, value) {
-  if (bpaJobBusy()) return;
+  // 键来自 bpa.ds（载入设计分析那次的项目、据点）：换项目 / 据点、新结果还没回来时点了旧卡，也存回它自己的据点
+  const at = (bpa.ds && bpa.ds.at) || {};
+  return bpaFixJob('bpa_fix', at.base || $('#bpaDsBase').value, [kind, key, value], undefined, at.name || bpa.name);
+}
+// 作者修正的任务（待确认的选项、暗管来料卡、准入口表的保存 / 都没开 / 删 / 重算共用）：接口当场校验，不对的报错、不开任务；
+// 开起来以后进度在上面的任务日志，跑完 pollJob 按 afterJob 只刷新设计分析（连带准入口表）。args 是接在项目名、据点后面的参数；
+// name、base 由调用的一方给（准入口表给表载入时的项目、据点）
+async function bpaFixJob(fn, base, args, msg, name = bpa.name) {
+  if (bpaJobBusy()) return false;
   const boxes = [$('#bpaDsPending'), $('#bpaDsRowCard')].filter(Boolean);
   boxes.forEach(b => b.classList.add('busy'));
-  const res = await api('bpa_fix', bpa.name, $('#bpaDsBase').value, kind, key, value);
-  if (!res.ok) { boxes.forEach(b => b.classList.remove('busy')); return toast(res.error); }
-  toast('已记下，正在按你的选择重算这个据点（进度看上面的任务日志；程序启动后第一次算较慢）');
+  let res;
+  try { res = await api(fn, name, base, ...args); } catch (e) { res = { ok: false, error: String(e && e.message || e) }; }
+  if (!res.ok) { boxes.forEach(b => b.classList.remove('busy')); bpaGateBtns(); toast(res.error); return false; }
+  toast(msg || '已记下，正在按你的选择重算这个据点（进度看上面的任务日志；程序启动后第一次算较慢）');
   bpa.afterJob = 'design';
   $('#bpaLog').style.display = ''; startPolling('bpa');
+  return true;
 }
 // 任务在跑时，蓝图分析页会写数据的操作（待确认的选项、保存并重算、保存输入端）先挡住：拼合任务也在写这些文件（2026-11-19）
 function bpaWriteState(running, kind) {
@@ -961,11 +1178,350 @@ function bpaWriteState(running, kind) {
   const rc = $('#bpaDsRowCard'); if (rc) rc.classList.toggle('busy', running);
   const sg = $('#bpaSaveGates'); if (sg) { sg.disabled = running; sg.title = running ? '有任务在跑，跑完再保存' : ''; }
   const si = $('#bpaSaveIn'); if (si) { const b = running && kind === 'bpa'; si.disabled = b; si.title = b ? '蓝图分析任务在跑，跑完再保存' : ''; }
+  bpaGateBtns(running);  // 准入口表的按钮（0.10.13）：表里照样能改，只是存不了
 }
 function bpaJobBusy(onlyBpa) {
   const j = state.job;
   if (j && j.state === 'running' && (!onlyBpa || j.kind === 'bpa')) { toast('有任务在跑，稍后再试'); return true; }
   return false;
+}
+
+// ---------------------------------------------------------------- 准入口限速表（0.10.13 功能一）
+// 「设计分析」卡片里、待确认下面的可折叠块 #bpaDsGates：作者照游戏填准入口的限制速度、限制通过数量，存进项目 fixes.json，
+// 后台只重算这个据点。表的行由 bpa_gate_table 排好（行号 no 和总览图上的编号一样）；改了还没存的按准入口键记在 bpa.gEdits，
+// 重新载入表时还没存进去的照样留着（跑完任务、换筛选都不丢），和现在生效的值一样了就丢掉。按钮只带行号，不把物品名、键拼进 onclick
+const gnum = v => String(Math.round((+v || 0) * 100) / 100);
+const GATE_CNT_TIP = '1–5000 的整数，空着 = 不限量。一次性的：放满这个数就停，不是每分钟；设计分析算长期开工率，开了的口按不送料算';
+const GATE_CNT_BAD = '限制通过数量要填 1–5000 的整数，空着 = 不限量';
+// 筛选：[下拉里的字, 这一行显示不显示]。默认（有料经过的）用接口给的 show：有料经过的口和你填过的口
+const GATE_FILTERS = { show: ['有料经过的', r => r.show], set: ['你填过或游戏里读到的', r => r.src != null], input: ['输入端', r => r.group === '输入端'],
+  none: ['没追到有料经过的', r => r.group === '没追到'], all: ['全部', () => true] };
+// 载入的表是不是现在选的项目、据点的（换了项目 / 据点、新表还没回来时，旧表照样显示着，但不能存）
+const bpaGateMatch = t => !!(t && t.name === bpa.name && t.base === $('#bpaDsBase').value);
+const GATE_SWITCH = '正在换成现在选的项目 / 据点，等准入口表载入完再点';
+// 折叠时的标题：有料经过的口几个、你填了几个（说都没开的另算）、游戏里读到几个（bpa_design 的 gate_summary，和待确认汇总卡同一个口径）
+function bpaGateHead(s) {
+  const el = $('#bpaDsGatesSum'); if (!el) return;
+  s = s || {};
+  const t = bpaGateMatch(bpa.gt) ? bpa.gt : null;  // 载入过这个据点的表才知道对不上的有几条
+  const st = t && (t.stale || []).length ? ` · <b style="color:var(--warn)">对不上的旧设置 ${t.stale.length} 条</b>` : '';
+  const off = s['说没开'] || 0, cant = s['填不了'] || 0;
+  el.innerHTML = `<b>准入口限速 / 限制通过数量</b>${helpIcon('bpagatelimit')}：` + (s.need_rerun
+    ? '这个据点的设计分析是旧版本算的，点开以后点「重算」生成准入口表'
+    : `有料经过的口 ${s['有料'] || 0} 个${cant ? `（其中 ${cant} 个没有位置数据、填不了）` : ''} · 你填了 ${(s['已填'] || 0) - off} 个`
+      + `${off ? ` · 你说都没开 ${off} 个` : ''} · 游戏里读到 ${s['游戏读到'] || 0} 个${st}<span class="muted">（点开看、填）</span>`);
+}
+function bpaGateToggle() {
+  const d = $('#bpaDsGates'); if (!d || !d.open) return;
+  if (!bpaGateMatch(bpa.gt)) bpaGateLoad();
+}
+async function bpaGateLoad() {
+  const base = $('#bpaDsBase').value, box = $('#bpaDsGatesBody'); if (!bpa.name || !base || !box) return;
+  const name = bpa.name, tok = bpa.gTok = (bpa.gTok || 0) + 1;
+  if (!bpa.gt) box.innerHTML = '<div class="empty">正在载入准入口表…</div>';
+  let t;
+  try { t = await api('bpa_gate_table', name, base); } catch (e) { t = { ok: false, error: String(e && e.message || e) }; }
+  if (tok !== bpa.gTok) return;  // 等的时候又换了据点 / 又载入了一次：用后面那次的
+  const id = name + '|' + base;
+  if (bpa.gEditsFor !== id) {
+    const lost = Object.keys(bpa.gEdits).length;
+    if (lost) toast(`换了项目或据点：「准入口限速」表里还没存的 ${lost} 处改动没保留`);
+    bpa.gEdits = {}; bpa.gEditsFor = id;
+  }
+  bpa.gt = t.ok ? Object.assign(t, { name, base }) : { error: t.error, need_rerun: !!t.need_rerun, name, base, rows: [], stale: [] };
+  for (const k of Object.keys(bpa.gEdits)) { const r = bpa.gt.rows.find(x => x.key === k); if (!r || !bpaGateDirty(r)) delete bpa.gEdits[k]; }
+  bpaGateRender();
+  bpaGateHead(bpa.ds && bpa.ds.gate_summary);
+}
+function bpaGateRender() {
+  const box = $('#bpaDsGatesBody'), t = bpa.gt; if (!box || !t) return;
+  if (t.error) {
+    box.innerHTML = `<div class="empty">${esc(t.error)}</div>`
+      + (t.need_rerun ? '<div class="btn-row"><button class="btn sm primary gate-act" onclick="bpaGateRerun()">重算</button><span class="muted">只重算这个据点的设计分析（一两分钟），不重新拼合</span></div>' : '');
+    return bpaGateBtns();
+  }
+  const n = k => t.rows.filter(GATE_FILTERS[k][1]).length;
+  const read = t.has_read ? `<div class="hint">这个据点有游戏里读到的限速${t.read_date ? `（${esc(t.read_date)} 读的）` : ''}，表里标「游戏里读的」、图上是绿圈：照样按读到的算。
+    你改了以你填的为准（标「你改的」），撤销就回到读到的。</div>` : '';
+  box.innerHTML = `<div class="hint">蓝图预览里看不出准入口开没开限速，设计分析默认按不限速算。下面默认列的是设计分析里有料经过的口；输入端和没追到料的口在筛选里。
+      游戏里开了「限制速度」或「限制通过数量」的，照游戏里填；没开的可以不填，也可以点最下面的「上面没说的这些都没开」。
+      改完点「保存并重算」，后台只重算这个据点（一两分钟），跑完这张表和下面的设备表自己刷新。</div>${read}
+    <details class="hint-d"><summary>限制通过数量怎么算</summary>限制通过数量是一次性的：放满这个数就不再放行，不是每分钟。
+      设计分析算的是长期开工率，开了它的口一律按不送料算（线内的口、输入端都一样，你填的和游戏里读的都一样，累计放了多少不管）；
+      上游生产设备的产物只能走这个口的，出不去，开工率跟着算 0，依据写「出料受限」：原料有、只是产物出不去的写间歇，不算没料。原料有没有是估的：先假设产物出不去的设备照常收料，再假设上游也不会因为产物出不去而停，各算一遍；两遍里开了限制通过数量、限速 0 的口都照样不往下送料。每种原料有一遍送得到就算有，有一种两遍都送不到的照旧写没料。估算可能判错，比如很长的断料链、绕圈供料、备路上的设备、另一路来料的上游自己也出不去。同时跑几条配方的池子例外：每条都出不去时一律写间歇，原料有没有看不出来（已知限制）。
+      口下游第一台缺这种料的设备（穿过物流件、储存箱找，不穿过别的设备），依据里会写是哪个口挡的；
+      口上没认出物品、也没追到上游要送什么料的写不出（上游设备自己没料的口不算有料经过）。下游另有来路的（比如种植机、采种机自己循环供料），那部分照常算。
+      游戏里读到开着、但没读到数量的口不按它挡。你填的导出 zip 时一起带上。</details>
+    ${t.overview ? `<div class="hint">总览：表里的 # 号标在图上，画的是你填过的、游戏里读到开着的和有料经过的口（其余输入端、没追到料的不画）。
+      红圈 = 还没说，蓝圈 = 你填的，绿圈 = 游戏里读的。按住拖动、滚轮缩放，右上「复位」回到整图。</div>
+      <div id="bpaGateOver" class="bpa-img ds-gover"><img src="${t.overview}" draggable="false" alt=""></div>` : ''}
+    <div class="btn-row ds-gbar">筛选 <select id="bpaGateFilter" onchange="bpa.gFilter=this.value;bpaGateRows()">${Object.entries(GATE_FILTERS).map(([k, [l]]) =>
+        `<option value="${k}"${k === bpa.gFilter ? ' selected' : ''}>${l}（${n(k)}）</option>`).join('')}</select>
+      <span class="muted">排序：先放你填过的和游戏里读到开着的，再放有料经过、还没说的，最后是输入端和没追到料的；同一种物品按位置从上到下、从左到右，和总览图的编号一样。每行的小图点开看大图。</span></div>
+    <div id="bpaGateRows" class="ds-gwrap"></div>
+    <div class="btn-row"><button class="btn sm primary" id="bpaGateSaveBtn" onclick="bpaGateSave()">保存并重算（改了 0 个口）</button>
+      <button class="btn sm ghost" id="bpaGateOffBtn" onclick="bpaGateAllOff()">上面没说的这些都没开</button></div>
+    ${bpaGateStale(t)}`;
+  if (t.overview) panZoom($('#bpaGateOver'));
+  bpaGateRows();
+}
+function bpaGateRows() {
+  const t = bpa.gt, el = $('#bpaGateRows'); if (!t || !el) return;
+  const f = (GATE_FILTERS[bpa.gFilter] || GATE_FILTERS.show)[1];
+  const body = t.rows.map((r, i) => f(r) ? bpaGateRow(r, i) : '').join('');
+  el.innerHTML = `<table class="bpa-table ds-gtable"><tr><th>#</th><th>位置</th><th>物品</th><th>从哪来 → 到哪去</th><th>设计分析里</th><th>限制速度（每分钟）</th>
+      <th>限制通过数量<div class="muted gnote">一次性，放满就停：设计分析按不送料算</div></th><th>来源</th></tr>
+    ${body || '<tr><td colspan="8" class="muted">这个筛选下没有口</td></tr>'}</table>`;
+  bpaGateBtns();
+}
+function bpaGateRow(r, i) {
+  const e = bpa.gEdits[r.key], undo = !!(e && e.undo && r.src === '作者'), off = !r.key || undo;
+  const bad = !!(e && !e.undo && Number.isNaN(e.count));
+  const cnt = e && !e.undo ? (e.raw ?? '') : (r.count ?? '');
+  const cls = r.src === '作者' ? 'mine' : r.src === '游戏' ? 'read' : '';
+  const pic = r.thumb ? `<img class="ds-gthumb" src="${r.thumb}" alt=""${r.key ? ` title="点开看大图" onclick="bpaGateBig(${i})"` : ''}>` : '';
+  return `<tr id="gtr${i}" class="${bpaGateDirty(r) ? 'dirty' : ''}"><td class="gno ${cls}">${r.no}</td>
+    <td>${pic}<div class="muted">(${Math.round(r.c[0])},${Math.round(r.c[1])})</div></td>
+    <td>${bpaGateItem(r)}</td><td class="gends">${bpaGateEnds(r)}</td><td class="gflow">${bpaGateFlow(r)}</td>
+    <td>${bpaGateLimitSel(r, i, e, off)}</td>
+    <td class="gcnt-c"><input class="gcnt${bad ? ' bad' : ''}" inputmode="numeric" size="6" placeholder="不限量" value="${esc(cnt)}" title="${bad ? GATE_CNT_BAD : GATE_CNT_TIP}"
+      oninput="bpaGateEdit(${i})"${off ? ' disabled' : ''}> <span class="muted" title="${GATE_CNT_TIP}">一次性</span></td>
+    <td class="gsrc">${bpaGateSrc(r, i)}</td></tr>`;
+}
+// 物品：口上认出来的；没认出来、只过了一种料的用那种料（接口的 item_name），另外标一下
+function bpaGateItem(r) {
+  const it = r.item_name, ic = it && (bpa.gt.icons || {})[it];
+  const name = it ? `${ic ? `<img class="ds-gicon" src="${ic}" alt="">` : ''}${esc(it)}`
+    + (r.item ? '' : ' <span class="muted" title="口上的图标没认出来，按设计分析里过这个口（或被这个口挡下）的料写的">（按过口的料）</span>') : '<span class="muted">看不出</span>';
+  return `${name}<div class="muted">${r.kind ? esc(r.kind) + '准入口' : '类型没定的准入口'}</div>`;
+}
+// 上下游最近的设备（穿过物流件找），坐标是拼合图坐标。一边有几台时标「进1」「进2」…，和小图、大图上的标签一样（接口 _gate_ends）
+function bpaGateEnds(r) {
+  const devs = (ds, tag) => ds.map((d, k) => `${ds.length > 1 ? `<b>${tag}${k + 1}</b> ` : ''}${esc(d.name)} (${Math.round(d.c[0])},${Math.round(d.c[1])})`).join('、');
+  const from = r.group === '输入端' ? '基地外面' : (r.from || []).length ? devs(r.from, '进') : '<span class="muted">上游没追到</span>';
+  const to = (r.to || []).length ? devs(r.to, '出') : '<span class="muted">下游没追到</span>';
+  return `从 ${from} → 到 ${to}`;
+}
+// 设计分析里这个口过了多少、被挡下多少、下游满速要多少。输入端不写算出来的流量（外接暗管会重复算，出现 180/分），写作者在输入端页填的
+// 开了限制通过数量（count 有数）的口设计分析按不放行算：上游是生产设备时被压成 0，没有「通过 / 被挡下」的量，写清是它挡的、挡的什么料（shut）
+function bpaGateFlow(r) {
+  const once = r.count != null;
+  if (r.group === '输入端') return `输入端 ${esc(r.input_no)} 号，` + (r.input_rate != null ? `填的 ${gnum(r.input_rate)}/分` : '输入端页没填流速')
+    + (once ? '；<b class="gheld">开了限制通过数量，设计分析按不来料算</b>' : '');
+  const f = r.flow || {}, h = r.held || {}, its = [...new Set([...Object.keys(f), ...Object.keys(h)])];
+  // 下游一路去仓库、绕回上游、没追到头：接口给 null；是 0：下游那台不吃这种料，或者连接没追到
+  const dn = r.downstream == null ? '下游用多少看不出（有一路去仓库、绕回上游或没追到头）'
+    : +r.downstream === 0 ? ((r.to || []).length ? '下游的设备不用这种料（或后面还有口挡住、连接没追到）' : '下游没追到设备')
+    : `下游满速要 ${gnum(r.downstream)}/分`;
+  if (!its.length) {
+    if (!once) return '<span class="muted">没有料经过</span>';
+    const sh = r.shut || [];
+    // shut 空的分开说（复审 2026-11-21）：上游没追到设备；出边没追到下游设备（下游那句 dn 已经说了，上游追到了不能说成没追到）；
+    // 上下游都追到了，是上游这一路没有料（上游设备自己没料、分料时分不到这一路，或前面还有一个口已经挡住：两个限量口串着，A2 最后一轮复审）
+    const why = sh.length ? `：上游要往这里送${esc(sh.join('、'))}`
+      : !(r.from || []).length ? '；没追到上游设备'
+      : !(r.to || []).length ? ''
+      : '；分析里上游没有料要往这里送（上游设备自己没料、分料时分不到这一路，或前面还有口已经挡住）';
+    return '<b class="gheld">开了限制通过数量，设计分析按不放行算（长期 0）</b>' + why + `；${dn}`;
+  }
+  // 开了限制通过数量的口，shut 里还有推料账上没有的料（上游是生产设备、被背压压成 0）：一并写出来，料名也写（物品一栏这时是「看不出」，A2 最后一轮复审）
+  const extra = once ? (r.shut || []).filter(k => !its.includes(k)) : [];
+  const one = its.length === 1 && !extra.length;
+  const part = its.map(k => (one ? '' : esc(k) + ' ') + `通过 ${gnum(f[k])}/分` + (h[k] ? `，<b class="gheld">被挡下 ${gnum(h[k])}/分</b>` : '')).join('；')
+    + (extra.length ? `；<b class="gheld">上游还要往这里送${esc(extra.join('、'))}</b>（按不放行算）` : '');
+  // 已知问题：几路来料在口前汇到一起时，设计分析按每一路各限一次速，合计会超过限速。照实写出来，不当成正常数
+  const tot = Object.values(f).reduce((a, v) => a + (+v || 0), 0);
+  const over = r.limit != null && tot > +r.limit + 0.01
+    ? `<div class="gheld">几路来料各按限速 ${gnum(r.limit)}/分算了一次，合计超过了限速：设计分析这个口算多了（已知问题，以后修）</div>` : '';
+  return `${part}；${dn}${over}`;
+}
+// 限制速度只给下拉（游戏里每档 6）：物品准入口 0–30，管道准入口、类型没定的口 0–60
+function bpaGateLimitSel(r, i, e, off) {
+  const top = r.kind === '物品' ? 30 : 60, cur = e && !e.undo ? e.limit : (r.limit ?? null);
+  const vals = []; for (let v = 0; v <= top; v += 6) vals.push(v);
+  if (cur != null && !vals.includes(cur)) vals.push(cur);  // 游戏里读到的不在档上：照样显示出来
+  const tip = r.kind === '物品' ? '游戏里每档 6，物品准入口最多 30/分' : '游戏里每档 6，管道准入口最多 60/分；想超过 60 只能关掉限速';
+  return `<select title="${tip}" onchange="bpaGateEdit(${i})"${off ? ' disabled' : ''}><option value=""${cur == null ? ' selected' : ''}>不限速</option>${vals.map(v =>
+    `<option value="${v}"${v === cur ? ' selected' : ''}>${gnum(v)}</option>`).join('')}</select>`;
+}
+function bpaGateReadWords(rd) {
+  const full = rd.passed != null && rd.count_limit != null && +rd.passed >= +rd.count_limit;  // 读到已经放满：标出来（开着就按不放行算，放没放满不影响结果）
+  // 读到开着、数量没读出来（count_limit 是 null）：不能写成「限制通过数量 0」。这段只用在「你改的（游戏里读到…）」的括号里：
+  // 不再套一层括号，也不写「设计分析不按它挡」（这时按你填的算，容易看成现在不挡。复审 2026-11-21）
+  const cnt = rd.count_limit == null ? '，限制通过数量开着、数量没读出来'
+    : `，限制通过数量 ${gnum(rd.count_limit)}${full ? '（已放满）' : ''}`;
+  return (rd.limit_on ? ` ${gnum(rd.limit)}` : '：不限速') + (rd.count_on ? cnt : '');
+}
+function bpaGateSrc(r, i) {
+  if (!r.key) return '<span class="muted">这个口在蓝图里没有位置数据，填不了</span>';
+  const e = bpa.gEdits[r.key];
+  if (e && e.undo && r.src === '作者') return `<span class="gtag edit">撤销，还没存</span> <a class="undo" onclick="bpaGateRevert(${i})">不撤了</a>
+    <div class="muted">存了以后${r.read ? '回到游戏里读的' : '回到没说（按不限速算）'}</div>`;
+  if (bpaGateDirty(r)) return `<span class="gtag edit">改了，还没存</span> <a class="undo" onclick="bpaGateRevert(${i})">不改了</a>`;
+  if (r.src === '作者') {
+    const w = r.read ? `你改的（游戏里读到${bpaGateReadWords(r.read)}）` : r.limit == null && r.count == null ? '你说都没开' : '你填的';
+    const at = r.fix && r.fix.at ? ` title="${esc('填的时间：' + r.fix.at)}"` : '';
+    return `<span class="gtag mine"${at}>${w}</span> <a class="undo" onclick="bpaGateUndo(${i})">撤销</a>`;
+  }
+  if (r.src === '游戏') return `<span class="gtag read">游戏里读的${bpa.gt.read_date ? `（${esc(bpa.gt.read_date)}）` : ''}</span>`
+    // 读到限制通过数量开着、数量没读出来：输入框只能显示「不限量」，在这里说一声
+    + (r.read && r.read.count_on && r.read.count_limit == null ? '<div class="muted">限制通过数量开着，数量没读出来：设计分析不按它挡，可以照游戏里填上数</div>' : '');
+  // 档案里这个口读失败了（画面里没找到图标、点开的不是准入口…）：不当读数，和没说一样按不限速算，可以照游戏里填
+  if (r.read_error) return `<span class="muted" title="${esc('读的时候：' + r.read_error)}">游戏里没读出来（按不限速算）</span>`;
+  return '<span class="muted">没说（按不限速算）</span>';
+}
+// 改没改：撤销只对作者填过的口算数；其余和现在生效的值（作者填的 / 游戏里读的 / 没说 = 都没开）比，限制通过数量填错了也算改了（存的时候拦）
+function bpaGateDirty(r) {
+  const e = r && r.key && bpa.gEdits[r.key]; if (!e) return false;
+  if (e.undo) return r.src === '作者';
+  return Number.isNaN(e.count) || e.limit !== (r.limit ?? null) || e.count !== (r.count ?? null);
+}
+function bpaGateCnt(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  return /^\d+$/.test(s) && +s >= 1 && +s <= 5000 ? +s : NaN;
+}
+function bpaGateEdit(i) {
+  const t = bpa.gt, r = t && t.rows[i], tr = $(`#gtr${i}`); if (!r || !tr || !r.key) return;
+  const sv = tr.querySelector('select').value, raw = tr.querySelector('.gcnt').value;
+  bpa.gEdits[r.key] = { limit: sv === '' ? null : +sv, count: bpaGateCnt(raw), raw };
+  if (!bpaGateDirty(r)) delete bpa.gEdits[r.key];
+  const bad = Number.isNaN(bpaGateCnt(raw)), inp = tr.querySelector('.gcnt');
+  inp.classList.toggle('bad', bad); inp.title = bad ? GATE_CNT_BAD : GATE_CNT_TIP;
+  tr.classList.toggle('dirty', bpaGateDirty(r));
+  tr.querySelector('.gsrc').innerHTML = bpaGateSrc(r, i);
+  bpaGateBtns();
+}
+function bpaGateRedraw(i) {
+  const tr = $(`#gtr${i}`); if (tr) tr.outerHTML = bpaGateRow(bpa.gt.rows[i], i);
+  bpaGateBtns();
+}
+// 撤销先记着（行变黄），和别的改动一起「保存并重算」，只重算一次
+function bpaGateUndo(i) {
+  const r = bpa.gt && bpa.gt.rows[i]; if (!r || !r.key) return;
+  bpa.gEdits[r.key] = { undo: true };
+  bpaGateRedraw(i);
+  toast('已标成撤销，点下面「保存并重算」才生效');
+}
+function bpaGateRevert(i) {
+  const r = bpa.gt && bpa.gt.rows[i]; if (!r) return;
+  delete bpa.gEdits[r.key];
+  bpaGateRedraw(i);
+}
+// 改了还没存的 → 存的时候给接口的 {准入口键: {limit, count} 或 null（撤销）}；限制通过数量填错了 → 报出来、返回 null
+function bpaGateEntries() {
+  const ent = {}, bad = [];
+  (bpa.gt ? bpa.gt.rows : []).forEach(r => {
+    if (!bpaGateDirty(r)) return;
+    const e = bpa.gEdits[r.key];
+    if (e.undo) ent[r.key] = null;
+    else if (Number.isNaN(e.count)) bad.push('#' + r.no);
+    else ent[r.key] = { limit: e.limit, count: e.count };
+  });
+  if (bad.length) { toast(`${bad.join('、')} 的限制通过数量要填 1–5000 的整数，空着 = 不限量`); return null; }
+  return ent;
+}
+const bpaGateDirtyN = () => (bpa.gt ? bpa.gt.rows.filter(bpaGateDirty).length : 0);
+// 当前筛选里还没说的口（作者没填、游戏里也没读到，也没在改）
+const bpaGateUnsaid = () => (bpa.gt ? bpa.gt.rows.filter(r => r.key && r.src == null && !bpaGateDirty(r) && (GATE_FILTERS[bpa.gFilter] || GATE_FILTERS.show)[1](r)) : []);
+// 保存、都没开：改了 0 个 / 有任务在跑 / 表还是换之前那个项目、据点的时变灰（bpaWriteState 每次轮询都调，换项目、据点时也调）。
+// 删、重算在任务跑时、表没换过来时也变灰
+function bpaGateBtns(running = state.job?.state === 'running') {
+  const mism = !!bpa.gt && !bpaGateMatch(bpa.gt), stop = running || mism;
+  const why = running ? '有任务在跑，跑完再点' : mism ? GATE_SWITCH : '';
+  const s = $('#bpaGateSaveBtn');
+  if (s) { const n = bpaGateDirtyN(); s.disabled = stop || !n; s.textContent = `保存并重算（改了 ${n} 个口）`; s.title = running ? '有任务在跑，跑完再保存' : why || (!n ? '还没改' : ''); }
+  const o = $('#bpaGateOffBtn');
+  if (o) { const k = bpaGateUnsaid().length; o.disabled = stop || !k; o.title = why || (!k ? '当前筛选里没有还没说的口' : `把当前筛选里还没说的 ${k} 个口记成都没开`); }
+  document.querySelectorAll('#bpaDsGatesBody .gate-act').forEach(b => { b.disabled = stop; b.title = why; });
+}
+// 准入口表的写操作只认表载入时的项目、据点（bpa.gt.name / base）：换了项目或据点、新表还没回来时不存，免得存进别的项目
+function bpaGateCur() {
+  const t = bpa.gt;
+  if (!bpaGateMatch(t)) { toast(GATE_SWITCH); return null; }
+  return t;
+}
+async function bpaGateSave() {
+  const t = bpaGateCur(); if (!t || bpaJobBusy()) return;
+  const ent = bpaGateEntries(); if (!ent) return;
+  const n = Object.keys(ent).length; if (!n) return toast('还没改');
+  const b = $('#bpaGateSaveBtn'); if (b) b.disabled = true;  // 防连点：任务开起来以后由 bpaWriteState 管，开不起来 bpaFixJob 会放开
+  bpaFixJob('bpa_fix_gates', t.base, [ent], `已记下 ${n} 个口，正在重算这个据点（进度看上面的任务日志；程序启动后第一次算较慢）`, t.name);
+}
+// 「上面没说的这些都没开」（card 为空）/ 待确认汇总卡的「这 N 个口都没开」（card = 卡片序号）：给还没说的口存两项都没开的记录，
+// 表里改了还没存的一起存，只重算一次。卡上的键来自 bpa.ds（载入设计分析那次的项目、据点），表上的来自 bpa.gt：都要是现在选的
+async function bpaGateAllOff(card) {
+  if (bpaJobBusy()) return;
+  const fromCard = card != null, at = fromCard ? ((bpa.ds || {}).at || {}) : (bpa.gt || {});
+  if (!bpaGateMatch(at)) return toast(GATE_SWITCH);
+  const keys = fromCard ? ((((bpa.ds || {}).pending || [])[card] || {}).open_keys || []) : bpaGateUnsaid().map(r => r.key);
+  const ent = bpa.gt && bpa.gt.base === at.base && bpa.gt.name === at.name ? bpaGateEntries() : {};
+  if (!ent) return;
+  const n = Object.keys(ent).length, add = keys.filter(k => !(k in ent));
+  if (!add.length && !n) return toast('没有还没说的口');
+  const msg = `把${fromCard ? '' : '当前筛选里'}还没说的 ${add.length} 个口记成「限制速度、限制通过数量都没开」`
+    + (n ? `，表里改了还没存的 ${n} 个口一起存` : '') + '，然后重算这个据点（一两分钟）？\n\n游戏里开了限速的口别点这个，去表里照着填。';
+  if (!(await uiConfirm(msg, { ok: '都没开', title: '准入口限速' }))) return;
+  add.forEach(k => { ent[k] = { limit: null, count: null }; });
+  bpaFixJob('bpa_fix_gates', at.base, [ent], `已记下 ${Object.keys(ent).length} 个口，正在重算这个据点（进度看上面的任务日志；程序启动后第一次算较慢）`, at.name);
+}
+// 旧版本算的据点没有准入口表：不带改动的修正任务 = 只重算一次
+function bpaGateRerun() {
+  const t = bpaGateCur(); if (!t) return;
+  bpaFixJob('bpa_fix_gates', t.base, [{}], '正在重算这个据点、生成准入口表（进度看上面的任务日志；程序启动后第一次算较慢）', t.name);
+}
+// 小图点开：480 px 大图，写「进：…」「出：…」；stale = 「对不上的旧设置」那一行（虚线圈 = 当时存的位置）
+async function bpaGateBig(i, stale) {
+  const t = bpa.gt; if (!t) return;
+  const r = stale ? (t.stale || [])[i] : t.rows[i]; if (!r || !r.key) return;
+  let res;
+  try { res = await api('bpa_gate_image', t.name, t.base, r.key); } catch (e) { res = { ok: false, error: String(e && e.message || e) }; }
+  if (!res.ok) return toast(res.error);
+  lightbox(res.image, stale ? `对不上的旧设置（蓝图「${r.bp || '?'}」）：虚线圈 = 当时存的位置换到现在拼合图上的地方。${r.why || ''}`
+    : `#${r.no} ${r.item_name || '物品看不出'} · ${r.kind ? r.kind + '准入口' : '类型没定的准入口'} (${Math.round(r.c[0])},${Math.round(r.c[1])})：`
+      + '红圈 = 这个口，绿底「进」= 上游的设备，蓝底「出」= 下游的设备（一边有几台时按表里的 1、2、3 标）');
+}
+// 「对不上的旧设置」：重新拼合、换了蓝图以后找不到原来那个口的记录，不参加计算。蓝图还在据点里的配虚线圈小图，不在了只写字
+function bpaGateStale(t) {
+  const st = t.stale || []; if (!st.length) return '';
+  const rows = st.map((s, i) => `<tr><td>${s.thumb ? `<img class="ds-gthumb" src="${s.thumb}" alt="" title="点开看大图" onclick="bpaGateBig(${i},1)">` : ''}
+      <div class="muted">${s.c ? `旧位置 (${Math.round(s.c[0])},${Math.round(s.c[1])})` : '蓝图不在这个据点里了，标不出位置'}</div></td>
+    <td>${esc(s.item || '看不出')}<div class="muted">${s.kind ? esc(s.kind) + '准入口' : '准入口'}</div></td>
+    <td>${s.limit != null ? `限制速度 ${gnum(s.limit)}/分` : '不限速'}<br>${s.count != null ? `限制通过数量 ${gnum(s.count)}` : '不限量'}</td>
+    <td>蓝图「${esc(s.bp || '?')}」<div class="muted">${esc(s.at || '')}</div></td><td class="muted">${esc(s.why || '')}</td>
+    <td><button class="btn sm ghost gate-act" onclick="bpaGateStaleDel(${i})">删</button></td></tr>`).join('');
+  return `<div class="sub-h"><b>对不上的旧设置</b>（${st.length} 条）</div>
+    <div class="hint">拼合图变过，或那张蓝图不在这个据点里了，下面这些不参加计算。请在上面表里找到对应的口重新填，核对完点「删」（删了也要重算一次这个据点，这里才更新）。
+      <button class="btn sm ghost gate-act" onclick="bpaGateStaleDel(-1)">全部删掉</button></div>
+    <table class="bpa-table ds-gtable">${rows}</table>`;
+}
+async function bpaGateStaleDel(i) {
+  const t = bpaGateCur(); if (!t || bpaJobBusy()) return;
+  const st = i < 0 ? (t.stale || []) : [(t.stale || [])[i]].filter(Boolean);
+  if (!st.length) return;
+  const s = st[0], what = `${s.item || '物品看不出'}，${s.limit != null ? `限制速度 ${gnum(s.limit)}` : '不限速'}，蓝图「${s.bp || '?'}」`;
+  const msg = (i < 0 ? `删掉这 ${st.length} 条对不上的旧设置？` : `删掉这条对不上的旧设置（${what}）？`) + '\n\n它们本来就不参加计算；删了以后重算一次这个据点，这里才更新。';
+  if (!(await uiConfirm(msg, { ok: '删掉', danger: true, title: '对不上的旧设置' }))) return;
+  const ent = {}; st.forEach(x => { ent[x.key] = null; });
+  bpaFixJob('bpa_fix_gates', t.base, [ent], '正在删掉并重算这个据点（进度看上面的任务日志）', t.name);
+}
+// 待确认里的准入口汇总卡（别人的蓝图、没有游戏读数时才有）：小图是只标这几个口的总览图，编号和表里的 # 一样
+function bpaGateCard(p, i) {
+  const a = p.answered || {}, said = (a.filled || 0) + (a.off || 0);
+  const ans = said ? `<div class="muted">已答：填了 ${a.filled || 0} 个，说没开的 ${a.off || 0} 个${p.n_open ? `，还有 ${p.n_open} 个没说` : ''}</div>` : '';
+  const img = p.image ? `<img class="zoomable" src="${p.image}" alt="准入口总览：编号和下面「准入口限速」表里的 # 一样；红圈 = 还没说，蓝圈 = 你填的">` : '';
+  return `<div class="pend-item${p.open ? '' : ' done'}">${img}
+    <div class="pend-body"><div class="pend-msg">${esc(p.msg)}</div>
+      <div class="pend-opts"><button class="btn sm${p.open ? '' : ' ghost'}" onclick="bpaGateGo()">去表里填</button>
+        ${p.n_open ? `<button class="btn sm ghost" onclick="bpaGateAllOff(${i})">这 ${p.n_open} 个口都没开</button>` : ''}</div>${ans}</div></div>`;
+}
+// 「去表里填」：展开准入口表（展开时载入）、筛选回到有料经过的、滚过去
+function bpaGateGo() {
+  const d = $('#bpaDsGates'); if (!d) return;
+  bpa.gFilter = 'show';
+  if ($('#bpaGateFilter')) { $('#bpaGateFilter').value = 'show'; bpaGateRows(); }
+  d.open = true;
+  d.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function bpaProgress(p) {
   if (!p) return;
@@ -1028,8 +1584,11 @@ function dsRecipeCell(d, i) {
     : (m => `<span${m.attr}>${esc(d.recipe || '')}</span>${m.note}`)(made(d.members));
   const ps = POOL_SRC[d.pool_src];
   const src = ps ? `<span class="tag${ps[1] ? ' guess' : ''}" title="池子配方从哪来">${ps[0]}</span>` : '';
+  // 作者说了出口送原料的池子（0.10.13 功能三）：到手多少、转给下游多少、自己用多少放在悬停里
+  const po = d.pass_out || [];
+  const pass = po.length ? `<span class="tag pass" title="${esc(po.map(x => bpaPoolPassWords(x, true)).join('；') + '（作者说的）')}">出口送原料</span>` : '';
   const fix = 'pool_src' in d ? ` <button class="btn sm ghost" onclick="bpaRowCard(${i})">改配方</button>` : '';
-  return body + src + fix;
+  return body + src + pass + fix;
 }
 // 行上的「改配方」：打开和待确认同样的池子卡（bpa_pool_card），不进待确认列表、不算进「待确认 N 处」
 async function bpaRowCard(i) {
@@ -1164,9 +1723,22 @@ async function bpaInputs() {
   bpa.marks = r.marks.map(m => Object.assign({ item: '', rate: '', merged: false, via: '', note: '' }, m));
   bpa.dropped = r.dropped || [];
   bpa.stale = r.stale || []; bpa.items = new Set(r.items || []);
+  bpa.inSig = bpaInSig();  // 载入时的样子：改了没存要和它比（bpaInDirty）
   $('#bpaInImage').innerHTML = `<img src="${r.image}" draggable="false" onclick="bpaAddMark(event)">`;
   panZoom($('#bpaInImage'));
   bpaRenderTable();
+}
+// 「输入端」页有没有改了还没存的（表里的改动直接写进 bpa.marks，和载入时比）。暗管来料卡（0.10.13）也写 inputs.json，用它决定要不要先问
+const bpaInSig = () => JSON.stringify([bpa.marks, bpa.stale]);
+const bpaInDirty = () => !!bpa.inSig && bpaInSig() !== bpa.inSig;
+const bpaInSame = at => !!(at && bpa.base && bpa.name === at.name && bpa.base === at.base);
+// 暗管来料的任务跑完：「输入端」页开着同一个项目、据点就重新载入。发出去之前没存的改动作者已经说了不要（bpaTunFix 问过）；
+// 跑的时候又在那一页改了的也会丢，说一声
+function bpaInReload(at) {
+  if (!bpaInSame(at)) return;
+  // pollJob 接着还要报「任务完成」：这句排在它后面，不被盖掉
+  if (at.sig && bpaInSig() !== at.sig) setTimeout(() => toast('「输入端」页按刚存的暗管来料重新载入了，任务跑的时候在那一页改的没保留'), 0);
+  bpaInputs();
 }
 function bpaRenderTable() {
   const vias = ['', '水泵', '暗管', '多口暗管', '其他'];

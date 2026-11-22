@@ -243,8 +243,9 @@ def load_inputs(base_dir: Path) -> list[dict]:
     if pj.exists():
         marks = ((json.loads(pj.read_text(encoding="utf-8")) or {}).get(base_dir.name) or {}).get("marks")
         if marks:
-            # 清水口作者没填流速：按一台水泵 60/分（和自动候选一样）
-            return [dict(m, rate=60) if (m.get("item") == "清水" and m.get("rate") in (None, "")) else m for m in marks]
+            # 清水口作者没填流速：按一台水泵 60/分（和自动候选一样）。rate_auto 记下这个 60 是补的：标在外接暗管出口上的标记
+            # 只填了清水、没填量时，设计分析照「没填」算（按满管估、卡算没答），不当成作者填了 60（0.10.13 功能二审查）
+            return [dict(m, rate=60, rate_auto=True) if (m.get("item") == "清水" and m.get("rate") in (None, "")) else m for m in marks]
     auto = base_dir / "inputs_auto.json"
     return json.loads(auto.read_text(encoding="utf-8")) if auto.exists() else []  # 还没拼合出候选：当作没有输入端，不抛错
 

@@ -129,7 +129,16 @@ def selftest() -> int:
         html = (HERE / "ui" / "index.html").read_text(encoding="utf-8")
         js = (HERE / "ui" / "app.js").read_text(encoding="utf-8")
         ui["markers"] = {k: (k in html or k in js) for k in ("bpaDsPending", "fbProj", "feedbackExport", "bpaPending",
-                                                             "bpaPoolCard", "bpaPoolFix", "bpaPendPoolCard", "bpaWriteState")}  # 后四个是 0.10.11 的池子配方卡
+                                                             "bpaPoolCard", "bpaPoolFix", "bpaPendPoolCard", "bpaWriteState",  # 这四个是 0.10.11 的池子配方卡
+                                                             # 0.10.13 设计分析页的准入口限速表和待确认里的准入口汇总卡
+                                                             # （载入表的函数叫 bpaGateLoad：bpaGateTable 是图标分组表原有的元素 id，标记查它永远命中）
+                                                             "bpaDsGates", "bpaFixJob", "bpaGateLoad", "bpaGateRender", "bpaGateEdit", "bpaGateSave",
+                                                             "bpaGateAllOff", "bpaGateUndo", "bpaGateBig", "bpaGateStaleDel", "bpaGateCard",
+                                                             # 0.10.13 待确认里的暗管来料卡；跑完重新载入「输入端」页
+                                                             "bpaTunCard", "bpaTunFix", "bpaInReload",
+                                                             # 0.10.13 池子卡的「出口送什么」、设计分析表池子行的「出口送原料」
+                                                             "bpaPoolOutRender", "bpaPoolOutRead", "bpaPoolOutPick", "bpaPoolOutWords",
+                                                             "bpaPoolOutNorm", "bpaPoolList", "bpaPoolPassWords", "bpaPoolNoteText")}
         e = ui_entry()
         ui["entry"] = e.name
         ui["entry_versioned"] = e.name != "index.html" and "app.js?v=" in e.read_text(encoding="utf-8")

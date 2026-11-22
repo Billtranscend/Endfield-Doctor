@@ -2,7 +2,7 @@
  "base": "武陵城",
  "format": 1,
  "meta": {
-  "code": "7464064+dirty",
+  "code": "b7b6ceb+dirty",
   "env": {
    "PIL": "13.0.0",
    "cv2": "5.0.0",
@@ -10,8 +10,8 @@
    "python": "3.12.12"
   },
   "fixture_sha256": "3f79d61d5b8236db10cee12ff837254d2e12c05ba5601bf5a61cd654d0180f46",
-  "generated": "2026-11-21T03:10:51",
-  "reason": "issue #1 第五轮续：design 推配方不把兄弟设备（同一分流器出口 / 汇流器进口 / 只进不出的储存箱）的产物当原料，景玉谷天有洪炉(855,896) 重息壤→息壤（实测做息壤，↗；仍缺清水是另一处漏接）；池子待确认卡顺着配对暗管走，武陵城扩容反应池(1313,1114) 只有候选配方分数变。flow 两处改动在皇帝产线不触发。图标比对缓存按 .venv（numpy 2.5.4）重录，修正 7464064 用错解释器录的缓存。用户 2026-11-21 看图后认可。",
+  "generated": "2026-11-22T03:45:58",
+  "reason": "0.10.13 A2：限制通过数量按一次性算（线内口也算），用户 2026-11-21 看过前后对比同意",
   "repo_data_sha1": {
    "data/building_ports.json": "fd55b8583e5cee54bac39d8ded779ff5c5f76dd9",
    "data/item_icons.json": "5539682a58d743030e390107524e515234de8b75",
@@ -104,7 +104,7 @@
    "采种机@723,1173": "同 stored",
    "采种机@743,976": "同 stored"
   },
-  "exact_sha1": "1831c7b23ed3dfaa7869e475e0fbfb86a6346857",
+  "exact_sha1": "fd74fef4337b1411310598ded8d5c2ffd1e34abb",
   "extra": "同 stored",
   "flow_issues": [
    {"a":56,"a_ref":"管道分流器(1359,606)","b":57,"b_ref":"管道分流器(1086,644)","kind":"单向","layer":"pipe","msg":"从 管道分流器 追到 管道分流器，反过来没追回来"},
@@ -750,13 +750,13 @@
    "配件机@941,364": {"available":{"赤铜块":30.0},"basis":["精炼炉产 赤铜块 30/分 → 出料口备路 1/1 → 〔推断连线〕 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[703.0,65.0],"device":"配件机","env_required":false,"feeds":1,"fuel":null,"got":{"赤铜块":30.0},"limit_by":"赤铜块","loop":false,"need":{"赤铜块":30.0},"rate":1.0,"recipe":"赤铜块×1 → 赤铜零件×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.85,"depends_on":null,"derived_from_program_recipe":false,"env_required":null,"mismatch":[],"note":"巡检 29 次有料 / 1 次没料；程序满速 1.0，一致。","rate":null,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":true,"zero_margin":["赤铜块"]},
    "配件机@978,1134": {"available":{"蓝铁块":30.0},"basis":["仓库取货口（物品没看到，按设备缺口分）30/分 → 当作蓝铁块 → 30"],"c":[767.0,1396.0],"device":"配件机","env_required":false,"feeds":1,"fuel":null,"got":{"蓝铁块":30.0},"limit_by":"蓝铁块","loop":false,"need":{"蓝铁块":30.0},"rate":1.0,"recipe":"蓝铁块×1 → 铁制零件×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 25 次有料 / 0 次没料，简报 铁制零件 当前=理论（2 台配件机 × 30 = 60）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":false,"zero_margin":["蓝铁块"]},
    "配件机@979,1193": {"available":{"蓝铁块":30.0},"basis":["仓库取货口（蓝铁块，认图标）30/分 → 30"],"c":[768.0,1498.0],"device":"配件机","env_required":false,"feeds":1,"fuel":null,"got":{"蓝铁块":30.0},"limit_by":"蓝铁块","loop":false,"need":{"蓝铁块":30.0},"rate":1.0,"recipe":"蓝铁块×1 → 铁制零件×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 18 次有料 / 0 次没料，简报 铁制零件 当前=理论（2 台配件机 × 30 = 60）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":false,"zero_margin":["蓝铁块"]},
-   "采种机@1020,1391": {"available":{"锦草":30.0},"basis":["仓库取货口（锦草，认图标）30/分 → 30"],"c":[839.0,1840.0],"device":"采种机","env_required":false,"feeds":2,"fuel":null,"got":{"锦草":30.0},"limit_by":"锦草","loop":false,"need":{"锦草":30.0},"rate":1.0,"recipe":"锦草×1 → 锦草种子×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.7,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 2 次有料 / 0 次没料，简报 锦草种子 当前=理论（1 台采种机 × 30）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":false,"zero_margin":["锦草"]},
+   "采种机@1020,1391": {"available":{"锦草":30.0},"basis":["种植机产 锦草 60/分 → 出料口主路 1/2 → 30"],"c":[839.0,1840.0],"device":"采种机","env_required":false,"feeds":2,"fuel":null,"got":{"锦草":30.0},"limit_by":"锦草","loop":false,"need":{"锦草":30.0},"rate":1.0,"recipe":"锦草×1 → 锦草种子×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.7,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 2 次有料 / 0 次没料，简报 锦草种子 当前=理论（1 台采种机 × 30）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":false,"zero_margin":["锦草"]},
    "采种机@1474,1391": {"available":{"芽针":30.0},"basis":["种植机产 芽针 60/分 → 出料口主路 1/2 → 〔推断连线〕 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[1624.0,1840.0],"device":"采种机","env_required":false,"feeds":3,"fuel":null,"got":{"芽针":30.0},"limit_by":"芽针","loop":false,"need":{"芽针":30.0},"rate":1.0,"recipe":"芽针×1 → 芽针种子×1（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 6 次有料 / 0 次没料，简报 芽针种子 当前=理论（7 台采种机 × 30 = 210）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":false,"verdict":"一致"},"via_inferred":true,"zero_margin":["芽针"]},
    "采种机@604,897": {"available":{"砂叶":30.0},"basis":["种植机产 砂叶 30/分 → 〔推断连线〕 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[120.0,987.0],"device":"采种机","env_required":false,"feeds":1,"fuel":null,"got":{"砂叶":30.0},"limit_by":"砂叶","loop":false,"need":{"砂叶":30.0},"rate":1.0,"recipe":"砂叶×1 → 砂叶种子×2（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.7,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 2 次有料 / 0 次没料，简报 砂叶种子 当前=理论（3 台采种机 × 60 = 180）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":true,"verdict":"一致"},"via_inferred":true,"zero_margin":["砂叶"]},
    "采种机@723,1173": {"available":{"砂叶":30.0},"basis":["仓库取货口（砂叶，认图标）30/分 → 30"],"c":[326.0,1463.0],"device":"采种机","env_required":false,"feeds":2,"fuel":null,"got":{"砂叶":30.0},"limit_by":"砂叶","loop":false,"need":{"砂叶":30.0},"rate":1.0,"recipe":"砂叶×1 → 砂叶种子×2（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 11 次有料 / 0 次没料，简报 砂叶种子 当前=理论（3 台采种机 × 60 = 180）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":true,"verdict":"一致"},"via_inferred":false,"zero_margin":["砂叶"]},
    "采种机@743,976": {"available":{"砂叶":30.0},"basis":["种植机产 砂叶 30/分 → 出料口主路 1/2 → 〔推断连线〕 → 30","来料路径里有推断出来的连线（标〔推断连线〕的那段），以实际为准"],"c":[361.0,1123.0],"device":"采种机","env_required":false,"feeds":2,"fuel":null,"got":{"砂叶":30.0},"limit_by":"砂叶","loop":false,"need":{"砂叶":30.0},"rate":1.0,"recipe":"砂叶×1 → 砂叶种子×2（2秒）","recipe_inferred":false,"state":"满速","truth":{"cat":"有料","confidence":0.9,"depends_on":null,"derived_from_program_recipe":true,"env_required":null,"mismatch":[],"note":"巡检 10 次有料 / 0 次没料，简报 砂叶种子 当前=理论（3 台采种机 × 60 = 180）；程序满速 1.0，一致。","rate":1.0,"recipe":null,"recipe_dispute":false,"recipe_source":null,"role":"未知","user_confirmed":true,"verdict":"一致"},"via_inferred":true,"zero_margin":["砂叶"]}
   },
-  "exact_sha1": "09e6ea0422fb79546c979c236168ad69f437ccfe",
+  "exact_sha1": "4b94a82937bd71c1d73b3bee3ab04c07d3ab266f",
   "extra": {},
   "gates": [
    {"author_rate":60,"c":[2323,337],"count":null,"downstream":120.0,"gate":25,"gate_ref":"准入口(2323,337)","input_no":10,"item":"清水","item_how":"同组输入端（作者标）","limit":null,"msg":[]},
@@ -776,7 +776,7 @@
    {"author_rate":20,"c":[203,30],"count":null,"downstream":120.0,"gate":54,"gate_ref":"准入口(203,30)","input_no":1,"item":"惰气","item_how":"同组输入端（作者标）","limit":null,"msg":[]},
    {"author_rate":null,"c":[887,712],"count":null,"downstream":0.0,"gate":55,"gate_ref":"准入口(887,712)","input_no":null,"item":"惰气","item_how":"同组输入端（作者标）","limit":6.0,"msg":["下游没有用这种物品的设备（或连接没追到）"]},
    {"author_rate":null,"c":[679,1667],"count":{"limit":20.0,"passed":20.0},"downstream":0.0,"gate":85,"gate_ref":"准入口(679,1667)","input_no":null,"item":"芽针","item_how":"图标库","limit":null,"msg":["限制通过数量 20（累计 20）：放满后不再放行，按一次性备料算"]},
-   {"author_rate":null,"c":[575,1702],"count":{"limit":20.0,"passed":20.0},"downstream":30.0,"gate":86,"gate_ref":"准入口(575,1702)","input_no":null,"item":"锦草","item_how":"图标库","limit":null,"msg":["限制通过数量 20（累计 20）：放满后不再放行，按一次性备料算"]},
+   {"author_rate":null,"c":[575,1702],"count":{"limit":20.0,"passed":20.0},"downstream":0.0,"gate":86,"gate_ref":"准入口(575,1702)","input_no":null,"item":"锦草","item_how":"图标库","limit":null,"msg":["限制通过数量 20（累计 20）：放满后不再放行，按一次性备料算"]},
    {"author_rate":60,"c":[2326,1771],"count":null,"downstream":120.0,"gate":110,"gate_ref":"准入口(2326,1771)","input_no":17,"item":"清水","item_how":"同组输入端（作者标）","limit":null,"msg":[]},
    {"author_rate":60,"c":[2326,1805],"count":null,"downstream":30.0,"gate":111,"gate_ref":"准入口(2326,1805)","input_no":18,"item":"清水","item_how":"同组输入端（作者标）","limit":null,"msg":[]},
    {"author_rate":60,"c":[2326,1737],"count":null,"downstream":120.0,"gate":112,"gate_ref":"准入口(2326,1737)","input_no":16,"item":"清水","item_how":"同组输入端（作者标）","limit":null,"msg":[]},

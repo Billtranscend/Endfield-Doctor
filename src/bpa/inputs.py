@@ -147,6 +147,48 @@ def _gate_at(p, lg_canvas):
     return best[1] if best else None
 
 
+# 外接暗管出口的来料也记成输入端标记，标在暗管出口上（0.10.13 功能二）。外接暗管多半在蓝图边上，离它最近的物流件可能是隔壁蓝图的，
+# 按最近物流件记 bp、p_bp，重新拼合后会跟着隔壁蓝图挪错。所以这种标记吸到暗管出口自己的锚点上（bp/<蓝图>/anchors.json，读蓝图时定的）。
+TUN_OUTLETS = ("暗管出口", "多口暗管出口")
+TUN_TOL = 45  # 拼合图 px：标记离暗管出口多近算标在它上面（design.TUN_MARK_TOL 同一个数）
+
+
+def tunnel_anchors(proj_dir, tf: dict) -> list[dict]:
+    """这个据点里各蓝图的暗管出口锚点 → [{name, p: 拼合图坐标, bp, p_bp: 蓝图预览里的坐标, open: 外接}]。
+    蓝图没读过（没有 anchors.json）、文件坏了、变换里缺这张蓝图的位置：跳过。没有变换 → []。"""
+    import json
+    from pathlib import Path
+    out = []
+    for bp, b in ((tf or {}).get("bps") or {}).items():
+        if not isinstance(b, dict) or "t" not in b or "rot" not in b:
+            continue
+        try:
+            anc = (json.loads((Path(proj_dir) / "bp" / bp / "anchors.json").read_text(encoding="utf-8")) or {}).get("anchors") or []
+        except (OSError, ValueError):
+            continue
+        for a in anc:
+            if a.get("name") in TUN_OUTLETS and a.get("p"):
+                out.append({"name": a["name"], "p": from_bp(tf, bp, a["p"]), "bp": bp, "p_bp": list(a["p"]), "open": bool(a.get("open"))})
+    return out
+
+
+def mark_on_tunnel(marks: list[dict], c, lg_canvas: list[dict], others=()) -> list[int]:
+    """标在这台暗管出口（拼合图位置 c）附近的输入端标记 → 在 marks 里的序号（按 marks 的顺序）。
+    只看位置：15 px 内有准入口的不算（准入口优先），离 c 45 px 以内；others = 别的暗管出口的位置，离别的那台更近的归别的那台。
+    存暗管来料时只拿它核对设计分析认到这台上的标记（卡上的 marks）还在不在这里，不用它来认：调用的地方不知道全部暗管出口在哪
+    （design 认的时候比的是底账里全部暗管出口，含配上对的、没卡的），只靠它会改到隔壁那台的标记。"""
+    gates = [o["p"] for o in lg_canvas if o.get("type") == "准入口"]
+    out = []
+    for k, m in enumerate(marks):
+        p = m.get("p")
+        if not p or any(_hit(p, q) for q in gates):
+            continue
+        d = float(np.hypot(p[0] - c[0], p[1] - c[1]))
+        if d <= TUN_TOL and not any(float(np.hypot(p[0] - q[0], p[1] - q[1])) < d for q in others):
+            out.append(k)
+    return out
+
+
 def to_bp(tf: dict, bp: str, p) -> list[float]:
     """拼合图坐标 → 这张蓝图预览里的坐标（vision.preview_to_canvas 反过来）。"""
     b = tf["bps"][bp]
@@ -160,17 +202,31 @@ def from_bp(tf: dict, bp: str, p_bp) -> list[int]:
     return [int(round(x)), int(round(y))]
 
 
-def anchor(marks: list[dict], tf: dict, lg_canvas: list[dict]) -> list[dict]:
-    """给每个标记记上 bp、p_bp。标在准入口上的用那个准入口自己的（读蓝图时定的）；不在准入口上的（作者在图上随手点的）
-    算到离它最近的物流件所在的那张蓝图里。没有变换或没有物流件：原样返回。"""
+def _tunnel_at(p, tunnels):
+    """离 p 最近、45 px（TUN_TOL）以内的暗管出口锚点（tunnel_anchors 的一项）；没有 → None。"""
+    best = None
+    for a in tunnels or []:
+        dist = float(np.hypot(a["p"][0] - p[0], a["p"][1] - p[1]))
+        if dist <= TUN_TOL and (best is None or dist < best[0]):
+            best = (dist, a)
+    return best[1] if best else None
+
+
+def anchor(marks: list[dict], tf: dict, lg_canvas: list[dict], tunnels: list[dict] | None = None) -> list[dict]:
+    """给每个标记记上 bp、p_bp。标在准入口上的用那个准入口自己的（读蓝图时定的）；不在准入口上、离暗管出口锚点 45 px 内的
+    （外接暗管出口的来料，0.10.13 功能二）吸到锚点上，用锚点的；别的（作者在图上随手点的）算到离它最近的物流件所在的那张蓝图里。
+    tunnels = tunnel_anchors 给的暗管出口锚点（不给 = 不吸）。没有变换或没有物流件：原样返回。"""
     if not tf or "bps" not in tf:
         return marks
     out = []
     for m in marks:
         m = dict(m)
         g = _gate_at(m["p"], lg_canvas)
+        t = _tunnel_at(m["p"], tunnels) if g is None else None
         if g is not None:
             m["bp"], m["p_bp"] = g["bp"], list(g["p_bp"])
+        elif t is not None:
+            m["p"], m["bp"], m["p_bp"] = list(t["p"]), t["bp"], list(t["p_bp"])
         else:
             near = [o for o in lg_canvas if o.get("bp") in tf["bps"]]
             if near:
@@ -185,16 +241,19 @@ def seen_of(auto: list[dict]) -> list[list]:
     return [[a["bp"], list(a["p_bp"])] for a in auto if a.get("bp") and a.get("p_bp") is not None]
 
 
-def rebase(saved: list[dict], tf: dict, lg_canvas: list[dict], auto: list[dict], seen: list | None = None) -> tuple[list[dict], list[dict], dict]:
+def rebase(saved: list[dict], tf: dict, lg_canvas: list[dict], auto: list[dict], seen: list | None = None,
+           tunnels: list[dict] | None = None) -> tuple[list[dict], list[dict], dict]:
     """作者存的标记 → 按现在的拼合图重新定位。返回 (标记, 对不上的旧标记, {moved, stale, added})。
-    - 有 bp、p_bp 的：按现在的变换重新算位置，15 px 内有准入口就吸上去。它所在的蓝图不在这个据点里了 → 对不上。
-    - 老版本存的（没有 p_bp）：按原坐标看是不是落在准入口上。落在准入口上的不到一半 = 拼合图变过，这批旧标记全部算对不上
+    - 有 bp、p_bp 的：按现在的变换重新算位置，15 px 内有准入口就吸上去；不然离暗管出口锚点（tunnels，见 anchor）45 px 内就吸到锚点上
+      （应龙关作者标在外接暗管出口上的 7 个老标记记的是最近物流件的 bp、p_bp，这样一次就换成暗管自己的）。
+      它所在的蓝图不在这个据点里了 → 对不上。
+    - 老版本存的（没有 p_bp）：按原坐标看是不是落在准入口（或暗管出口锚点）上。落在上面的不到一半 = 拼合图变过，这批旧标记全部算对不上
       （碰巧落在某个准入口上的也不留：那多半是另一个口）；一半以上 = 拼合图没变，全部留下并补记 bp、p_bp。
     - 候选里没被标记盖住的：保存时见过（seen 里有）= 作者删掉的，不加回；没见过 = 程序新认出来的，加进来。
       老版本存的没有 seen：只在这次有对不上的旧标记时加（那份存档已经不能用了）；没有的话保持原样。
     对不上的旧标记不参加分析，留着给作者看当时填的物品和流速。"""
     old = [m for m in saved if m.get("p_bp") is None or not m.get("bp")]
-    on = sum(1 for m in old if _gate_at(m["p"], lg_canvas) is not None)
+    on = sum(1 for m in old if _gate_at(m["p"], lg_canvas) is not None or _tunnel_at(m["p"], tunnels) is not None)
     old_ok = not old or on * 2 >= len(old)
     marks, stale, moved = [], [], 0
     for m in saved:
@@ -205,14 +264,17 @@ def rebase(saved: list[dict], tf: dict, lg_canvas: list[dict], auto: list[dict],
                 continue
             p = from_bp(tf, m["bp"], m["p_bp"])
             g = _gate_at(p, lg_canvas)
+            t = _tunnel_at(p, tunnels) if g is None else None
             if g is not None:
                 p, m["bp"], m["p_bp"] = list(g["p"]), g["bp"], list(g["p_bp"])
+            elif t is not None:
+                p, m["bp"], m["p_bp"] = list(t["p"]), t["bp"], list(t["p_bp"])
             if not _hit(p, m["p"], 1):
                 moved += 1
             m["p"] = p
             marks.append(m)
         elif old_ok:
-            marks.append(anchor([m], tf, lg_canvas)[0])
+            marks.append(anchor([m], tf, lg_canvas, tunnels)[0])
         else:
             stale.append(dict(m, why="存的是旧拼合图上的位置，现在那里没有准入口"))
     added = 0
@@ -266,7 +328,8 @@ def check_items(marks: list[dict]) -> list[dict]:
 
 
 def numbered_image(canvas: np.ndarray, marks: list[dict], scale: float = 0.8, dropped: list[dict] | None = None) -> Image.Image:
-    """红圈 = 程序标的输入端，蓝圈 = 作者补的；灰色虚圈 + 字母 = 贴边但程序判断不算输入的准入口（作者可以加回）。"""
+    """红圈 = 程序标的输入端，蓝圈 = 作者补的；灰色虚圈 + 字母 = 贴边但程序判断不算输入的准入口（作者可以加回）。
+    标记带 col（RGB）的按它的颜色画（准入口表的总览图借这套编号牌防重叠摆法：红 = 没说、蓝 = 作者填、绿 = 游戏里读的）。"""
     im = cv2.resize(canvas, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     pil = Image.fromarray(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
     dr = ImageDraw.Draw(pil)
@@ -303,7 +366,7 @@ def numbered_image(canvas: np.ndarray, marks: list[dict], scale: float = 0.8, dr
         dr.text((tx + 1, ty), t, fill="white", font=F)
     for m in marks:
         x, y = m["p"][0] * scale, m["p"][1] * scale
-        col = (220, 30, 30) if m.get("source") == "auto" else (30, 90, 230)
+        col = tuple(m["col"]) if m.get("col") else (220, 30, 30) if m.get("source") == "auto" else (30, 90, 230)
         dr.ellipse([x - 18, y - 18, x + 18, y + 18], outline=col, width=3)
         t = str(m["no"])
         w = dr.textlength(t, font=F)

@@ -55,7 +55,8 @@ def test_run_base_switches_are_parameters():
                                                              encoding="utf-8")
             V.wr(bd / "composite.png", __import__("numpy").zeros((8, 8, 3), "uint8"))
             res = D.run_base(bd, arch, "测试")
-            assert [k for k, _, _ in seen] == [{"rate_limited_intake": False}, {}, {"main_blocked": True}], seen
+            # 主遍先跑（0.10.13 功能三：池子出口转送比例按主遍定，第二、三遍用它；没有出口回答时不带 pass_split）
+            assert [k for k, _, _ in seen] == [{}, {"rate_limited_intake": False}, {"main_blocked": True}], seen
             assert all(r is True and m is False for _, r, m in seen), "跑的过程中模块变量被改了：" + str(seen)
             assert D.RATE_LIMITED_INTAKE is True and D.MAIN_BLOCKED is False
             dj = json.loads((bd / "design.json").read_text(encoding="utf-8"))

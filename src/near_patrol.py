@@ -1071,18 +1071,25 @@ GATE_DIM = 0.7    # 管子还连着、但亮度不到基线的这个比例：流
 
 
 def gate_targets(blueprint: str, area: str, F2N: np.ndarray, fluids: tuple | None = ("清水",)) -> list[dict]:
-    """据点拼合图上的流体输入端 → 近景巡检目标（fluids=None：所有标了流体的输入端）。朝外方向按离拼合图哪条边最近。"""
+    """据点拼合图上的流体输入端 → 近景巡检目标（fluids=None：所有标了流体的输入端）。朝外方向按离拼合图哪条边最近。
+    只看标在准入口上的（15 px 内有准入口，和设计分析认输入端同一条规则）：标在外接暗管出口上的来料（0.10.13 功能二，
+    应龙关作者手标的 7 个老标记也是）在基地里面，外面没有露出来的管子，不能当边缘输入端去看外面那截管子。按位置判断，不看 on 字段
+    （老标记没有）。据点目录里没有物流件位置（logistics.json）的老拼合结果照旧全看。"""
     bd = bpa_base_dir(blueprint, area)
     if bd is None or not (bd / "inputs_auto.json").exists():
         return []
-    from bpa import vision as V
+    from bpa import inputs as INP, vision as V
     tf = json.loads((bd / "transform.json").read_text(encoding="utf-8"))
     H, W = V.rd(bd / "composite.png").shape[:2]
+    lp = bd / "logistics.json"
+    gates = [o["p"] for o in json.loads(lp.read_text(encoding="utf-8")) or [] if o.get("type") == "准入口"] if lp.exists() else None
     out = []
     from bpa import pipenet as PN
     for m in PN.load_inputs(bd):  # 作者填过的输入端（含每个口的流速）优先
         item = m.get("item") or ""
         if not item or (fluids is not None and item not in fluids):
+            continue
+        if gates is not None and not any(abs(m["p"][0] - q[0]) <= INP.SNAP and abs(m["p"][1] - q[1]) <= INP.SNAP for q in gates):
             continue
         x, y = m["p"]
         d = {(-1, 0): x, (1, 0): W - x, (0, -1): y, (0, 1): H - y}

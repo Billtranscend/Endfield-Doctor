@@ -798,10 +798,12 @@ ROW_RULES = {                            # 这些键只许出现在什么样的�
     "candidates": lambda r: r.get("device") in ("反应池", "扩容反应池") or bool(r.get("recipe_unknown")),
     "recipe_unknown": lambda r: bool(r.get("recipe_unknown")), "can_make": lambda r: bool(r.get("recipe_unknown")),
     "if_main_blocked": lambda r: str(r.get("state", "")).startswith("溢流位"),
+    # 0.10.13 功能三：作者说了出口送原料的池子才有（列表非空），别的行不许写 pass_out: null / []
+    "pass_out": lambda r: r.get("device") in ("反应池", "扩容反应池") and bool(r.get("pass_out")),
 }
 ITEM_SECS = ("gates", "pending", "recipe_fixes", "ports", "issues", "inferred_links", "reread", "notes")
 FLOW_SECS = ("flow_issues", "structures")   # 只在 reflow 段
-KNOWN_TOP = {"devices", "summary", "tunnels", "iters", *ITEM_SECS}
+KNOWN_TOP = {"devices", "summary", "tunnels", "iters", "pass_split", *ITEM_SECS}  # pass_split：池子出口转送比例（0.10.13 功能三，有回答才有）
 ID_FIELDS = ("a", "b", "node", "gate", "nodes")   # 物流节点编号：只作行内字段打印，不参加比较
 LAYER = {"belt": "带子", "pipe": "管子"}
 STATE_CATS = ("满速", "间歇", "溢流位", "没接上", "配方未知", "没在用")

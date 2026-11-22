@@ -422,3 +422,58 @@ ul.plain { margin: 0; padding-left: 18px; color: #c9d0d6; line-height: 1.8; font
 .help-sec.flash { animation: flash 1.4s ease-out; }
 @keyframes flash { 0% { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,212,0,.25); } 100% { border-color: var(--line); box-shadow: none; } }
 .steps .sb b { display: inline-flex; align-items: center; }
+
+/* ---- 0.10.13 准入口限速表：设计分析卡片里、待确认下面的可折叠块 ---- */
+.ds-gates { border: 1px solid var(--line2); margin: 10px 0; padding: 0 12px; background: rgba(255,255,255,.02); }
+.ds-gates[open] { padding-bottom: 10px; }
+.ds-gates > summary { cursor: pointer; list-style: none; padding: 9px 0; user-select: none; }
+.ds-gates > summary::-webkit-details-marker { display: none; }
+.ds-gates > summary::before { content: "▸"; display: inline-block; color: var(--accent); font-size: 11px; margin-right: 8px; transition: transform .12s; }
+.ds-gates[open] > summary::before { transform: rotate(90deg); }
+.ds-gates > summary .muted { margin-left: 4px; }
+.ds-gover { height: 420px; margin-top: 6px; }
+.ds-gbar { margin-top: 10px; }
+.ds-gbar .muted { font-size: 12px; flex: 1; min-width: 260px; }
+.ds-gwrap { max-height: 660px; overflow: auto; margin-top: 6px; }
+.ds-gtable .gno { font-family: var(--mono); font-weight: 700; color: var(--bad); }
+.ds-gtable .gno.mine { color: var(--info); }
+.ds-gtable .gno.read { color: var(--ok); }
+.ds-gthumb { width: 140px; height: 140px; display: block; cursor: zoom-in; border: 1px solid var(--line2); }
+.ds-gthumb:hover { border-color: var(--accent); }
+.pend-item img.zoomable { cursor: zoom-in; }
+.ds-gicon { width: 20px; height: 20px; vertical-align: -5px; margin-right: 4px; }
+.ds-gtable .gnote { font-size: 11px; letter-spacing: 0; white-space: normal; max-width: 170px; }
+.ds-gtable .gends, .ds-gtable .gflow { max-width: 260px; line-height: 1.5; }
+.ds-gtable .gheld { color: var(--warn); font-weight: 500; }
+.ds-gtable .gcnt-c, .ds-gtable .gsrc { white-space: nowrap; }
+.ds-gtable .gsrc .muted { white-space: normal; font-size: 11.5px; }
+.ds-gtable a.undo { cursor: pointer; color: var(--muted); margin-left: 4px; text-decoration: underline; }
+.ds-gtable select:disabled, .ds-gtable input:disabled { opacity: .5; cursor: default; }
+/* 改过、还没存的行变黄（盖过表格的悬停底色） */
+.ds-gtable tr.dirty td, .ds-gtable tr.dirty:hover td { background: rgba(255,212,0,.16); }
+.gtag { display: inline-block; padding: 0 6px; border: 1px solid currentColor; font-size: 11.5px; white-space: nowrap; }
+.gtag.mine { color: var(--info); }
+.gtag.read { color: var(--ok); }
+.gtag.edit { color: var(--accent); }
+
+/* ---- 0.10.13 待确认里的暗管来料卡：物品下拉 + 每分钟多少（沿用 pend-item、pend-opts） ---- */
+.pend-rec.tun-in { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-bottom: 8px; }
+.pend-rec.tun-in .tun-f { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pend-rec.tun-in select { max-width: 220px; }
+.pend-rec.tun-in .tun-rate { width: 72px; }
+.main select optgroup { background: var(--panel); color: var(--muted); font-style: normal; }
+.pend-rec.tun-warn { color: var(--warn); }
+.pend-item .tun-note { font-size: 12px; margin-top: 6px; }
+.pend-item a.tun-undo { cursor: pointer; color: var(--muted); margin-left: 6px; text-decoration: underline; }
+
+/* ---- 0.10.13 池子卡的「出口送什么」（功能三）：带出口单选、管出口复选；橙字 = 按连线现算的提示，红字 = 产物没出口、回答没用上 ---- */
+.pend-item a.undo { cursor: pointer; color: var(--muted); margin-left: 6px; text-decoration: underline; }
+.pend-outlets { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line2); font-size: 12px; }
+.pend-outlets .po-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 6px; }
+.pend-outlets .po-l { color: var(--muted); }
+.pend-outlets label { white-space: nowrap; }
+.pend-outlets label.off { opacity: .45; cursor: not-allowed; }
+.pend-outlets .po-note { margin-top: 6px; }
+.pend-outlets .po-hint { margin-top: 6px; color: var(--warn); }
+.pend-item .po-bad { color: var(--bad); }
+.bpa-table .tag.pass { background: #e2f0ff; color: #1d5f99; cursor: help; }

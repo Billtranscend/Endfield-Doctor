@@ -251,6 +251,115 @@ def test_opening_the_page_checks_an_old_save_first():
             P.BPA = old_bpa
 
 
+# ---------------------------------------------------------------- 标在外接暗管出口上的（0.10.13 功能二）
+# 两张蓝图交界处：乙的外接暗管出口在乙的左边上（预览 QT → 拼合图 (640, 90)），甲的一个管道分流器在它左边 50 px（甲预览 (60, 10)
+# → (590, 110)）。作者标在暗管上的点 TM 离暗管 11 px、离甲的分流器 59 px，离乙别的物流件都远：按最近物流件记会记到甲上。
+QT = (40, 860)
+TM = [648, 97]
+
+
+def lg_with_splitter(tf):
+    return gates_on(tf, SPEC) + [{"type": "管道分流器", "bp": "甲", "p_bp": [60, 10], "p": INP.from_bp(tf, "甲", (60, 10))}]
+
+
+def tunnels_on(tf):
+    """inputs.tunnel_anchors 给的样子：乙的外接暗管出口锚点换到拼合图上。"""
+    return [{"name": "暗管出口", "p": INP.from_bp(tf, "乙", QT), "bp": "乙", "p_bp": list(QT), "open": True}]
+
+
+def turned(tf, rot=180):
+    """重新拼合后乙换了方向、位置也变了（甲不动）。make_tf 里两张蓝图都是 rot 90，默认改成 180 = 乙转了 90°。"""
+    tf = json.loads(json.dumps(tf))
+    tf["bps"]["乙"] = {"rot": rot, "t": [tf["F0"][0] + V.K * 1700, tf["F0"][1] + V.K * 900], "offset": [0, 0]}
+    return tf
+
+
+def test_anchor_snaps_to_tunnel():
+    """不在准入口上、离暗管出口锚点 45 px 内的标记：p 吸到锚点上，记锚点的 bp、p_bp（不是离它最近的隔壁蓝图甲的物流件）。
+    反例：不给锚点 → 老办法记到甲上；在准入口 15 px 内 → 准入口优先；离锚点 45 px 外 → 不吸。"""
+    tf = make_tf()
+    lg = lg_with_splitter(tf)
+    tun = tunnels_on(tf)
+    assert tun[0]["p"] == [640, 90] and lg[-1]["p"] == [590, 110]
+    m = {"no": 22, "p": list(TM), "item": "壤晶废液", "rate": 12, "source": "manual"}
+    a = INP.anchor([m], tf, lg, tun)[0]
+    assert a["bp"] == "乙" and a["p_bp"] == list(QT) and a["p"] == [640, 90] and a["rate"] == 12, a
+    assert INP.anchor([m], tf, lg)[0]["bp"] == "甲"                      # 不给锚点：老办法
+    lg_g = lg + gates_on(tf, [("乙", (40, 830))])                      # 乙在暗管旁边 30 px 还有个准入口 (670, 90)
+    g = INP.anchor([dict(m, p=[672, 93])], tf, lg_g, tun)[0]           # 离准入口 3 px、离暗管 32 px
+    assert g["bp"] == "乙" and g["p_bp"] == [40, 830] and g["p"] == [672, 93], g
+    far = INP.anchor([dict(m, p=[700, 140])], tf, lg, tun)[0]          # 离暗管 78 px
+    assert far["p"] == [700, 140] and far["p_bp"] != list(QT), far
+
+
+def test_rebase_follows_tunnel():
+    """吸到暗管锚点上的标记，拼合图原点变了、乙换了方向（rot 90 → 180 / 270 / 0，转 90°、180°、270°）以后，rebase 完仍落在暗管上。
+    反例：老办法记在甲上的，乙一转就离暗管一百多 px（设计分析 45 px 内认不出来，作者填的来料就丢了）。"""
+    tf = make_tf()
+    m = {"no": 22, "p": list(TM), "item": "壤晶废液", "rate": 12, "source": "manual"}
+    saved = INP.anchor([m], tf, lg_with_splitter(tf), tunnels_on(tf))
+    old = INP.anchor([m], tf, lg_with_splitter(tf))
+    tf2 = make_tf()
+    tf2["F0"] = [tf["F0"][0] - V.K * 300, tf["F0"][1] - V.K * 120]    # 原点挪了（多了一张更靠左上的蓝图），两张蓝图各自的位置不变
+    marks, stale, info = INP.rebase(saved, tf2, lg_with_splitter(tf2), [], [], tunnels_on(tf2))
+    assert not stale and marks[0]["p"] == tunnels_on(tf2)[0]["p"] == [940, 210] and info["moved"] == 1, (marks, info)
+    for rot in (180, 270, 0):
+        tf3 = turned(tf, rot)
+        t3 = tunnels_on(tf3)[0]["p"]
+        assert np.hypot(t3[0] - 640, t3[1] - 90) > 200, rot             # 暗管真的挪远了
+        marks, stale, _ = INP.rebase(saved, tf3, lg_with_splitter(tf3), [], [], tunnels_on(tf3))
+        assert not stale and marks[0]["p"] == t3 and marks[0]["bp"] == "乙" and marks[0]["p_bp"] == list(QT), (rot, marks)
+        assert INP.to_bp(tf3, "乙", marks[0]["p"]) == [float(v) for v in QT], rot  # 换回乙的预览坐标还是暗管锚点
+        o, _, _ = INP.rebase(old, tf3, lg_with_splitter(tf3), [], [], tunnels_on(tf3))
+        assert np.hypot(o[0]["p"][0] - t3[0], o[0]["p"][1] - t3[1]) > 45 and o[0]["bp"] == "甲", (rot, o)
+
+
+def test_old_tunnel_mark_migrates():
+    """应龙关作者那种老标记（标在外接暗管出口上，按最近物流件记成隔壁蓝图甲的位置，没有 on 字段）：项目里按现在的拼合图核一遍
+    （打开页面、据点拼合走的同一个 _rebase_inputs）就换成乙的暗管锚点，准入口上的不动；再存一次不变；之后乙转了 90°（rot 90 → 180）重新拼合，
+    仍落在暗管上。tunnel_anchors 只要暗管出口（单口、多口），带 open。"""
+    with tempfile.TemporaryDirectory() as td:
+        old_bpa = P.BPA
+        P.BPA = Path(td) / "bpa"
+        try:
+            proj = P.pdir("项目")
+            bd = proj / "base" / "某据点"
+            bd.mkdir(parents=True)
+            tf = make_tf()
+            lg = lg_with_splitter(tf)
+            auto = auto_of(gates_on(tf, SPEC))
+            for f, v in (("transform.json", tf), ("logistics.json", lg), ("inputs_auto.json", auto)):
+                (bd / f).write_text(json.dumps(v, ensure_ascii=False), encoding="utf-8")
+            V.wr(bd / "composite.png", np.full((400, 2400, 3), 232, np.uint8))
+            for bp, anc in (("乙", [{"name": "暗管出口", "p": list(QT), "open": True}, {"name": "暗管入口", "p": [40, 600]},
+                                   {"name": "息壤供电桩", "p": [100, 100]}]),
+                            ("甲", [{"name": "多口暗管出口", "p": [300, 300]}])):
+                (proj / "bp" / bp).mkdir(parents=True)
+                (proj / "bp" / bp / "anchors.json").write_text(json.dumps({"anchors": anc}, ensure_ascii=False), encoding="utf-8")
+            tun = INP.tunnel_anchors(proj, tf)
+            assert sorted((a["bp"], a["name"], a["open"]) for a in tun) == [("乙", "暗管出口", True), ("甲", "多口暗管出口", False)], tun
+            assert next(a for a in tun if a["bp"] == "乙")["p"] == [640, 90]
+            old = INP.anchor([{"no": 6, "p": list(TM), "item": "惰气", "rate": 81, "via": "暗管", "source": "manual", "merged": False,
+                               "note": ""}], tf, lg)[0]
+            assert old["bp"] == "甲" and "on" not in old
+            pj = proj / "inputs.json"
+            gates = INP.anchor(auto[:2], tf, lg)
+            pj.write_text(json.dumps({"某据点": {"marks": gates + [old], "seen": INP.seen_of(auto)}}, ensure_ascii=False), encoding="utf-8")
+            P._rebase_inputs_from_disk("项目", "某据点")
+            got = json.loads(pj.read_text(encoding="utf-8"))["某据点"]["marks"]
+            assert got[:2] == gates, got[:2]
+            assert (got[2]["bp"], got[2]["p_bp"], got[2]["p"], got[2]["rate"]) == ("乙", list(QT), [640, 90], 81), got[2]
+            P.save_inputs("项目", "某据点", got)                              # 再存一次：已经是锚点的，不变
+            assert json.loads(pj.read_text(encoding="utf-8"))["某据点"]["marks"] == got
+            tf3 = turned(tf)
+            P._rebase_inputs("项目", "某据点", np.full((400, 2400, 3), 232, np.uint8), tf3, lg_with_splitter(tf3),
+                             auto_of(gates_on(tf3, SPEC)), lambda *_: None, INP.tunnel_anchors(proj, tf3))
+            got = json.loads(pj.read_text(encoding="utf-8"))["某据点"]["marks"]
+            assert got[2]["p"] == tunnels_on(tf3)[0]["p"] and got[2]["bp"] == "乙", got[2]
+        finally:
+            P.BPA = old_bpa
+
+
 # ---------------------------------------------------------------- 物品名
 
 def test_item_names_are_checked():

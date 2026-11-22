@@ -11,7 +11,10 @@
              placement.json   放置完整性检查（每张蓝图的设备是否都摆了）；placement.jpg 放置核对图
              logistics.json   物流件换算到拼合图坐标
              inputs_auto.json 输入端候选；inputs.jpg 带编号截图
+             design.json      设计分析；gates_view.json 准入口表（设计分析顺带写，0.10.13）
   inputs.json                  作者按编号填的输入端 {据点: {"marks": [...]}}
+  fixes.json                   作者在「设计分析」页做的修正（进料、配方、池子配方、准入口限速），见 load_fixes / save_fixes
+  confirm.json                 作者对设计分析逐台说的对 / 不对
   ledger/<据点>.json           这个项目自己扫的远景底账（据点拼合优先用它，没有再用蓝图档案里的）；ledger_scan/ 扫描截图
   gates.json                   全项目的准入口：图标分组（同组 = 同一种物品）、管道/物品（推断）；gate_icons.png 分组图
 
@@ -456,7 +459,8 @@ def fit_bases(name: str, log=print) -> None:
         marks, dropped = INP.from_gates(canvas, lg_canvas, ginfo, pipes_canvas)
         _jsave(bd / "inputs_dropped.json", dropped)
         _jsave(bd / "inputs_auto.json", marks)
-        _rebase_inputs(name, base, canvas, tf, lg_canvas, marks, log)  # 作者存的标记跟着这次的拼合图挪（也要在设计分析前面）
+        # 作者存的标记跟着这次的拼合图挪（也要在设计分析前面）；标在暗管出口上的吸到暗管自己的锚点（0.10.13 功能二）
+        _rebase_inputs(name, base, canvas, tf, lg_canvas, marks, log, INP.tunnel_anchors(pdir(name), tf))
         try:  # 物流件方向和连接（任务计划第 4 项）→ flow.json / flow.jpg
             from . import flow as FL
             fr = FL.run_base(bd, led)
@@ -653,7 +657,7 @@ def save_inputs(name: str, base: str, marks: list[dict], stale: list[dict] | Non
     allin = _jload(p, {}) or {}
     bd = pdir(name) / "base" / base
     tf = _jload(bd / "transform.json", {}) or {}
-    marks = INP.anchor(marks, tf, _jload(bd / "logistics.json", []) or [])
+    marks = INP.anchor(marks, tf, _jload(bd / "logistics.json", []) or [], INP.tunnel_anchors(pdir(name), tf))
     entry = {"marks": marks, "saved": time.strftime("%Y-%m-%d %H:%M:%S"), "seen": INP.seen_of(_jload(bd / "inputs_auto.json", []) or [])}
     keep = stale if stale is not None else (allin.get(base) or {}).get("stale")
     if keep:
@@ -672,18 +676,20 @@ def _rebase_inputs_from_disk(name: str, base: str, log=lambda *_: None) -> None:
     if not tf or "bps" not in tf or lg is None or not (bd / "composite.png").exists():
         return
     auto = INP.anchor(_jload(bd / "inputs_auto.json", []) or [], tf, lg)
-    _rebase_inputs(name, base, V.rd(bd / "composite.png"), tf, lg, auto, log)
+    _rebase_inputs(name, base, V.rd(bd / "composite.png"), tf, lg, auto, log, INP.tunnel_anchors(pdir(name), tf))
 
 
-def _rebase_inputs(name: str, base: str, canvas, tf: dict, lg_canvas: list[dict], auto: list[dict], log=print) -> None:
+def _rebase_inputs(name: str, base: str, canvas, tf: dict, lg_canvas: list[dict], auto: list[dict], log=print,
+                   tunnels: list[dict] | None = None) -> None:
     """据点拼合时：作者存的输入端按这次的拼合图重新定位（inputs.rebase），结果写回项目 inputs.json。
+    tunnels：这次拼合图上的暗管出口锚点（inputs.tunnel_anchors），标在外接暗管出口上的标记吸到它上面。
     有对不上的旧标记时，改之前的文件另存一份 inputs.json.bak（只存第一次）。"""
     p = pdir(name) / "inputs.json"
     allin = _jload(p, {}) or {}
     entry = allin.get(base)
     if not entry or not (entry.get("marks") or entry.get("stale")):
         return
-    marks, stale, info = INP.rebase(entry.get("marks") or [], tf, lg_canvas, auto, entry.get("seen"))
+    marks, stale, info = INP.rebase(entry.get("marks") or [], tf, lg_canvas, auto, entry.get("seen"), tunnels)
     if stale and not (p.parent / "inputs.json.bak").exists():
         shutil.copyfile(p, p.parent / "inputs.json.bak")
     new = dict(entry, marks=marks, seen=INP.seen_of(auto))
@@ -746,19 +752,208 @@ def save_confirm(name: str, base: str, kind: str, entries: dict) -> dict:
 
 
 def load_fixes(name: str) -> dict:
-    """fixes.json：作者在「待确认」里做的修正。{据点: {feeds: {设备键: to:<设备键> / none / unused}, recipes: {设备键: 配方}}}。
+    """fixes.json：作者在「设计分析」页做的修正，每个据点一段：
+    {据点: {feeds: {设备键: to:<设备键> / none / unused}, recipes: {设备键: 配方}, pool_recipes: {池子的设备键: [原始配方…]},
+            gates: {准入口键: {bp, p_bp, kind, item, limit, count, at}},
+            pool_outlets: {池子的设备键: {belt: [固体，最多 1 个], pipe: [液体，最多 2 个], at}}}, updated: 时间}（格式见 design.load_fixes）。
     和 confirm.json 的区别：确认只是记下作者的判断；修正会改变设计分析的算法输入（下次算就按它来）。"""
     return _jload(pdir(name) / "fixes.json", {}) or {}
 
 
+# fixes.json 每个据点下的几段。pool_outlets：池子出口送什么（0.10.13 功能三）
+FIX_KINDS = ("feeds", "recipes", "pool_recipes", "gates", "pool_outlets")
+GATE_STEP = 6          # 准入口限制速度游戏里每档 6（设计文档「准入口：…每档 6」）：界面只给下拉，这里也只收 6 的倍数
+GATE_TOP = {"物品": 30}  # 物品准入口最多 30/分；管道准入口、类型没定的口最多 60/分
+GATE_COUNT = (1, 5000)  # 限制通过数量的范围（整数）
+# 外接暗管出口的来料（0.10.13 功能二）：和别的修正走同一个保存接口、同一个任务，但不进 fixes.json，存成 inputs.json 里的输入端标记
+TUN_KIND = "tunnel_feeds"
+
+
 def save_fix(name: str, base: str, kind: str, key: str, value: str | list | None) -> None:
-    """kind = feeds / recipes（value 是字符串，空串或 None = 撤销）；pool_recipes（池子同时跑的几条原始配方，2026-11-19 审计第 3 项）：
-    value 是配方列表，[] = 这台没在用（合法值，不是撤销），只有 None 才撤销。
-    池子的两段互斥、后存的为准：给池子存 recipes 一律转存成 pool_recipes=[这一条]，存 pool_recipes 时删掉同一台老的 recipes[键]，
-    撤销时两段一起删（一台池子只认一种说法）。
-    配方（recipes / pool_recipes）和原来存的不一样时，这台的作者确认作废：原来的「对」针对的是旧配方算出的结果。"""
-    if kind not in ("feeds", "recipes", "pool_recipes"):
-        raise ValueError(f"不认识的修正类别：{kind}")
+    """只存一项的 save_fixes（老的入口，测试和别的调用照旧能用）。各类别的值见 save_fixes。"""
+    save_fixes(name, base, [{"kind": kind, "key": key, "value": value}])
+
+
+def save_fixes(name: str, base: str, changes: list[dict]) -> list[dict]:
+    """一次存几项修正：changes = [{kind, key, value}]，先全部校验（check_fixes，一项不对整批不存），再改 fixes.json、原子写一次。
+    返回规整过的改动（check_fixes 的结果）。各类别：
+    - feeds / recipes：value 是字符串，空串或 None = 撤销；
+    - pool_recipes（池子同时跑的几条原始配方，2026-11-19 审计第 3 项）：value 是配方列表，[] = 这台没在用（合法值，不是撤销），
+      只有 None 才撤销。池子的两段互斥、后存的为准：给池子存 recipes 一律转存成 pool_recipes=[这一条]，存 pool_recipes 时删掉
+      同一台老的 recipes[键]，撤销时两段一起删（一台池子只认一种说法）；
+    - gates（0.10.13 作者填的准入口）：value = {limit, count}（都可以是 None：两项都是 None = 作者说都没开），None = 撤销
+      （回到游戏里读的，没有读数就回到没说）。键、位置、物品从准入口表 gates_view.json 补，不信界面传的。
+    - pool_outlets（0.10.13 功能三，池子出口送什么）：value = {belt?: [固体，最多 1 个], pipe?: [液体，最多 2 个、不重复]}，
+      None = 撤销（校验见 _norm_outlets，存的时候加 at）。撤销这台的池子配方（pool_recipes None）或说这台没在用（[]）时，
+      同一台的出口回答一起删（这一项改动带 outlets_dropped=True）；一批里同时有这台的出口回答时按批里的为准，不删。
+    配方（recipes / pool_recipes）和原来存的不一样时，这台原来点的「对」撤掉（针对的是旧配方算出的结果），这一项改动带 revoked=True；
+    原来说「不对」的留着（作者说的实际情况不随配方变），带 kept_wrong=True。出口回答（不算 at）变了的池子照这个办，标记打在
+    pool_outlets 那一项上。任务日志照这两个标记点名。
+    别的设备结果变了要不要撤「对」，由重算前后比对决定（revoke_changed，在界面的修正任务里做）。
+    - tunnel_feeds（0.10.13 外接暗管出口的来料）：不进 fixes.json，记成 inputs.json 里标在这台暗管出口上的输入端标记（见 save_tunnel_feed）。
+    一批里两种都有时先全部校验，再两处都存（fixes.json、inputs.json），界面的修正任务只重算一次。"""
+    done = check_fixes(name, base, changes)
+    fx = [c for c in done if c["kind"] != TUN_KIND]
+    if fx:
+        _write_fixes(name, base, fx)
+    tun = [c for c in done if c["kind"] == TUN_KIND]
+    if tun:
+        try:
+            _apply_tunnel_feeds(name, base, tun)
+        except Exception as e:  # noqa: BLE001
+            if not fx:
+                raise
+            # 两个文件没法一起原子写：fixes.json 已经落盘、inputs.json 没写成时照实说，不然作者只看到报错，以为什么都没存
+            raise RuntimeError(f"另外 {len(fx)} 项修正已经存下了，暗管来料没存上（{e}）。再点一次暗管来料卡上的按钮；"
+                               "已经存下的那几项要等下次重算才生效（可以点「重算」）") from e
+    return done
+
+
+def _write_fixes(name: str, base: str, done: list[dict]) -> None:
+    """规整过的 fixes.json 改动写进去（原子写一次）；撤销池子配方、说没在用时一起删出口回答；改了配方、出口回答的设备撤「对」
+    （见 save_fixes）。"""
+    allf = load_fixes(name)
+    bf = allf.setdefault(base, {})
+    keys = {c["key"] for c in done if c["kind"] in ("recipes", "pool_recipes")}
+    okeys = {c["key"] for c in done if c["kind"] in ("pool_recipes", "pool_outlets")}  # 配方撤销、没在用会连带删出口回答
+    before = {k: _recipe_of(bf, k) for k in keys}
+    before_o = {k: _outlets_of(bf, k) for k in okeys}
+    for c in done:
+        _apply_fix(bf, c)
+    said = {c["key"] for c in done if c["kind"] == "pool_outlets"}
+    for c in done:
+        # 撤销池子配方、说这台没在用：出口回答跟着配方走，一起删；这一批里也说了这台的出口就按批里的（不管先后）
+        if c["kind"] == "pool_recipes" and not c["value"] and c["key"] not in said:
+            if (bf.get("pool_outlets") or {}).pop(c["key"], None) is not None:
+                c["outlets_dropped"] = True
+    allf["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _jsave(pdir(name) / "fixes.json", allf)
+    moved_r = {k for k in keys if _recipe_of(bf, k) != before[k]}
+    moved_o = {k for k in okeys if _outlets_of(bf, k) != before_o[k]}
+    moved = moved_r | moved_o
+    if moved:
+        # 2026-11-19：表格上「改配方」就在「✓ 对」旁边。皇帝武陵城扩容反应池 (1346,1362) 先点「对」、再改配方，重算成没料 0%，
+        # 「对」还留着的话导入会把这个作者没看过的新结果当成设计如此写进 device_designs，巡检就不报了。只作废这一台的「对」
+        # （0.10.13：「不对」留着，和重算前后比对的规矩一样；出口回答变了的池子也一样，功能三）
+        allc = load_confirm(name)
+        dv = (allc.get(base) or {}).get("devices", {})
+        verdict = {k: (dv.get(k) or {}).get("verdict") for k in moved}
+        for c in done:
+            hit = (c["kind"] in ("recipes", "pool_recipes") and c["key"] in moved_r
+                   or (c["kind"] == "pool_outlets" or c.get("outlets_dropped")) and c["key"] in moved_o)
+            if hit:
+                c["revoked"], c["kept_wrong"] = verdict[c["key"]] == "ok", verdict[c["key"]] == "wrong"
+        if any(v == "ok" for v in verdict.values()):
+            for k, v in verdict.items():
+                if v == "ok":
+                    dv.pop(k, None)
+            allc["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _jsave(pdir(name) / "confirm.json", allc)
+
+
+def check_fixes(name: str, base: str, changes: list[dict]) -> list[dict]:
+    """校验一批修正，不写文件 → 规整过的改动 [{kind, key, value}]：池子的 recipes 转成 pool_recipes；准入口的 value 换成要存的整条
+    记录（多带一个 row = 准入口表里那一行，日志说是哪个口用）；暗管来料多带一个 card = design.json 里那张「暗管来料」卡；
+    池子出口回答、池子配方多带一个 row = design.json 里这台池子那一行（日志写拼合图坐标用；池子配方找不到这台是 None，照常存）。
+    不对的抛 ValueError（界面当场报，不开任务）。"""
+    if not isinstance(changes, list):
+        raise ValueError("修正要是一组改动")
+    out, gv, saved, cards, pools, saved_o = [], None, None, None, None, None
+    for ch in changes:
+        if not isinstance(ch, dict):
+            raise ValueError("看不懂的修正（不是一项改动）")
+        kind, key, value = ch.get("kind"), ch.get("key"), ch.get("value")
+        if kind not in FIX_KINDS + (TUN_KIND,):
+            raise ValueError(f"不认识的修正类别：{kind}")
+        if not isinstance(key, str) or not key:
+            raise ValueError("修正里缺了是哪台设备 / 哪个准入口")
+        if kind in ("pool_outlets", "pool_recipes", "recipes") and pools is None:
+            pools = pool_rows(name, base)
+        if kind == "gates":
+            if gv is None:
+                gv = gates_view(name, base)
+                saved = (load_fixes(name).get(base) or {}).get("gates") or {}
+            out.append(_norm_gate(key, value, gv, saved))
+        elif kind == TUN_KIND:
+            if cards is None:
+                cards = tunnel_cards(name, base)
+            out.append(_norm_tunnel(key, value, cards))
+        elif kind == "pool_outlets":
+            if saved_o is None:
+                saved_o = (load_fixes(name).get(base) or {}).get("pool_outlets") or {}
+            out.append(_norm_outlets(key, value, pools, saved_o))
+        else:
+            c = _norm_fix(kind, key, value)
+            if c["kind"] == "pool_recipes":
+                c["row"] = (pools or {}).get(key)
+            out.append(c)
+    return out
+
+
+def pool_rows(name: str, base: str) -> dict | None:
+    """现在 design.json 里的池子行 → {设备键: 行}；还没算过（没有 design.json）→ None。"""
+    from . import pool_model as PM
+    dj = _jload(pdir(name) / "base" / base / "design.json")
+    if dj is None:
+        return None
+    return {device_key(r): r for r in dj.get("devices") or [] if r.get("device") in PM.SLOTS}
+
+
+def _norm_outlets(key: str, value, pools: dict | None, saved: dict) -> dict:
+    """池子出口送什么一项（0.10.13 功能三）的校验：键要是这个据点 design.json 里的反应池 / 扩容反应池（撤销时也可以是 fixes.json 里
+    已经存了的：底账重扫后对不上的旧回答要能删）；value = None（撤销）或只有 belt、pipe 两项的 dict：
+      belt  带出口送什么，物品名列表，最多 1 个（带出口只有 1 个选择，推断；PM.OUT_SOLID），都得是固体；
+      pipe  管出口送什么，物品名列表，最多 2 个（官方：2 个管道取货口；PM.OUT_FLUID）、不重复，都得是液体或气体。
+    没有这一项（或是 None）= 那种出口没说；空列表 = 什么都不送；两项都没说（{}）= 撤销。在不在这台池子的配方里这里不查
+    （面板、推断来的池子这里拿不到配方），算的时候查、写说明。→ {kind, key, value: {belt?, pipe?, at} | None, row}。"""
+    from . import pool_model as PM
+    machine = key.split("@")[0]
+    if machine not in PM.SLOTS:
+        raise ValueError(f"只有反应池、扩容反应池能说出口送什么（这台是{machine}）")
+    if pools is None:
+        raise ValueError("这个据点还没算设计分析（先跑「据点拼合」）")
+    row = pools.get(key)
+    if isinstance(value, dict) and all(value.get(f) is None for f in value) and set(value) <= {"belt", "pipe"}:
+        value = None  # 两种出口都没说：和没回答一样，当撤销（不留一条什么都没说的记录）
+    if value is None:
+        if row is None and key not in saved:
+            raise ValueError(f"设计分析结果里没有这台{machine}（重算过的话刷新一下）")
+        return {"kind": "pool_outlets", "key": key, "value": None, "row": row}
+    if row is None:
+        raise ValueError(f"设计分析结果里没有这台{machine}（重算过的话刷新一下）")
+    if not isinstance(value, dict):
+        raise ValueError("出口送什么要按带出口、管出口分开说")
+    if set(value) - {"belt", "pipe"}:
+        raise ValueError("出口送什么只能说带出口、管出口两样")
+    rec, names = {}, set(INP.item_names())
+    for layer, what, most, fluid in (("belt", "带出口", PM.OUT_SOLID, False), ("pipe", "管出口", PM.OUT_FLUID, True)):
+        lst = value.get(layer)
+        if lst is None:
+            continue
+        if not isinstance(lst, list) or not all(isinstance(x, str) and x for x in lst):
+            raise ValueError(f"{what}送什么要选物品")
+        if len(lst) > most:
+            raise ValueError(f"{what}最多选 {most} 种（选了 {len(lst)} 种）")
+        if len(set(lst)) < len(lst):
+            raise ValueError(f"{what}选的物品重复了")
+        for x in lst:
+            if x not in names:
+                raise ValueError(f"{what}选的「{x}」认不出来")
+            if PM.is_fluid(x) != fluid:
+                raise ValueError(f"「{x}」是{'固体，走不了管出口' if fluid else '液体，走不了带出口'}")
+        rec[layer] = list(lst)
+    rec["at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    return {"kind": "pool_outlets", "key": key, "value": rec, "row": row}
+
+
+def _outlets_of(bf: dict, key: str):
+    """这台池子现在存的出口回答（只比 belt、pipe，不比 at）；没说 → None。"""
+    rec = (bf.get("pool_outlets") or {}).get(key)
+    return {f: rec[f] for f in ("belt", "pipe") if f in rec} if isinstance(rec, dict) else None
+
+
+def _norm_fix(kind: str, key: str, value) -> dict:
+    """feeds / recipes / pool_recipes 一项的校验和规整（原来 save_fix 里的那几条规矩）。"""
     from . import pool_model as PM
     pool = key.split("@")[0] in PM.SLOTS
     if kind == "recipes" and pool:
@@ -768,42 +963,81 @@ def save_fix(name: str, base: str, kind: str, key: str, value: str | list | None
             raise ValueError(f"{kind} 修正只能是字符串：{value!r}")
         kind, value = "pool_recipes", ([value] if value else None)
     if kind == "pool_recipes":
-        undo = value is None
-        if not undo:
+        if value is not None:
             _check_pool_fix(key, value)
-    else:
-        if value is not None and not isinstance(value, str):
-            raise ValueError(f"{kind} 修正只能是字符串：{value!r}")
-        undo = not value
+            value = list(value)
+        return {"kind": kind, "key": key, "value": value}
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{kind} 修正只能是字符串：{value!r}")
     if kind == "feeds" and value and not (value in ("none", "unused") or value.startswith("to:")):
         raise ValueError(f"进料修正只能是 to:<设备键> / none / unused：{value}")
-    allf = load_fixes(name)
+    return {"kind": kind, "key": key, "value": value or None}
 
-    def recipe_of():  # 这台现在按作者说的是哪几条配方（池子：pool_recipes 优先，再看老的 recipes）
-        bf = allf.get(base) or {}
-        if pool and key in (bf.get("pool_recipes") or {}):
-            return bf["pool_recipes"][key]
-        old = (bf.get("recipes") or {}).get(key)
-        return ([old] if pool else old) if old else None
-    before = recipe_of()
-    sect = allf.setdefault(base, {}).setdefault(kind, {})
-    if not undo:
-        sect[key] = list(value) if kind == "pool_recipes" else value
-        if kind == "pool_recipes":
-            (allf[base].get("recipes") or {}).pop(key, None)
-    else:
+
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _shown(v) -> str:
+    """出错提示里填的值：数字照写，别的写「不是数字」（不把程序里的写法弹给作者看）。"""
+    return f"{v:g}" if _is_num(v) else "不是数字"
+
+
+def _norm_gate(key: str, value, gv: dict | None, saved: dict) -> dict:
+    """准入口一项：键要在准入口表里（撤销时也可以是「对不上的旧设置」或 fixes.json 里有的）；限制速度是 6 的倍数，物品准入口 0–30、
+    管道准入口和类型没定的口 0–60；限制通过数量是 1–5000 的整数。存的记录里 bp、p_bp 用这条记录原来的（同一个键改了还存回同一条），
+    新填的用准入口表这一行的（来自 logistics.json）；kind、item 是存的时候的快照，只在「对不上的旧设置」里给人看。"""
+    if gv is None:
+        raise ValueError("这个据点的设计分析是旧版本算的，还没有准入口表：先点「重算」")
+    rows = {r["key"]: r for r in gv.get("gates") or [] if r.get("key")}
+    row = rows.get(key)
+    if value is None:
+        if row is None and key not in saved and not any(s.get("key") == key for s in gv.get("stale") or []):
+            raise ValueError("这个准入口在准入口表里找不到了（重算过的话刷新一下）")
+        return {"kind": "gates", "key": key, "value": None, "row": row}
+    if row is None:
+        raise ValueError("这个准入口在准入口表里找不到了（重算过的话刷新一下；对不上的旧设置只能删）")
+    if not isinstance(value, dict):
+        raise ValueError("准入口的设置要写限制速度和限制通过数量")
+    lim, cnt = value.get("limit"), value.get("count")
+    top = GATE_TOP.get(row.get("kind"), 60)
+    what = f"{row.get('kind') or ''}准入口"
+    if lim is not None:
+        if not _is_num(lim) or lim % GATE_STEP or not 0 <= lim <= top:
+            raise ValueError(f"{what}的限制速度只能是 0–{top} 里 {GATE_STEP} 的倍数（游戏里每档 {GATE_STEP}），或者不限速（填的是 {_shown(lim)}）")
+        lim = int(lim)
+    if cnt is not None:
+        if not _is_num(cnt) or (isinstance(cnt, float) and not cnt.is_integer()) or not GATE_COUNT[0] <= cnt <= GATE_COUNT[1]:
+            raise ValueError(f"限制通过数量只能是 {GATE_COUNT[0]}–{GATE_COUNT[1]} 的整数，或者不限量（填的是 {_shown(cnt)}）")
+        cnt = int(cnt)
+    # 这个口上认出的就是作者原来那条记录（表上 src 是作者）：位置用记录的；不然（新填的，或同名的记录其实没对上）用表上这一行的
+    old = saved.get(key) if row.get("src") == "作者" and isinstance(saved.get(key), dict) else {}
+    bp, p_bp = (old["bp"], old["p_bp"]) if old.get("bp") and old.get("p_bp") is not None else (row["bp"], row["p_bp"])
+    rec = {"bp": bp, "p_bp": list(p_bp), "kind": row.get("kind") or "", "item": gate_item(row), "limit": lim, "count": cnt,
+           "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    return {"kind": "gates", "key": key, "value": rec, "row": row}
+
+
+def _recipe_of(bf: dict, key: str):
+    """这台现在按作者说的是哪几条配方（池子：pool_recipes 优先，再看老的 recipes）。"""
+    from . import pool_model as PM
+    pool = key.split("@")[0] in PM.SLOTS
+    if pool and key in (bf.get("pool_recipes") or {}):
+        return bf["pool_recipes"][key]
+    old = (bf.get("recipes") or {}).get(key)
+    return ([old] if pool else old) if old else None
+
+
+def _apply_fix(bf: dict, c: dict) -> None:
+    """一项规整过的改动写进这个据点那一段（撤销也会建出空的那一段，和原来一样）。"""
+    kind, key, value = c["kind"], c["key"], c["value"]
+    sect = bf.setdefault(kind, {})
+    if value is None:
         sect.pop(key, None)
-        if kind == "pool_recipes":
-            (allf[base].get("recipes") or {}).pop(key, None)
-    allf["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    _jsave(pdir(name) / "fixes.json", allf)
-    if kind != "feeds" and recipe_of() != before:
-        # 2026-11-19：表格上「改配方」就在「✓ 对」旁边。皇帝武陵城扩容反应池 (1346,1362) 先点「对」、再改配方，重算成没料 0%，
-        # 「对」还留着的话导入会把这个作者没看过的新结果当成设计如此写进 device_designs，巡检就不报了。只作废这一台
-        allc = load_confirm(name)
-        if (allc.get(base) or {}).get("devices", {}).pop(key, None) is not None:
-            allc["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _jsave(pdir(name) / "confirm.json", allc)
+    else:
+        sect[key] = value
+    if kind == "pool_recipes":
+        (bf.get("recipes") or {}).pop(key, None)
 
 
 def _check_pool_fix(key: str, value) -> None:
@@ -821,14 +1055,252 @@ def _check_pool_fix(key: str, value) -> None:
             raise ValueError("；".join(ck["why"]))
 
 
+# ------------------------------------------------------------------ 外接暗管出口的来料（0.10.13 功能二）
+def tunnel_cards(name: str, base: str) -> dict:
+    """现在 design.json 待确认里的「暗管来料」卡 → {设备键: 卡}（design._tunnel_card 写的：c、cls、bp、p_bp、ports、marks…）。"""
+    dj = _jload(pdir(name) / "base" / base / "design.json", {}) or {}
+    return {p["key"]: p for p in dj.get("pending") or [] if p.get("kind") == "暗管来料" and p.get("key")}
+
+
+def _norm_tunnel(key: str, value, cards: dict) -> dict:
+    """暗管来料一项的校验：key 要是 design.json 里一张「暗管来料」卡；value = {item, rate} 或 None（撤销）。rate 是 0 到 120 × 口数的数
+    （building_ports.json：暗管出口 1 个口、多口暗管出口 2 个口）；item 是认得的液体、气体（暗管只走管子），只有 rate 为 0
+    （这台平时不来料）时可以空着。→ {kind, key, value: {item, rate} | None, card}。"""
+    from . import design as DS, pool_model as PM
+    card = cards.get(key)
+    if card is None:
+        raise ValueError("这台暗管出口不在设计分析的「暗管来料」待确认里（重算过的话刷新一下）")
+    if value is None:
+        return {"kind": TUN_KIND, "key": key, "value": None, "card": card}
+    if not isinstance(value, dict):
+        raise ValueError("暗管来料要写送进来的物品和每分钟多少")
+    ports = DS.tunnel_ports(key.split("@")[0])
+    cap = DS.PIPE_CAP * ports
+    rate, item = value.get("rate"), value.get("item")
+    if not _is_num(rate) or not 0 <= rate <= cap:
+        raise ValueError(f"每分钟多少只能是 0–{cap:g} 的数（{'多口暗管出口 2 个口合计' if ports > 1 else '一根管子'}最多 {cap:g}，"
+                         f"填的是 {_shown(rate)}）")
+    item = (item or "").strip() if isinstance(item, str) or item is None else None
+    if item is None:
+        raise ValueError("送进来的物品要选一种液体或气体")
+    if not item and rate != 0:
+        raise ValueError("要选送进来的是哪种液体或气体（只有填 0、这台平时不来料时可以不选）")
+    if item and not (item in INP.item_names() and PM.is_fluid(item)):
+        raise ValueError(f"送进来的物品只能是液体或气体（暗管只走管子），「{item}」" + ("是固体" if item in INP.item_names() else "认不出来"))
+    return {"kind": TUN_KIND, "key": key, "value": {"item": item, "rate": int(rate) if float(rate).is_integer() else float(rate)}, "card": card}
+
+
+def save_tunnel_feed(name: str, base: str, key: str, value: dict | None) -> dict:
+    """作者在「暗管来料」卡上填的（0.10.13 功能二）：value = {item, rate}（rate 0 = 这台平时不来料）或 None（撤销）。
+    记成 inputs.json 里标在这台暗管出口上的输入端标记（「输入端」页也能看到、能改），不另开 fixes.json 段：作者在应龙关已经这样手标过，
+    只放一处就不会两处说法打架。位置、蓝图、锚点、单口还是多口都从 design.json 那张卡取，不信界面传的。
+    只存一项的 save_fixes（校验见 _norm_tunnel，存法见 _apply_tunnel_feeds）→ 规整过的改动（带 no：标记编号；撤销的带 removed）。"""
+    return save_fixes(name, base, [{"kind": TUN_KIND, "key": key, "value": value}])[0]
+
+
+def _apply_tunnel_feeds(name: str, base: str, changes: list[dict]) -> None:
+    """校验过的暗管来料写进 inputs.json（走 save_inputs：吸到暗管锚点、记 seen、重画 inputs.jpg）。
+    - 存的标记是空的：从候选 inputs_auto.json 起步（和 inputs_view、pipenet.load_inputs 同一个规矩）；有老版本存的（没有 p_bp）先按
+      现在的拼合图核一遍（同 inputs_view：不然存的时候会把对不上的旧位置当成现在的位置记下来）。
+    - 标在这台上的标记认设计分析认的（卡上的 marks：analyze 只看位置绑的，第一个是它用的那个），再核一下还在这台暗管上
+      （inputs.mark_on_tunnel：不在准入口上、离它 45 px 内；「输入端」页存过、还没重算时可能挪走或删了）：改第一个，位置放到
+      这台暗管自己的锚点上；没有就追加一个，编号取最大号 + 1，位置是锚点；撤销 = 这几个都删掉（编号不重排），卡回到没填。
+      不在存的时候按位置重新猜：旁边还有没卡的暗管出口（蓝图外、缺文件、配上对的）时，猜出来的和设计分析认的不是同一台，
+      会改掉、删掉隔壁那台的标记（0.10.13 功能二审查）。
+    每项改动上记 no（标记编号）、added（新加的）、removed（撤销删掉的编号），日志用。"""
+    bd = pdir(name) / "base" / base
+    entry = (_jload(pdir(name) / "inputs.json", {}) or {}).get(base) or {}
+    if any(m.get("p_bp") is None for m in entry.get("marks") or []):
+        _rebase_inputs_from_disk(name, base)
+        entry = (_jload(pdir(name) / "inputs.json", {}) or {}).get(base) or {}
+    marks = [dict(m) for m in entry.get("marks") or (_jload(bd / "inputs_auto.json", []) or [])]
+    lg = _jload(bd / "logistics.json", []) or []
+    tf = _jload(bd / "transform.json", {}) or {}
+    for c in changes:
+        card, key, v = c["card"], c["key"], c["value"]
+        dev = key.split("@")[0]
+        nos = card.get("marks")
+        if nos is None:  # 早一点的 design.json 卡上没有 marks：只认用的那个
+            nos = [card["mark"].get("no")] if card.get("mark") else []
+        near = set(INP.mark_on_tunnel(marks, card["c"], lg))
+        hit = []
+        for no in nos:
+            hit += [k for k, m in enumerate(marks) if no is not None and m.get("no") == no and k in near and k not in hit]
+        if v is None:
+            c["removed"] = [marks[k].get("no") for k in hit]
+            marks = [m for k, m in enumerate(marks) if k not in hit]
+            continue
+        rec = {"item": v["item"], "rate": v["rate"], "via": "多口暗管" if dev.startswith("多口") else "暗管", "on": dev}
+        at = card.get("bp") in (tf.get("bps") or {}) and card.get("p_bp") is not None
+        pos = {"p": INP.from_bp(tf, card["bp"], card["p_bp"]), "bp": card["bp"], "p_bp": list(card["p_bp"])} if at else {}
+        if hit:
+            marks[hit[0]].update(rec, **pos)
+            c["no"], c["added"] = marks[hit[0]].get("no"), False
+            continue
+        no = max([int(m.get("no") or 0) for m in marks] + [0]) + 1
+        what = "外接暗管出口" if card.get("cls") == "外接" else "没配上对的暗管出口"
+        new = dict(rec, no=no, p=list(card["c"]), merged=False, source="manual", note=f"{what}（设计分析「待确认」里填的）",
+                   bp=card.get("bp"), p_bp=card.get("p_bp"))
+        marks.append(dict(new, **pos))
+        c["no"], c["added"] = no, True
+    save_inputs(name, base, marks)
+
+
+def archive_dir(name: str) -> Path | None:
+    """项目登记的蓝图档案目录（data/blueprints/<档案>）：配方表、游戏里读到的准入口限速在这里。没登记或不在本机 → None。"""
+    arch = load(name).get("archive")
+    d = ROOT / "data" / "blueprints" / arch if arch else None
+    return d if d is not None and d.exists() else None
+
+
 def rerun_design(name: str, base: str) -> dict:
     """只重算这个据点的设计分析（不重新拼合）：作者改了修正以后用。返回汇总。"""
     from . import design as DS
     bd = pdir(name) / "base" / base
-    arch = load(name).get("archive")
-    arch_dir = ROOT / "data" / "blueprints" / arch if arch else None
-    dr = DS.run_base(bd, arch_dir if arch_dir and arch_dir.exists() else None, base, ledger=ledger_path(name, base))
+    dr = DS.run_base(bd, archive_dir(name), base, ledger=ledger_path(name, base))
     return dr["summary"]
+
+
+def design_state(name: str, base: str) -> dict:
+    """现在 design.json 里每台设备 → {设备键: {device, c, rate, state}}：按作者修正重算前后各取一次，比哪几台结果变了。"""
+    dj = _jload(pdir(name) / "base" / base / "design.json", {}) or {}
+    return {device_key(r): {"device": r.get("device"), "c": r.get("c"), "rate": r.get("rate"), "state": r.get("state") or ""}
+            for r in dj.get("devices", [])}
+
+
+def revoke_changed(name: str, base: str, before: dict, after: dict) -> dict:
+    """按作者修正重算以后：开工率或状态变了的设备，原来点的「对」撤掉（留着的话，导入时会把作者没看过的新结果当成设计如此，
+    巡检就不报了；2026-11-19 save_fix 里只撤改了配方的那一台，0.10.13 推广到所有结果变了的设备）；「不对」留着（作者说的实际情况
+    不随我们算的变），只让日志提醒；没变的不动。前后有一边没有的设备不算变（这台不在了 / 新冒出来，没有可撤的）。
+    → {changed: [{key, device, c, before, after}], revoked: [设备键], wrong: [设备键]}（before / after 是 {rate, state}）。"""
+    changed = []
+    for k, a in after.items():
+        b = before.get(k)
+        if b is None:
+            continue
+        if abs((a.get("rate") or 0) - (b.get("rate") or 0)) > 1e-6 or a.get("state") != b.get("state"):
+            changed.append({"key": k, "device": a.get("device"), "c": a.get("c"),
+                            "before": {"rate": b.get("rate"), "state": b.get("state")}, "after": {"rate": a.get("rate"), "state": a.get("state")}})
+    allc = load_confirm(name)
+    dv = (allc.get(base) or {}).get("devices") or {}
+    revoked = [c["key"] for c in changed if (dv.get(c["key"]) or {}).get("verdict") == "ok"]
+    wrong = [c["key"] for c in changed if (dv.get(c["key"]) or {}).get("verdict") == "wrong"]
+    if revoked:
+        for k in revoked:
+            dv.pop(k, None)
+        allc["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _jsave(pdir(name) / "confirm.json", allc)
+    return {"changed": changed, "revoked": revoked, "wrong": wrong}
+
+
+# ------------------------------------------------------------------ 准入口限速表（0.10.13 功能一）
+def gates_view(name: str, base: str) -> dict | None:
+    """设计分析顺带写的准入口表 base/<据点>/gates_view.json（格式见 design._gate_view）；0.10.13 以前算的据点没有 → None。"""
+    return _jload(pdir(name) / "base" / base / "gates_view.json")
+
+
+def gate_read_path(name: str, base: str) -> Path | None:
+    """档案里游戏读到的准入口限速（深入巡检「读准入口限速」写的 ledger/gate_limits/<据点>.json）；没有 → None。"""
+    d = archive_dir(name)
+    p = d / "ledger" / "gate_limits" / f"{base}.json" if d else None
+    return p if p is not None and p.exists() else None
+
+
+UNK_FLOW = ("没看到的物品", "没看到的液体")  # design.UNK_NAMES 的写法：准入口表里过口的物品没看到
+
+
+def gate_item(row: dict) -> str:
+    """准入口表一行给人看的物品：口上认出来的；没认出来、推料时只过了一种料的用那种料（作者武陵城 #45 图标没认出，过的是息壤）；都不知道是空串。
+    开了限制通过数量的口，被挡在口上的料（shut：不算出料堵死时（正的背压照算）真有料在动着送到这个口上的物品，设计分析主分析和两遍 probe 的并集，
+    见 design._gate_view）也算「过了」（0.10.13 A2 审查）。"""
+    if row.get("item"):
+        return row["item"]
+    seen = [k for k in {**(row.get("flow") or {}), **(row.get("held") or {}), **dict.fromkeys(row.get("shut") or [])} if k not in UNK_FLOW]
+    return seen[0] if len(seen) == 1 else ""
+
+
+def gate_table(name: str, base: str) -> dict | None:
+    """准入口表按界面要的样子排好（不含图）→ {rows, counts, stale, read_time, has_read}；没有 gates_view.json → None。
+    每行在 gates_view 那一行上多几个字段：
+      group   有料（不是输入端、设计分析里有料经过或被挡下；开了限制通过数量的口，上游要往它送料也算，见 gates_view 的 shut）/
+              输入端 / 没追到（不是输入端、没有料经过）
+      seg     排序的段：0 = 作者填过的、游戏里读到开着的；1 = 其余有料经过的；2 = 其余（输入端、没追到料的）
+      no      行号（1 起），总览图上的编号和它一样
+      item_name  gate_item；show  默认筛选（有料经过的）显示不显示：有料的、作者填过的都显示；fix  作者存的那条记录（src 是作者时）
+    每段里按物品分组，同物品按位置从上到下、从左到右排。counts：{有料, 已填（作者存过的，含说都没开的）, 说没开（其中两项都是 None 的）,
+    游戏读到（读失败的不算）, 输入端, 没追到, 填不了（有料经过、但 logistics.json 里没有位置数据、没有键的）}。"""
+    gv = gates_view(name, base)
+    if gv is None:
+        return None
+    saved = (load_fixes(name).get(base) or {}).get("gates") or {}
+    rows = []
+    for r in gv.get("gates") or []:
+        r = dict(r)
+        # 开了限制通过数量的口（0.10.13 A2）：上游是生产设备时背压把它压成 0，flow、held 都是空的，按 shut 归「有料」（审查 2026-11-21：
+        # 原来这种口从「通过 30」变成「没追到」，默认筛选里看不到、有料的口数也少一个）。上游设备自己没料的口 shut 是空的，照旧归「没追到」（复审）
+        r["group"] = "输入端" if r.get("input_no") is not None else "有料" if (r.get("flow") or r.get("held") or r.get("shut")) else "没追到"
+        on = r.get("limit") is not None or r.get("count") is not None
+        r["seg"] = 0 if r.get("src") == "作者" or (r.get("src") == "游戏" and on) else 1 if r["group"] == "有料" else 2
+        r["item_name"] = gate_item(r)
+        r["show"] = r["group"] == "有料" or r.get("src") == "作者"
+        r["fix"] = saved.get(r.get("key")) if r.get("src") == "作者" else None
+        rows.append(r)
+    rows.sort(key=lambda r: (r["seg"], r["item_name"] or "￿", r["c"][1], r["c"][0]))
+    for i, r in enumerate(rows, 1):
+        r["no"] = i
+    mine = [r for r in rows if r.get("src") == "作者"]
+    counts = {"有料": sum(r["group"] == "有料" for r in rows), "已填": len(mine),
+              "说没开": sum(r.get("limit") is None and r.get("count") is None for r in mine),
+              "游戏读到": sum(r.get("src") == "游戏" for r in rows), "输入端": sum(r["group"] == "输入端" for r in rows),
+              "没追到": sum(r["group"] == "没追到" for r in rows), "填不了": sum(r["group"] == "有料" and not r.get("key") for r in rows)}
+    return {"rows": rows, "counts": counts, "stale": list(gv.get("stale") or []), "read_time": gv.get("read_time"),
+            "has_read": gate_read_path(name, base) is not None}
+
+
+def gate_limits_export(name: str, base: str) -> dict | None:
+    """导出 zip 里的 <据点>/gate_limits.json：档案里游戏读到的，加上作者在准入口表里填的（盖过同一个口的游戏读数）。
+    导入的玩家巡检、断水影响照它算，自己进游戏读一次就会覆盖它。行格式照 gate_limits.read_area 的 rows（p 是拼合图坐标、
+    far = F0 + K·p 远景坐标，设计分析按 far 认口）；作者填的行多 src="作者"、time = 填的时间。限制通过数量没有累计数（passed 是 None），
+    只有和游戏里读到的同一个数时带上读到的累计数（和 design.analyze 一样）。
+    值取 fixes.json 里存的记录（作者存了、还没等到重算就取消了任务，导出照样带上刚存的；撤销了的不带），位置取准入口表里认上的那一行
+    （键相同的行：作者填过的口行上的键就是记录的键，刚存还没重算的口行上的键是按位置现算的、存的时候用的就是它）。
+    认不上的记录（对不上的旧设置）不带。没有作者填的（或还没有准入口表）→ None：照旧原样带档案文件。"""
+    gv = gates_view(name, base)
+    saved = (load_fixes(name).get(base) or {}).get("gates") or {}
+    rows = {r["key"]: r for r in (gv or {}).get("gates") or [] if r.get("key")}
+    mine = [(rows[k], rec) for k, rec in saved.items() if k in rows and isinstance(rec, dict)
+            and all(rec.get(f) is None or _is_num(rec.get(f)) for f in ("limit", "count"))]
+    if not mine:
+        return None
+    tf = _jload(pdir(name) / "base" / base / "transform.json", {}) or {}
+    rp = gate_read_path(name, base)
+    arch = (_jload(rp, {}) or {}) if rp else {}
+
+    def same(row, c):  # 档案这一行是不是这个口（和 design.analyze 一样：far 换到拼合图上差 15 px 以内；没有 far 的按 p）
+        p = V.far_to_canvas(tf, *row["far"]) if row.get("far") and tf.get("F0") else row.get("p")
+        return p is not None and abs(p[0] - c[0]) <= INP.SNAP and abs(p[1] - c[1]) <= INP.SNAP
+    keep = [row for row in arch.get("rows") or [] if not any(same(row, r["c"]) for r, _ in mine)]
+    add = []
+    for r, rec in mine:
+        x, y = r["c"]
+        lim, cnt, rd = rec.get("limit"), rec.get("count"), r.get("read") or {}
+        add.append({"p": [int(round(x)), int(round(y))],
+                    "far": [round(tf["F0"][0] + tf["K"] * x, 2), round(tf["F0"][1] + tf["K"] * y, 2)] if tf.get("F0") else None,
+                    "kind": r.get("kind") or "", "bp": r.get("bp"), "p_bp": r.get("p_bp"), "gate_no": r.get("input_no"),
+                    "item": gate_item(r) or rec.get("item") or "", "rate": r.get("input_rate"),
+                    "limit_on": lim is not None, "limit": lim, "count_on": cnt is not None, "count_limit": cnt,
+                    "passed": rd.get("passed") if cnt is not None and rd.get("count_on") and rd.get("count_limit") == cnt else None,
+                    "src": "作者", "time": rec.get("at") or ""})
+    out = dict(arch) if arch else {"area": base, "time": time.strftime("%Y%m%d-%H%M%S")}
+    out["rows"] = keep + add
+    out["author"] = f"含蓝图作者在「准入口限速」表里填的 {len(add)} 个口"
+    return out
+
+
+def export_fixes(name: str) -> dict:
+    """导出 zip 里的 fixes.json：作者的修正，去掉每个据点的准入口段（gates：已经合进 <据点>/gate_limits.json，导入方按游戏读数用）。"""
+    allf = load_fixes(name)
+    return {b: ({k: v for k, v in sect.items() if k != "gates"} if isinstance(sect, dict) else sect) for b, sect in allf.items()}
 
 
 def confirm_progress(name: str, base: str) -> dict:
@@ -990,11 +1462,19 @@ def export(name: str, dest: str | Path, raw_quality: int = 92, log=print, lite: 
                                                 "confirm": {b: confirm_progress(name, b) for b in proj["groups"]}},
                                                ensure_ascii=False, indent=1))
         z.writestr("confirm.json", json.dumps(load_confirm(name), ensure_ascii=False, indent=1))
+        # 作者的修正（池子配方、进料…）：导入方的断水影响（near_patrol → design.cut_impact）按它重算，导入时放到 档案/bpa/fixes.json。
+        # 0.10.13 以前不带，导入方不认作者勾的池子配方。准入口段去掉，合进下面的 gate_limits.json
+        z.writestr("fixes.json", json.dumps(export_fixes(name), ensure_ascii=False, indent=1))
         for base in proj["groups"]:  # 档案里游戏内读到的配方表、准入口限速（导入后巡检和设计分析都要用）
-            for src, dst in ((arch_dir / "ledger" / f"{base}_recipes.json" if arch_dir else None, f"{base}/recipes.json"),
-                             (arch_dir / "ledger" / "gate_limits" / f"{base}.json" if arch_dir else None, f"{base}/gate_limits.json")):
-                if src is not None and src.exists():
-                    z.write(src, dst)
+            src = arch_dir / "ledger" / f"{base}_recipes.json" if arch_dir else None
+            if src is not None and src.exists():
+                z.write(src, f"{base}/recipes.json")
+            gl = gate_limits_export(name, base)  # 作者在准入口表里填过的：和游戏读数合成一份；没填过的照旧原样带档案文件
+            src = arch_dir / "ledger" / "gate_limits" / f"{base}.json" if arch_dir else None
+            if gl is not None:
+                z.writestr(f"{base}/gate_limits.json", json.dumps(gl, ensure_ascii=False, indent=1))
+            elif src is not None and src.exists():
+                z.write(src, f"{base}/gate_limits.json")
         z.writestr("inputs.json", json.dumps(_jload(d / "inputs.json", {}) or {}, ensure_ascii=False, indent=1))
         for f in ("gates.json", "gate_icons.png"):
             if (d / f).exists():

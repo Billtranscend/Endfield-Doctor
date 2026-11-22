@@ -3,7 +3,8 @@
 - combos：按格数枚举放得下的配方组合，数目对照 scratchpad 试验 combos.txt（反应池 2 条 16 种、扩容池 3 条 63 种…）；
 - check：格数按原始配方去重、中间产物只算一种（液化息壤 + 壤晶废液是 6 种）；出口 / 入口不够只警告；
 - groups：首尾相接的并成一条净配方（液化息壤 + 壤晶废液 + 壤晶 → 一条，members 3 条），互不相干的各自一组；
-- chan_rates：共用的清水不够时按各条用量比例分；一条缺独有原料时不白占清水（清水 45 只用掉 36）。
+- chan_rates：共用的清水不够时按各条用量比例分；一条缺独有原料时不白占清水（清水 45 只用掉 36）；
+- outlets：作者说的出口送什么分成原料 / 中间产物 / 没出口的终端产物 / 没用上的原因（0.10.13 功能三）。
 """
 import sys
 from pathlib import Path
@@ -112,6 +113,31 @@ def test_chan_rates():
     assert t[2] == 0.0 and all(abs(x - 0.5) < 1e-9 for x in t[:2]), t  # 没息壤的那条不分清水
 
 
+def test_outlets():
+    """出口送什么的分类（0.10.13 功能三）：原料进 pass（带出口送固体、管出口送液体），终端产物不进任何一项，中间产物进 mid；
+    不在池里、形态不对、超出口数、写两遍进 why；带、管两个字段都有时没出口的终端产物进 stuck。"""
+    o = PM.outlets("扩容反应池", [A, B], {"belt": ["息壤"], "pipe": ["惰性壤晶废液", "壤晶废液"]})  # issue #1 作者的回答
+    assert o == {"pass": {"息壤": "belt"}, "mid": [], "stuck": [], "why": []}, o
+    o = PM.outlets("扩容反应池", [A, B], {"belt": ["息壤"]})  # 管出口没说：不查 stuck
+    assert o["pass"] == {"息壤": "belt"} and o["stuck"] == [] and not o["why"], o
+    o = PM.outlets("扩容反应池", [A, B], {"belt": [], "pipe": ["清水", "液化息壤"]})  # 清水是原料、液化息壤是中间产物
+    assert o["pass"] == {"清水": "pipe"} and o["mid"] == ["液化息壤"], o
+    assert o["stuck"] == ["壤晶废液", "惰性壤晶废液"] and not o["why"], o  # 两种终端产物三个出口都没选
+    o = PM.outlets("扩容反应池", [A, B], {"belt": ["锦草粉末"], "pipe": ["息壤", "污水", "清水"]})
+    assert o["pass"] == {"污水": "pipe"}, o
+    assert o["why"] == ["管出口只有 2 个选择，多选的清水没用上", "出口选的锦草粉末不在这台池子在跑的配方里，没用上",
+                        "息壤是固体，走不了管出口，没用上"], o["why"]
+    o = PM.outlets("扩容反应池", [A, B], {"belt": ["壤晶废液", "息壤"], "pipe": ["污水", "污水"]})
+    assert o["pass"] == {"污水": "pipe"} and o["why"] == ["带出口只有 1 个选择，多选的息壤没用上", "管出口选的污水写了两遍",
+                                                          "壤晶废液是液体，走不了带出口，没用上"], o["why"]
+    assert o["stuck"] == ["壤晶废液", "惰性壤晶废液"], o  # 选在形态不对的出口上不算送出去了
+    o = PM.outlets("扩容反应池", [A, B, C], {"belt": ["壤晶"], "pipe": ["壤晶废液"]})  # 三条：壤晶废液成了中间产物
+    assert o["mid"] == ["壤晶废液"] and o["stuck"] == ["惰性壤晶废液"] and o["pass"] == {}, o
+    assert PM.outlets("扩容反应池", [A, B], {"belt": "息壤"})["pass"] == {"息壤": "belt"}  # 带出口存成字符串（方案稿的写法）也认
+    o = PM.outlets("扩容反应池", ["认不出的配方"], {"belt": ["息壤"]})
+    assert o["pass"] == {} and len(o["why"]) == 1 and "认不出" in o["why"][0], o
+
+
 def test_score_decide():
     # 管子进清水、带子进芽针粉末和锦草粉末、两根管子各收一种溶液：芽针 + 锦草两条最好
     links = [{"layer": "pipe", "dir": "in", "sup": {"清水"}, "dem": set()},
@@ -131,4 +157,4 @@ def test_score_decide():
 
 if __name__ == "__main__":
     sys.exit(run([test_recipes_same_as_design, test_is_fluid_matches_ids, test_combos_count, test_check, test_groups, test_chan_rates,
-                  test_score_decide]))
+                  test_outlets, test_score_decide]))
