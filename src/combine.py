@@ -2011,9 +2011,9 @@ def judge_core(reg: Region, d: Device, devices: list[Device]) -> Verdict:
 def judge_one(reg: Region, d: Device, devices: list[Device]) -> Verdict:
     if d.status in ("生产中", "运行中"):
         return Verdict("正常", d, f"面板显示「{d.status}」，俯瞰里的「{d.badge}」标记只是闪烁")
-    # 废水处理机这类没有配方的汇点：没有产物，空闲或状态没读出都是正常
-    if d.name == "废水处理机" and d.status in ("?", "空闲中") and not any(r["machine_name"] == d.name for r in RECIPES):
-        return Verdict("正常", d, "废水处理机没有产物，空闲表示没有多余污水，属正常", fallback=True)
+    # 废水处理机（1.7 起叫废料处理机）这类没有配方的汇点：没有产物，空闲或状态没读出都是正常
+    if d.name in ("废水处理机", "废料处理机") and d.status in ("?", "空闲中") and not any(r["machine_name"] == d.name for r in RECIPES):
+        return Verdict("正常", d, f"{d.name}没有产物，空闲表示没有多余污水，属正常", fallback=True)
     status = d.status if d.status != "?" else d.badge  # 面板状态没读出来时，按俯瞰标记判断
     if status == "阻塞":
         return judge_blocked(reg, d, devices)

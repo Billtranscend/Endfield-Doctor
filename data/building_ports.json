@@ -137,6 +137,20 @@
   ],
   "w": 3
  },
+ "分影明晦炉": {
+  "d": 5,
+  "id": "magic_spawner_2",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   }
+  ],
+  "w": 5
+ },
  "协议储存箱": {
   "d": 3,
   "id": "storager_1",
@@ -739,6 +753,97 @@
   ],
   "w": 6
  },
+ "平衡炉": {
+  "d": 5,
+  "id": "magic_balancer_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 3,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 4,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 0,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 1,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 2,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 3,
+    "y": 4
+   },
+   {
+    "pipe": false,
+    "role": "out",
+    "side": "S",
+    "x": 4,
+    "y": 4
+   }
+  ],
+  "w": 5
+ },
+ "废料处理机": {
+  "d": 3,
+  "id": "liquid_cleaner_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "W",
+    "x": 0,
+    "y": 1
+   }
+  ],
+  "w": 3
+ },
  "废水处理机": {
   "d": 3,
   "id": "liquid_cleaner_1",
@@ -1015,6 +1120,20 @@
     "side": "E",
     "x": 4,
     "y": 1
+   }
+  ],
+  "w": 5
+ },
+ "明晦炉": {
+  "d": 5,
+  "id": "magic_spawner_1",
+  "ports": [
+   {
+    "pipe": true,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
    }
   ],
   "w": 5
@@ -2040,5 +2159,33 @@
    }
   ],
   "w": 5
+ },
+ "重建供应端口": {
+  "d": 3,
+  "id": "wonder_supply_port_1",
+  "ports": [
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 1,
+    "y": 0
+   },
+   {
+    "pipe": false,
+    "role": "in",
+    "side": "N",
+    "x": 2,
+    "y": 0
+   }
+  ],
+  "w": 3
  }
 }

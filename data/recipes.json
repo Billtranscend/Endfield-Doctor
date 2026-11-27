@@ -40,6 +40,19 @@
  },
  {
   "env": 0,
+  "id": "component_copper_bright_cmpt_1",
+  "inputs": {
+   "item_copper_bright": 1
+  },
+  "machine": "component_mc_1",
+  "machine_name": "配件机",
+  "outputs": {
+   "item_copper_bright_cmpt": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
   "id": "component_copper_cmpt_1",
   "inputs": {
    "item_copper_nugget": 1
@@ -76,6 +89,32 @@
    "item_copper_enr_cmpt": 1
   },
   "seconds": 10
+ },
+ {
+  "env": 0,
+  "id": "component_copper_hui_cmpt_1",
+  "inputs": {
+   "item_copper_hui": 1
+  },
+  "machine": "component_mc_1",
+  "machine_name": "配件机",
+  "outputs": {
+   "item_copper_hui_cmpt": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "component_copper_ming_cmpt_1",
+  "inputs": {
+   "item_copper_ming": 1
+  },
+  "machine": "component_mc_1",
+  "machine_name": "配件机",
+  "outputs": {
+   "item_copper_ming_cmpt": 1
+  },
+  "seconds": 2
  },
  {
   "env": 0,
@@ -467,6 +506,34 @@
  },
  {
   "env": 0,
+  "id": "dismantler_copperjar_gas_copper_bright_clear_1",
+  "inputs": {
+   "item_gasjar_copper_gas_copper_bright_clear": 1
+  },
+  "machine": "dismantler_1",
+  "machine_name": "拆解机",
+  "outputs": {
+   "item_copper_jar": 1,
+   "item_gas_copper_bright_clear": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "dismantler_copperjar_gas_copper_bright_turbid_1",
+  "inputs": {
+   "item_gasjar_copper_gas_copper_bright_turbid": 1
+  },
+  "machine": "dismantler_1",
+  "machine_name": "拆解机",
+  "outputs": {
+   "item_copper_jar": 1,
+   "item_gas_copper_bright_turbid": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
   "id": "dismantler_copperjar_gas_copper_enr2_1",
   "inputs": {
    "item_gasjar_copper_gas_copper_enr2": 1
@@ -490,6 +557,20 @@
   "outputs": {
    "item_copper_jar": 1,
    "item_gas_copper_enr": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "dismantler_copperjar_gas_copper_enr_heng_1",
+  "inputs": {
+   "item_gasjar_copper_gas_copper_enr_heng": 1
+  },
+  "machine": "dismantler_1",
+  "machine_name": "拆解机",
+  "outputs": {
+   "item_copper_jar": 1,
+   "item_gas_copper_enr_heng": 1
   },
   "seconds": 2
  },
@@ -546,6 +627,20 @@
   "outputs": {
    "item_copper_jar": 1,
    "item_gas_xiranite_enr": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "dismantler_copperjar_xiranite_enr_heng_1",
+  "inputs": {
+   "item_gasjar_copper_gas_xiranite_enr_heng": 1
+  },
+  "machine": "dismantler_1",
+  "machine_name": "拆解机",
+  "outputs": {
+   "item_copper_jar": 1,
+   "item_gas_xiranite_enr_heng": 1
   },
   "seconds": 2
  },
@@ -2301,6 +2396,34 @@
  },
  {
   "env": 0,
+  "id": "filling_copperjar_gas_copper_bright_clear_1",
+  "inputs": {
+   "item_copper_jar": 1,
+   "item_gas_copper_bright_clear": 1
+  },
+  "machine": "filling_powder_mc_1",
+  "machine_name": "灌装机",
+  "outputs": {
+   "item_gasjar_copper_gas_copper_bright_clear": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "filling_copperjar_gas_copper_bright_turbid_1",
+  "inputs": {
+   "item_copper_jar": 1,
+   "item_gas_copper_bright_turbid": 1
+  },
+  "machine": "filling_powder_mc_1",
+  "machine_name": "灌装机",
+  "outputs": {
+   "item_gasjar_copper_gas_copper_bright_turbid": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
   "id": "filling_copperjar_gas_copper_enr_1",
   "inputs": {
    "item_copper_jar": 1,
@@ -2310,6 +2433,20 @@
   "machine_name": "灌装机",
   "outputs": {
    "item_gasjar_copper_gas_copper_enr": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "filling_copperjar_gas_copper_enr_heng_1",
+  "inputs": {
+   "item_copper_jar": 1,
+   "item_gas_copper_enr_heng": 1
+  },
+  "machine": "filling_powder_mc_1",
+  "machine_name": "灌装机",
+  "outputs": {
+   "item_gasjar_copper_gas_copper_enr_heng": 1
   },
   "seconds": 2
  },
@@ -2368,6 +2505,360 @@
    "item_gasjar_copper_gas_xiranite_enr": 1
   },
   "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "filling_copperjar_gas_xiranite_enr_heng_1",
+  "inputs": {
+   "item_copper_jar": 1,
+   "item_gas_xiranite_enr_heng": 1
+  },
+  "machine": "filling_powder_mc_1",
+  "machine_name": "灌装机",
+  "outputs": {
+   "item_gasjar_copper_gas_xiranite_enr_heng": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_heng",
+   "layer": 1
+  },
+  "id": "formation_magic_heng_item_copper_enr_heng_1",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_heng",
+  "machine_name": "1阶阵列·衡",
+  "outputs": {
+   "item_copper_enr_heng": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_heng",
+   "layer": 2
+  },
+  "id": "formation_magic_heng_item_copper_enr_heng_2",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_heng",
+  "machine_name": "1阶阵列·衡",
+  "outputs": {
+   "item_copper_enr_heng": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_heng",
+   "layer": 1
+  },
+  "id": "formation_magic_heng_item_xiranite_enr_heng_1",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_heng",
+  "machine_name": "1阶阵列·衡",
+  "outputs": {
+   "item_xiranite_enr_heng": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_heng",
+   "layer": 2
+  },
+  "id": "formation_magic_heng_item_xiranite_enr_heng_2",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_heng",
+  "machine_name": "1阶阵列·衡",
+  "outputs": {
+   "item_xiranite_enr_heng": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 1
+  },
+  "id": "formation_magic_hui_item_copper_hui_1",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_copper_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 2
+  },
+  "id": "formation_magic_hui_item_copper_hui_2",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_copper_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 3
+  },
+  "id": "formation_magic_hui_item_copper_hui_3",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_copper_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 4
+  },
+  "id": "formation_magic_hui_item_copper_hui_4",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_copper_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 1
+  },
+  "id": "formation_magic_hui_item_xiranite_hui_1",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_xiranite_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 2
+  },
+  "id": "formation_magic_hui_item_xiranite_hui_2",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_xiranite_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 3
+  },
+  "id": "formation_magic_hui_item_xiranite_hui_3",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_xiranite_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_hui",
+   "layer": 4
+  },
+  "id": "formation_magic_hui_item_xiranite_hui_4",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_hui",
+  "machine_name": "1阶阵列·晦",
+  "outputs": {
+   "item_xiranite_hui": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 1
+  },
+  "id": "formation_magic_ming_item_copper_ming_1",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_copper_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 2
+  },
+  "id": "formation_magic_ming_item_copper_ming_2",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_copper_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 3
+  },
+  "id": "formation_magic_ming_item_copper_ming_3",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_copper_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 4
+  },
+  "id": "formation_magic_ming_item_copper_ming_4",
+  "inputs": {
+   "item_copper_nugget": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_copper_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 1
+  },
+  "id": "formation_magic_ming_item_xiranite_ming_1",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_xiranite_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 2
+  },
+  "id": "formation_magic_ming_item_xiranite_ming_2",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_xiranite_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 3
+  },
+  "id": "formation_magic_ming_item_xiranite_ming_3",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_xiranite_ming": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "formation": {
+   "kind": "magic_ming",
+   "layer": 4
+  },
+  "id": "formation_magic_ming_item_xiranite_ming_4",
+  "inputs": {
+   "item_xiranite_powder": 1
+  },
+  "machine": "formation_magic_ming",
+  "machine_name": "1阶阵列·明",
+  "outputs": {
+   "item_xiranite_ming": 1
+  },
+  "seconds": 10
  },
  {
   "env": 0,
@@ -2750,6 +3241,35 @@
   "seconds": 2
  },
  {
+  "branches": [
+   {
+    "outputs": {
+     "item_gas_copper_bright_clear": 2
+    },
+    "prob": 50
+   },
+   {
+    "outputs": {
+     "item_gas_copper_bright_turbid": 2
+    },
+    "prob": 50
+   }
+  ],
+  "env": 0,
+  "id": "gas_reactor_gas_copper_bright_clear_1",
+  "inputs": {
+   "item_gas_copper_enr_heng": 1,
+   "item_gas_xiranite_enr_heng": 1
+  },
+  "machine": "gas_reactor_1",
+  "machine_name": "气体反应炉",
+  "outputs": {
+   "item_gas_copper_bright_clear": 1,
+   "item_gas_copper_bright_turbid": 1
+  },
+  "seconds": 2
+ },
+ {
   "env": 3,
   "id": "gas_reactor_gas_copper_enr2_1",
   "inputs": {
@@ -3013,6 +3533,20 @@
  },
  {
   "env": 0,
+  "id": "liquid_purifier_gas_copper_bright_clear_1",
+  "inputs": {
+   "item_filter_core": 2,
+   "item_gas_copper_bright_turbid": 2
+  },
+  "machine": "liquid_purifier_1",
+  "machine_name": "提纯机",
+  "outputs": {
+   "item_gas_copper_bright_clear": 2
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
   "id": "liquid_purifier_gas_copper_enr_1",
   "inputs": {
    "item_filter_core": 2,
@@ -3265,6 +3799,58 @@
  },
  {
   "env": 0,
+  "id": "liquid_transmuter_2_copper_bright_1",
+  "inputs": {
+   "item_gas_copper_bright_clear": 2
+  },
+  "machine": "transmuter_2",
+  "machine_name": "固气转化机",
+  "outputs": {
+   "item_copper_bright": 2
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "liquid_transmuter_2_copper_enr_heng_1",
+  "inputs": {
+   "item_gas_copper_enr_heng": 1
+  },
+  "machine": "transmuter_2",
+  "machine_name": "固气转化机",
+  "outputs": {
+   "item_copper_enr_heng": 2
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "liquid_transmuter_2_gas_copper_bright_clear_1",
+  "inputs": {
+   "item_copper_bright": 2
+  },
+  "machine": "transmuter_2",
+  "machine_name": "固气转化机",
+  "outputs": {
+   "item_gas_copper_bright_clear": 2
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "liquid_transmuter_2_gas_copper_enr_heng_1",
+  "inputs": {
+   "item_copper_enr_heng": 2
+  },
+  "machine": "transmuter_2",
+  "machine_name": "固气转化机",
+  "outputs": {
+   "item_gas_copper_enr_heng": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
   "id": "liquid_transmuter_2_gas_gas_copper_1",
   "inputs": {
    "item_copper_nugget": 2
@@ -3330,6 +3916,19 @@
  },
  {
   "env": 0,
+  "id": "liquid_transmuter_2_gas_xiranite_enr_heng_1",
+  "inputs": {
+   "item_xiranite_enr_heng": 2
+  },
+  "machine": "transmuter_2",
+  "machine_name": "固气转化机",
+  "outputs": {
+   "item_gas_xiranite_enr_heng": 1
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
   "id": "liquid_transmuter_2_solid_copper_enr2_1",
   "inputs": {
    "item_gas_copper_enr2": 1
@@ -3392,6 +3991,61 @@
    "item_xiranite_powder": 1
   },
   "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "liquid_transmuter_2_xiranite_enr_heng_1",
+  "inputs": {
+   "item_gas_xiranite_enr_heng": 1
+  },
+  "machine": "transmuter_2",
+  "machine_name": "固气转化机",
+  "outputs": {
+   "item_xiranite_enr_heng": 2
+  },
+  "seconds": 2
+ },
+ {
+  "env": 0,
+  "id": "magic_balancer_1_copper_bright_1",
+  "inputs": {
+   "item_copper_enr_heng": 10,
+   "item_xiranite_enr_heng": 10
+  },
+  "machine": "magic_balancer_1",
+  "machine_name": "平衡炉",
+  "outputs": {
+   "item_copper_bright": 5
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "id": "magic_balancer_1_copper_enr",
+  "inputs": {
+   "item_copper_hui": 10,
+   "item_copper_ming": 10
+  },
+  "machine": "magic_balancer_1",
+  "machine_name": "平衡炉",
+  "outputs": {
+   "item_copper_enr": 5
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "id": "magic_balancer_1_xiranite_enr",
+  "inputs": {
+   "item_xiranite_hui": 5,
+   "item_xiranite_ming": 5
+  },
+  "machine": "magic_balancer_1",
+  "machine_name": "平衡炉",
+  "outputs": {
+   "item_xiranite_enr_powder": 2
+  },
+  "seconds": 10
  },
  {
   "env": 0,
@@ -4447,6 +5101,20 @@
  },
  {
   "env": 0,
+  "id": "tools_proc_battery_6_1",
+  "inputs": {
+   "item_originium_enr_powder": 20,
+   "item_xiranite_enr_heng": 5
+  },
+  "machine": "tools_assebling_mc_1",
+  "machine_name": "封装机",
+  "outputs": {
+   "item_proc_battery_6": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
   "id": "tools_proc_bomb_1_1",
   "inputs": {
    "item_glass_cmpt": 5,
@@ -4456,6 +5124,48 @@
   "machine_name": "封装机",
   "outputs": {
    "item_proc_bomb_1": 1
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "id": "tools_proc_copper_bright_cube",
+  "inputs": {
+   "item_copper_bright_cmpt": 5,
+   "item_originium_enr_powder": 5
+  },
+  "machine": "tools_assebling_mc_1",
+  "machine_name": "封装机",
+  "outputs": {
+   "item_copper_bright_cube": 5
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "id": "tools_proc_copper_xiranite_hui",
+  "inputs": {
+   "item_copper_hui_cmpt": 15,
+   "item_xiranite_enr_powder": 2
+  },
+  "machine": "tools_assebling_mc_1",
+  "machine_name": "封装机",
+  "outputs": {
+   "item_copper_xiranite_hui": 5
+  },
+  "seconds": 10
+ },
+ {
+  "env": 0,
+  "id": "tools_proc_copper_xiranite_ming",
+  "inputs": {
+   "item_copper_ming_cmpt": 10,
+   "item_xiranite_ming": 5
+  },
+  "machine": "tools_assebling_mc_1",
+  "machine_name": "封装机",
+  "outputs": {
+   "item_copper_xiranite_ming": 5
   },
   "seconds": 10
  },

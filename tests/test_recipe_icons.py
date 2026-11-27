@@ -138,11 +138,13 @@ def test_rotated_icons_need_turning_back():
 
 
 def test_lookalike_pair_is_not_called_sure():
-    """反例：景玉谷那台封装机做的是低容武陵电池，图标认成中容（0.81 对 0.63）。两种电池长得像，这种差距不能算认准。"""
+    """反例：景玉谷那台封装机做的是低容武陵电池，图标认成中容（0.81 对 0.63）。几种电池长得像，这种差距不能算认准。
+    2026-11-27 数据换到游戏 1.7：封装机多了高容武陵电池（0.635），排到第二，低容退到第三；头两名的差距还是不够认准。"""
     if not has_icons():
         skip("没有 AKEData 物品图标缓存（.cache）")
     top = RI.rank_products(icon("rot0_封装机_低容武陵电池.png"), products("封装机"), [0])
-    assert {top[0][0], top[1][0]} == {"中容武陵电池", "低容武陵电池"}, top[:2]
+    assert top[0][0] == "中容武陵电池" and "低容武陵电池" in [t[0] for t in top[:3]], top[:3]
+    assert all(t[0].endswith("武陵电池") for t in top[:3]), top[:3]
     assert top[0][1] - top[1][1] < RI.SURE_MARGIN, top[:2]
 
 

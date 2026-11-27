@@ -35,7 +35,9 @@ from . import vision as V
 
 BELT_CAP = 30.0
 PIPE_CAP = 120.0
-FUEL_MIN = {"气体散布机": 6.0, "固气转化机": 6.0, "液气转化机": 6.0}
+FUEL_MIN = {"气体散布机": 6.0, "固气转化机": 6.0, "液气转化机": 6.0,
+            # 1.7 明晦炉、分影明晦炉烧息壤气：每 10 秒 1 份（IndustrialPlanner 2026-11-25 的内部耗气配方；我们自己还没在游戏里核过）
+            "明晦炉": 6.0, "分影明晦炉": 6.0}
 MERGE_T = ("汇流器", "管道汇流器")
 # RATE_LIMITED_INTAKE、MAIN_BLOCKED 只是 analyze 的默认值，运行中不再改它们，要换模式就给 analyze 传参数（2026-11-19）。
 # 原来 run_base 靠改这两个模块变量切换三遍计算的模式；界面每次接口调用都在单独的线程里跑，两次设计分析同时跑（拼合任务和待确认的
@@ -64,6 +66,7 @@ PT_OUTER_MAX = 16
 
 
 _RECIPES = None
+_BRANCH: dict = {}  # _RECIPES 下标 → 「每轮只出其中一种」的说明（1.7 起，data/recipes.json 的 branches）
 _INFER_DEBUG = None  # 调试：lambda d, c: bool
 
 
@@ -77,6 +80,11 @@ def _pool_recipe(rc: str, machine: str, nth: int = 0) -> str:
         names = json.loads((ROOT / "data" / "item_id_names.json").read_text(encoding="utf-8"))
         _RECIPES = [(r.get("machine_name"), {names.get(k, k): v for k, v in r["inputs"].items()},
                      {names.get(k, k): v for k, v in r["outputs"].items()}, r.get("seconds"), r.get("env", 0)) for r in rec]
+        _BRANCH.clear()
+        for k, r in enumerate(rec):
+            if r.get("branches"):
+                _BRANCH[k] = "这条配方每轮只出其中一种：" + " 或 ".join(
+                    "、".join(f"{names.get(it, it)}×{c:g}" for it, c in b["outputs"].items()) + f"（{b['prob']:g}%）" for b in r["branches"]) + "；配方里写的是长期平均"
     if not rc:
         return ""
     # 池子能同时跑几条配方，面板列的物品不全是产物（息壤、重息壤是原料）；首尾相接的几条并成一条净配方（pool_channels）
@@ -356,6 +364,23 @@ def env_required(machine: str, recipe: str) -> bool | None:
             continue
         if {k: v * 60.0 / sec for k, v in a.items()} == ins and {k: v * 60.0 / sec for k, v in b.items()} == outs:
             return bool(env)
+    return None
+
+
+def branch_note(machine: str, recipe: str) -> str | None:
+    """这条配方是不是「每轮只出其中一种」的（1.7 气体反应炉：清型 / 浊型辉铜气 ×2 各 50%）。是 → 依据里要写的那句话，不是 → None。
+    data/recipes.json 里这种配方的 outputs 已经是长期平均（两种各 ×1），算速率、判缺料和堵料都不用另外处理：哪一种送不出去，
+    轮到它时机器就停，和一条配方同时出两样东西是一回事。这里只管把「二选一」说清楚。"""
+    if not recipe or "→" not in recipe:
+        return None
+    _pool_recipe("", machine)
+    if not _BRANCH:
+        return None
+    ins, outs = inputs_of(recipe), outputs_of(recipe)
+    for k, note in _BRANCH.items():
+        m, a, b, sec, _env = _RECIPES[k]
+        if m == machine and sec and {x: v * 60.0 / sec for x, v in a.items()} == ins and {x: v * 60.0 / sec for x, v in b.items()} == outs:
+            return note
     return None
 
 
@@ -2401,6 +2426,9 @@ def analyze(bd: Path, ledger: dict, recipes: list[dict], gate_limits: dict | Non
         envr = env_required(d["name"], rc)
         if envr:
             basis.append("这条配方要稳定环境（环境气体覆盖）；普通状态下是另一条配方")
+        bnote = branch_note(d["name"], rc)
+        if bnote:
+            basis.insert(0, bnote)  # 放最前面：依据最多留 8 条，别被截掉
         rows.append({"device": d["name"], "x": d["x"], "y": d["y"], "c": [round(v) for v in dev_canvas[i]], "recipe": rc, "env_required": envr, "via_inferred": via_inf,
                      "recipe_inferred": inferred, "need": need, "got": got, "rate": round(r, 3), "limit_by": lim,
                      "state": state, "zero_margin": zero, "feeds": len(feeds), "basis": basis[:8],
